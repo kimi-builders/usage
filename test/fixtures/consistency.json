@@ -1,0 +1,85 @@
+{
+  "note": "mirror into kimi.builders tests/fixtures/; regenerate both sides together",
+  "sessionSalt": "test-session-saltxxxxxxxxxxxxxxx",
+  "sources": {
+    "kimi-code": {
+      "files": [
+        {
+          "path": "sessions/wd_demo_abcd/session_1/agents/main/wire.jsonl",
+          "lines": [
+            { "type": "turn.prompt", "origin": { "kind": "user" }, "time": 1785578460000 },
+            { "type": "usage.record", "model": "kimi-code/k3", "usage": { "inputOther": 100, "inputCacheCreation": 20, "inputCacheRead": 30, "output": 10 }, "usageScope": "turn", "time": 1785578520000 },
+            { "type": "usage.record", "model": "kimi-code/k3", "usage": { "inputOther": 50, "inputCacheCreation": 0, "inputCacheRead": 10, "output": 5 }, "usageScope": "session", "time": 1785578580000 }
+          ]
+        }
+      ],
+      "sessionIndex": [
+        { "sessionId": "1", "sessionDir": "@ROOT/sessions/wd_demo_abcd/session_1", "workDir": "/workspace/demo-app" }
+      ],
+      "expected": {
+        "buckets": 1,
+        "sessions": 1,
+        "input": 150,
+        "cacheWrite": 20,
+        "cacheRead": 40,
+        "output": 15,
+        "reasoning": 0,
+        "total": 225,
+        "requests": 2,
+        "userMessages": 1,
+        "activeSeconds": 60
+      }
+    },
+    "claude-code": {
+      "files": [
+        {
+          "path": "projects/-Users-x-demo-app/sess-1.jsonl",
+          "lines": [
+            { "type": "user", "timestamp": "2026-08-01T10:01:00.000Z", "cwd": "/Users/x/demo-app", "uuid": "u1", "message": {} },
+            { "type": "assistant", "timestamp": "2026-08-01T10:02:00.000Z", "cwd": "/Users/x/demo-app", "uuid": "u2", "message": { "model": "claude-opus-4", "usage": { "input_tokens": 200, "output_tokens": 20, "cache_read_input_tokens": 50, "cache_creation_input_tokens": 80, "cache_creation": { "ephemeral_5m_input_tokens": 30, "ephemeral_1h_input_tokens": 40 } } } },
+            { "type": "assistant", "timestamp": "2026-08-01T10:04:00.000Z", "cwd": "/Users/x/demo-app", "uuid": "u3", "message": { "model": "<synthetic>", "usage": { "input_tokens": 100, "output_tokens": 10, "cache_creation": { "ephemeral_5m_input_tokens": 10, "ephemeral_1h_input_tokens": 15 } } } }
+          ]
+        }
+      ],
+      "expected": {
+        "buckets": 1,
+        "sessions": 1,
+        "input": 300,
+        "cacheWrite": 105,
+        "cacheRead": 50,
+        "output": 30,
+        "reasoning": 0,
+        "total": 485,
+        "requests": 2,
+        "userMessages": 1,
+        "activeSeconds": 120
+      }
+    },
+    "codex": {
+      "files": [
+        {
+          "path": "sessions/2026/08/01/rollout-1.jsonl",
+          "lines": [
+            { "timestamp": "2026-08-01T10:01:00.000Z", "type": "session_meta", "payload": { "id": "codex-sess-1", "cwd": "/home/x/demo-api", "timestamp": "2026-08-01T10:01:00.000Z" } },
+            { "timestamp": "2026-08-01T10:02:00.000Z", "type": "turn_context", "payload": { "model": "gpt-5-codex" } },
+            { "timestamp": "2026-08-01T10:03:00.000Z", "type": "event_msg", "payload": { "type": "token_count", "info": { "model": "gpt-5-codex", "total_token_usage": { "input_tokens": 500, "cached_input_tokens": 100, "output_tokens": 60, "reasoning_output_tokens": 20, "total_tokens": 660 }, "last_token_usage": { "input_tokens": 500, "cached_input_tokens": 100, "output_tokens": 60, "reasoning_output_tokens": 20, "total_tokens": 660 } } } },
+            { "timestamp": "2026-08-01T10:05:00.000Z", "type": "event_msg", "payload": { "type": "token_count", "info": { "total_token_usage": { "input_tokens": 900, "cached_input_tokens": 200, "output_tokens": 120, "reasoning_output_tokens": 40, "total_tokens": 1260 } } } }
+          ]
+        }
+      ],
+      "expected": {
+        "buckets": 1,
+        "sessions": 1,
+        "input": 700,
+        "cacheWrite": 0,
+        "cacheRead": 200,
+        "output": 80,
+        "reasoning": 40,
+        "total": 1020,
+        "requests": 2,
+        "userMessages": 2,
+        "activeSeconds": 120
+      }
+    }
+  }
+}
