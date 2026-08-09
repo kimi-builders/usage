@@ -59,10 +59,19 @@ function project(value, field) {
   }
 }
 
+function optionalText(value, field, maxLength) {
+  if (value === undefined) return;
+  text(value, field, maxLength);
+}
+
 function validateBucket(value) {
   const item = record(value, 'bucket');
   source(item.source, 'bucket.source');
   text(item.model, 'bucket.model', 160);
+  optionalText(item.modelCanonical, 'bucket.modelCanonical', 160);
+  optionalText(item.modelProvider, 'bucket.modelProvider', 80);
+  optionalText(item.reasoningEffort, 'bucket.reasoningEffort', 32);
+  optionalText(item.agentVersion, 'bucket.agentVersion', 80);
   project(item.project, 'bucket.project');
   const bucketStart = timestamp(item.bucketStart, 'bucket.bucketStart');
   if (
@@ -92,6 +101,7 @@ function validateBucket(value) {
 function validateSession(value) {
   const item = record(value, 'session');
   source(item.source, 'session.source');
+  optionalText(item.agentVersion, 'session.agentVersion', 80);
   project(item.project, 'session.project');
   const sessionHash = text(item.sessionHash, 'session.sessionHash', 64);
   if (!/^[0-9a-f]{64}$/i.test(sessionHash)) {

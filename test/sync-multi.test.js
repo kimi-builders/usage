@@ -154,7 +154,9 @@ test('unchanged fixtures upload nothing and still exit ok with a failing source'
   const { result, lines } = await runQuietlyCaptured();
   assert.equal(result.buckets, 0);
   assert.equal(result.sessions, 0);
-  assert.equal(received.length, 1); // no new ingest call
+  assert.equal(received.length, 2); // metadata heartbeat, no usage rows
+  assert.deepEqual(received[1].buckets, []);
+  assert.deepEqual(received[1].sessions, []);
   assert.ok(lines.some((line) => line.includes('暂无新增或变化的用量。')));
   const state = readStateFile();
   assert.equal(state.buckets[seededCodexBucketKey], 'seeded');
@@ -182,7 +184,7 @@ test("a skipped source's state survives too", async () => {
     ],
   );
   assert.ok(lines.some((line) => line.includes('- claude-code') && line.includes('未检测到')));
-  assert.equal(received.length, 1); // nothing changed → no upload
+  assert.equal(received.length, 3); // another metadata heartbeat, still no usage rows
 
   const state = readStateFile();
   for (const key of claudeKeys) assert.equal(state.buckets[key], claudeStateBefore.buckets[key]);

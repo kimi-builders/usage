@@ -43,7 +43,14 @@ export function clearState() {
 }
 
 export function bucketKey(bucket) {
-  return [bucket.source, bucket.model, bucket.project || '', bucket.bucketStart].join('|');
+  const base = [bucket.source, bucket.model, bucket.project || '', bucket.bucketStart];
+  const dimensions = [
+    bucket.modelCanonical,
+    bucket.modelProvider,
+    bucket.reasoningEffort,
+    bucket.agentVersion,
+  ].map((value) => value || '');
+  return dimensions.some(Boolean) ? [...base, ...dimensions].join('|') : base.join('|');
 }
 
 export function sessionKey(session) {

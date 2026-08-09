@@ -15,6 +15,47 @@ import {
 const BUCKET_BATCH = 500;
 const SESSION_BATCH = 200;
 
+function bucketBaseKey(bucket) {
+  return [bucket.source, bucket.model, bucket.project || '', bucket.bucketStart].join('|');
+}
+
+function hasRequestMetadata(bucket) {
+  return Boolean(bucket.modelProvider || bucket.reasoningEffort || bucket.agentVersion);
+}
+
+/* Keep all metadata variants of one former base bucket in the same request.
+ * The server can then compare their combined total with the old unsplit row
+ * before replacing it. Rich variants sort first so even an exceptional group
+ * larger than the batch cap cannot send the ambiguous empty variant first. */
+export function chunkBucketChanges(changes, maxSize = BUCKET_BATCH) {
+  const groups = new Map();
+  for (const change of changes) {
+    const key = bucketBaseKey(change.item);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(change);
+  }
+  const chunks = [];
+  let current = [];
+  const flush = () => {
+    if (current.length > 0) chunks.push(current);
+    current = [];
+  };
+  for (const group of groups.values()) {
+    group.sort((left, right) => Number(hasRequestMetadata(right.item)) - Number(hasRequestMetadata(left.item)));
+    if (group.length > maxSize) {
+      flush();
+      for (let index = 0; index < group.length; index += maxSize) {
+        chunks.push(group.slice(index, index + maxSize));
+      }
+      continue;
+    }
+    if (current.length + group.length > maxSize) flush();
+    current.push(...group);
+  }
+  flush();
+  return chunks;
+}
+
 export function applyPrivacy(result, uploadProject) {
   const hide = (item) => {
     const copy = { ...item };
@@ -114,6 +155,7 @@ export async function runSync({ quiet = false, surface = 'cli' } = {}) {
     settings.uploadProject,
   );
   const state = loadState();
+  const client = createSyncClient(surface);
   const liveBucketKeys = new Set();
   const liveSessionKeys = new Set();
   const changedBuckets = [];
@@ -145,6 +187,13 @@ export async function runSync({ quiet = false, surface = 'cli' } = {}) {
   pruneState(state, liveBucketKeys, liveSessionKeys, okSources);
 
   if (changedBuckets.length === 0 && changedSessions.length === 0) {
+    const response = await ingest(config.apiUrl, config.apiKey, {
+      protocolVersion: 2,
+      client: forBatch(client, 0, 1),
+      buckets: [],
+      sessions: [],
+    });
+    if (!response.ok) throw new Error('服务端拒绝了设备元数据更新。');
     saveState(state);
     if (!quiet) {
       console.log('暂无新增或变化的用量。');
@@ -154,19 +203,15 @@ export async function runSync({ quiet = false, surface = 'cli' } = {}) {
     return { buckets: 0, sessions: 0, sources, rejected: rejected.length };
   }
 
-  const bucketBatches = Math.ceil(changedBuckets.length / BUCKET_BATCH);
+  const bucketBatches = chunkBucketChanges(changedBuckets);
   const sessionBatches = Math.ceil(changedSessions.length / SESSION_BATCH);
-  const batchCount = Math.max(bucketBatches, sessionBatches, 1);
-  const client = createSyncClient(surface);
+  const batchCount = Math.max(bucketBatches.length, sessionBatches, 1);
   let bucketTotal = 0;
   let sessionTotal = 0;
   let protectedBucketTotal = 0;
 
   for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
-    const bucketBatch = changedBuckets.slice(
-      batchIndex * BUCKET_BATCH,
-      (batchIndex + 1) * BUCKET_BATCH,
-    );
+    const bucketBatch = bucketBatches[batchIndex] || [];
     const sessionBatch = changedSessions.slice(
       batchIndex * SESSION_BATCH,
       (batchIndex + 1) * SESSION_BATCH,

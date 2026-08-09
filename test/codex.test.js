@@ -224,16 +224,28 @@ test('only the first session_meta is canonical (id, project, timing)', async () 
 test('turn_context model is sticky; info.model overrides it', async () => {
   const home = useHome('sticky');
   writeRollout(home, 'sessions', 'rollout-a.jsonl', [
-    meta('s1', '2026-08-01T10:00:00.000Z'),
-    { timestamp: '2026-08-01T10:01:00.000Z', type: 'turn_context', payload: { model: 'gpt-a' } },
+    meta('s1', '2026-08-01T10:00:00.000Z', {
+      cli_version: '0.146.1',
+      model_provider: 'openai',
+    }),
+    { timestamp: '2026-08-01T10:01:00.000Z', type: 'turn_context', payload: { model: 'gpt-a', effort: 'high' } },
     tokenEvent('2026-08-01T10:02:00.000Z', { last_token_usage: usage(1, 0, 1, 0) }),
-    { timestamp: '2026-08-01T10:03:00.000Z', type: 'turn_context', payload: { model: 'gpt-b' } },
+    { timestamp: '2026-08-01T10:03:00.000Z', type: 'turn_context', payload: { model: 'gpt-b', effort: 'max' } },
     tokenEvent('2026-08-01T10:04:00.000Z', { last_token_usage: usage(2, 0, 2, 0) }),
     tokenEvent('2026-08-01T10:05:00.000Z', { model: 'gpt-c', last_token_usage: usage(4, 0, 1, 0) }),
+    { timestamp: '2026-08-01T10:06:00.000Z', type: 'turn_context', payload: { model: 'gpt-d' } },
+    tokenEvent('2026-08-01T10:07:00.000Z', { last_token_usage: usage(8, 0, 1, 0) }),
   ]);
   const result = await parse({ sessionSalt: SALT });
   const byModel = Object.fromEntries(result.buckets.map((bucket) => [bucket.model, bucket.inputTokens]));
-  assert.deepEqual(byModel, { 'gpt-a': 1, 'gpt-b': 2, 'gpt-c': 4 });
+  assert.deepEqual(byModel, { 'gpt-a': 1, 'gpt-b': 2, 'gpt-c': 4, 'gpt-d': 8 });
+  assert.deepEqual(
+    Object.fromEntries(result.buckets.map((bucket) => [bucket.model, bucket.reasoningEffort])),
+    { 'gpt-a': 'high', 'gpt-b': 'max', 'gpt-c': 'max', 'gpt-d': undefined },
+  );
+  assert.ok(result.buckets.every((bucket) => bucket.modelProvider === 'openai'));
+  assert.ok(result.buckets.every((bucket) => bucket.agentVersion === '0.146.1'));
+  assert.equal(result.sessions[0].agentVersion, '0.146.1');
 });
 
 test('corrupt lines are skipped; an empty home parses to zero items', async () => {

@@ -69,6 +69,8 @@ function parseFromSqlite(dbPath) {
     json_extract(data, '$.role') as role,
     json_extract(data, '$.time.created') as created,
     json_extract(data, '$.modelID') as modelID,
+    json_extract(data, '$.providerID') as modelProvider,
+    json_extract(data, '$.variant') as reasoningEffort,
     json_extract(data, '$.tokens') as tokens,
     json_extract(data, '$.path.root') as rootPath
     FROM message`);
@@ -103,6 +105,8 @@ function parseFromSqlite(dbPath) {
     entries.push({
       source: 'opencode',
       model: row.modelID || 'unknown',
+      ...(row.modelProvider ? { modelProvider: row.modelProvider } : {}),
+      ...(row.reasoningEffort ? { reasoningEffort: row.reasoningEffort } : {}),
       project,
       timestamp,
       ...mapped,
@@ -160,6 +164,8 @@ function parseFromJson(messagesDir) {
       entries.push({
         source: 'opencode',
         model: data.modelID || 'unknown',
+        ...(data.providerID ? { modelProvider: data.providerID } : {}),
+        ...(data.variant ? { reasoningEffort: data.variant } : {}),
         project,
         timestamp,
         ...mapped,

@@ -121,6 +121,9 @@ function timingEvent(record, sessionId, project) {
     project,
     timestamp,
     role: record.type === 'user' ? 'user' : 'assistant',
+    ...(typeof record.version === 'string' && record.version.trim()
+      ? { agentVersion: record.version.trim() }
+      : {}),
   };
 }
 
@@ -154,6 +157,9 @@ function scanProjectCandidate(candidate) {
       usageScore,
       source: 'claude-code',
       model: rawModel && rawModel !== '<synthetic>' ? rawModel : lastModel || 'unknown',
+      ...(typeof record.version === 'string' && record.version.trim()
+        ? { agentVersion: record.version.trim() }
+        : {}),
       project: sessionProject,
       timestamp,
       inputTokens,

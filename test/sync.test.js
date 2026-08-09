@@ -98,10 +98,14 @@ test('repeat sync sends no duplicate batch and hidden projects never enter paylo
   );
   assert.equal(second.buckets, 0);
   assert.equal(second.sessions, 0);
-  assert.equal(received.length, 1);
+  assert.equal(received.length, 2);
   assert.equal(received[0].protocolVersion, 2);
   assert.equal('project' in received[0].buckets[0], false);
   assert.equal('project' in received[0].sessions[0], false);
+  assert.deepEqual(received[1].buckets, []);
+  assert.deepEqual(received[1].sessions, []);
+  assert.equal(received[1].client.device.terminal.name.length > 0, true);
+  assert.equal(received[1].client.device.os.name.length > 0, true);
   assert.deepEqual(
     {
       input: received[0].buckets[0].inputTokens,

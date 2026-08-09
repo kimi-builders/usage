@@ -75,6 +75,7 @@ test('legacy parser: seconds timestamps, cache fields, no now-fallback, both sto
   assert.deepEqual(legacyBucket, {
     source: 'kimi-code',
     model: 'kimi-code/kimi-for-coding',
+    modelCanonical: 'kimi-k2.7-code',
     project: 'legacy-project',
     bucketStart: '2026-04-29T10:00:00.000Z',
     inputTokens: 10,

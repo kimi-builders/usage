@@ -137,6 +137,7 @@ test('sqlite cascade: token mapping, display-name model, workspace project, step
     input: 5528, cacheWrite: 0, cacheRead: 2000, output: 192, reasoning: 142, requests: 1,
   });
   assert.equal(result.buckets[0].model, 'gemini-3.5-flash');
+  assert.equal(result.buckets[0].reasoningEffort, 'high');
   assert.equal(result.buckets[0].project, 'project-one');
   assert.equal(result.sessions.length, 1);
   assert.equal(result.sessions[0].messageCount, 2);

@@ -78,6 +78,8 @@ test('sqlite path: exclusive token mapping incl. cache write/read + reasoning', 
       sessionId: 'ses_1',
       data: message('assistant', Date.parse('2026-08-01T10:02:00.000Z'), {
         modelID: 'kimi-k2-thinking',
+        providerID: 'moonshot',
+        variant: 'high',
         tokens: { input: 100, output: 40, reasoning: 10, cache: { read: 30, write: 20 } },
       }),
     },
@@ -87,6 +89,8 @@ test('sqlite path: exclusive token mapping incl. cache write/read + reasoning', 
     input: 100, cacheWrite: 20, cacheRead: 30, output: 40, reasoning: 10, requests: 1,
   });
   assert.equal(result.buckets[0].model, 'kimi-k2-thinking');
+  assert.equal(result.buckets[0].modelProvider, 'moonshot');
+  assert.equal(result.buckets[0].reasoningEffort, 'high');
   assert.equal(result.buckets[0].project, 'demo-app');
   assert.equal(result.sessions.length, 1);
   assert.equal(result.sessions[0].userMessageCount, 1);

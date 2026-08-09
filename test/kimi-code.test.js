@@ -84,6 +84,7 @@ test('current Kimi parser counts all delta scopes, cache creation, and subagents
   assert.deepEqual(result.buckets[0], {
     source: 'kimi-code',
     model: 'kimi-code/k3',
+    modelCanonical: 'kimi-k3',
     project: 'actual-project',
     bucketStart: '2026-07-17T00:00:00.000Z',
     inputTokens: 17,

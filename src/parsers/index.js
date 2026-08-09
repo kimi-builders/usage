@@ -8,6 +8,7 @@ import { parse as parseAntigravity, roots as antigravityRoots } from './antigrav
 import { parse as parseCopilotCli, roots as copilotCliRoots } from './copilot-cli.js';
 import { parse as parseRooCode, roots as rooCodeRoots } from './roo-code.js';
 import { parse as parseCursor, roots as cursorRoots } from './cursor.js';
+import { canonicalModelId } from '../model-meta.js';
 
 // Multi-source registry. Tiers: core (always on), stable (on), beta (opt-in,
 // not yet collected), disabled (kept for reference, never collected).
@@ -51,13 +52,24 @@ export function aggregateToBuckets(entries) {
   const buckets = new Map();
   for (const entry of entries) {
     const model = String(entry.model || 'unknown').slice(0, 160);
+    const modelProvider = String(entry.modelProvider || '').trim().slice(0, 80);
+    const modelCanonical = String(
+      entry.modelCanonical || canonicalModelId({ ...entry, model }),
+    ).trim().slice(0, 160);
+    const reasoningEffort = String(entry.reasoningEffort || '').trim().toLowerCase().slice(0, 32);
+    const agentVersion = String(entry.agentVersion || '').trim().slice(0, 80);
     const project = String(entry.project || 'unknown').slice(0, 120);
     const bucketStart = roundToHalfHour(entry.timestamp).toISOString();
-    const key = `${entry.source}|${model}|${project}|${bucketStart}`;
+    const key = [entry.source, model, modelProvider, reasoningEffort, agentVersion, project, bucketStart]
+      .join('|');
     if (!buckets.has(key)) {
       buckets.set(key, {
         source: entry.source,
         model,
+        ...(modelCanonical ? { modelCanonical } : {}),
+        ...(modelProvider ? { modelProvider } : {}),
+        ...(reasoningEffort ? { reasoningEffort } : {}),
+        ...(agentVersion ? { agentVersion } : {}),
         project,
         bucketStart,
         inputTokens: 0,
@@ -103,6 +115,10 @@ export function extractSessions(events, sessionSalt) {
     sessionEvents.sort((left, right) => left.timestamp - right.timestamp);
     const first = sessionEvents[0];
     const last = sessionEvents[sessionEvents.length - 1];
+    const agentVersion = [...sessionEvents]
+      .reverse()
+      .map((event) => String(event.agentVersion || '').trim())
+      .find(Boolean) || '';
     // Cross-tool timing contract:
     // - active = time between assistant/tool events in one user turn, with a
     //   5-minute idle cap per gap;
@@ -179,6 +195,7 @@ export function extractSessions(events, sessionSalt) {
     const activeSeconds = activityHours.reduce((sum, hour) => sum + hour.activeSeconds, 0);
     sessions.push({
       source: first.source,
+      ...(agentVersion ? { agentVersion } : {}),
       project: first.project || 'unknown',
       sessionHash: createHmac('sha256', sessionSalt).update(sessionId).digest('hex'),
       firstMessageAt: first.timestamp.toISOString(),

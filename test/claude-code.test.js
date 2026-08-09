@@ -44,6 +44,7 @@ function assistant(ts, usage, extra = {}) {
     cwd: '/Users/x/demo-app',
     uuid: extra.uuid,
     message: { model: extra.model ?? 'claude-opus-4', usage },
+    ...(extra.version ? { version: extra.version } : {}),
     ...(extra.isSidechain ? { isSidechain: true } : {}),
   };
 }
@@ -191,9 +192,9 @@ test('session events feed the shared extractor (user vs assistant roles)', async
   const dir = useDir('timing');
   writeSession(dir, '-Users-x-demo-app', 'timing', [
     { type: 'user', timestamp: '2026-08-01T10:01:00.000Z', cwd: '/Users/x/demo-app', message: {} },
-    assistant('2026-08-01T10:02:00.000Z', usage({ input_tokens: 1, output_tokens: 1 }), { uuid: 't1' }),
+    assistant('2026-08-01T10:02:00.000Z', usage({ input_tokens: 1, output_tokens: 1 }), { uuid: 't1', version: '2.1.220' }),
     { type: 'tool_use', timestamp: '2026-08-01T10:03:00.000Z', cwd: '/Users/x/demo-app' },
-    assistant('2026-08-01T10:04:00.000Z', usage({ input_tokens: 1, output_tokens: 1 }), { uuid: 't2' }),
+    assistant('2026-08-01T10:04:00.000Z', usage({ input_tokens: 1, output_tokens: 1 }), { uuid: 't2', version: '2.1.220' }),
   ]);
   const result = await parse({ sessionSalt: SALT });
   assert.equal(result.sessions.length, 1);
@@ -201,6 +202,8 @@ test('session events feed the shared extractor (user vs assistant roles)', async
   assert.equal(result.sessions[0].messageCount, 4);
   assert.equal(result.sessions[0].userMessageCount, 1);
   assert.equal(result.sessions[0].activeSeconds, 120); // first response 10:02 → last 10:04
+  assert.equal(result.buckets[0].agentVersion, '2.1.220');
+  assert.equal(result.sessions[0].agentVersion, '2.1.220');
 });
 
 test('transcripts-only sessions are included without duplicating project sessions', async () => {

@@ -66,6 +66,17 @@ function modelFromRecord(record) {
   return 'unknown';
 }
 
+function reasoningEffortFromRecord(record) {
+  const parenthetical = String(record.displayName || '').match(/\(([^)]+)\)\s*$/)?.[1];
+  if (parenthetical) {
+    const value = parenthetical.trim().toLowerCase();
+    if (/^(low|medium|high|max)$/.test(value)) return value;
+    if (value === 'thinking') return 'enabled';
+  }
+  const suffix = String(record.responseModel || '').match(/-(low|medium|high|max)$/i)?.[1];
+  return suffix ? suffix.toLowerCase() : '';
+}
+
 function projectFromUri(uri) {
   if (!uri) return null;
   const parts = uri.replace(/\/$/, '').split('/');
@@ -111,9 +122,11 @@ export async function parse({ sessionSalt } = {}) {
         // Invalid/missing timestamp → skip the record entirely; never stamp
         // "now" (a stateless parser would re-key it on every sync).
         if (!record.timestamp || isNaN(record.timestamp.getTime())) continue;
+        const reasoningEffort = reasoningEffortFromRecord(record);
         entries.push({
           source: 'antigravity',
           model: modelFromRecord(record),
+          ...(reasoningEffort ? { reasoningEffort } : {}),
           project,
           timestamp: record.timestamp,
           inputTokens: tokenCount(record.inputTokens),

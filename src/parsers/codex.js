@@ -224,6 +224,8 @@ export async function parse({ sessionSalt } = {}) {
   for (const session of sessions) {
     const payload = session.meta?.payload;
     const project = projectFrom(payload);
+    const agentVersion = typeof payload?.cli_version === 'string' ? payload.cli_version.trim() : '';
+    const modelProvider = typeof payload?.model_provider === 'string' ? payload.model_provider.trim() : '';
 
     // Fork cutoff: the child replays parent history up to its own start.
     const startedAtMs = payload
@@ -260,6 +262,7 @@ export async function parse({ sessionSalt } = {}) {
 
     const firstMeta = session.meta;
     let stickyModel = null;
+    let stickyEffort = null;
     let baseline = null; // previous total_token_usage (running baseline)
     let lastPositiveTotal = 0;
     let tokenOrdinal = 0;
@@ -278,6 +281,7 @@ export async function parse({ sessionSalt } = {}) {
           project,
           timestamp: new Date(timestampMs),
           role: record === firstMeta || record?.type === 'turn_context' ? 'user' : 'assistant',
+          ...(agentVersion ? { agentVersion } : {}),
         });
       }
 
@@ -286,6 +290,8 @@ export async function parse({ sessionSalt } = {}) {
       if (record?.type === 'turn_context') {
         const model = record.payload?.model;
         if (typeof model === 'string' && model) stickyModel = model;
+        const effort = record.payload?.effort;
+        stickyEffort = typeof effort === 'string' && effort.trim() ? effort.trim() : null;
         continue;
       }
 
@@ -341,6 +347,9 @@ export async function parse({ sessionSalt } = {}) {
       entries.push({
         source: 'codex',
         model,
+        ...(modelProvider ? { modelProvider } : {}),
+        ...(stickyEffort ? { reasoningEffort: stickyEffort } : {}),
+        ...(agentVersion ? { agentVersion } : {}),
         project,
         timestamp: new Date(timestampMs),
         inputTokens,
