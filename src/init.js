@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { platform } from 'node:os';
 import { createSessionSalt, loadConfig, saveConfig } from './config.js';
 import { fetchSettings, pollDeviceToken, requestDeviceCode } from './api.js';
+import { deviceDisplayName } from './device-info.js';
 import { runSync } from './sync.js';
 
 function openBrowser(url) {
@@ -20,7 +21,7 @@ export async function runInit({ apiUrl = 'https://kimi.builders', manualKey } = 
   if (!apiKey) {
     const authorization = await requestDeviceCode(apiUrl, {
       clientName: '@kimi-builders/usage',
-      deviceName: `Kimi Code (${platform()})`,
+      deviceName: deviceDisplayName(),
       platform: platform(),
       surface: 'cli',
     });
