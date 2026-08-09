@@ -1,0 +1,12 @@
+node_modules/
+coverage/
+.DS_Store
+*.log
+
+.idea/
+
+docs/
+
+README.md
+NOTICE
+LICENSE

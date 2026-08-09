@@ -1,0 +1,33 @@
+{
+  "name": "@kimi-builders/usage",
+  "version": "0.3.1",
+  "description": "Kimi-first local usage collector for kimi.builders",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "bin": {
+    "kbu-usage": "bin/kbu-usage.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "kimi",
+    "kimi-code",
+    "usage",
+    "tokens"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kimi-builders/usage.git"
+  },
+  "homepage": "https://kimi.builders/usage",
+  "license": "MIT"
+}
