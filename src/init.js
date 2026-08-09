@@ -46,7 +46,7 @@ export async function runInit({ apiUrl = 'https://kimi.builders', manualKey } = 
     if (!apiKey) throw new Error('验证码已过期。');
   }
   await fetchSettings(apiUrl, apiKey);
-  saveConfig({ apiUrl, apiKey, deviceId, sessionSalt });
+  saveConfig({ ...existing, apiUrl, apiKey, deviceId, sessionSalt });
   console.log(`设备已连接，配置保存到 owner-only 文件。Key 前缀：${apiKey.slice(0, 12)}…`);
   await runSync();
 }

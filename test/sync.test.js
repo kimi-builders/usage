@@ -20,6 +20,8 @@ process.env.KBU_USAGE_CODEX_HOME = join(root, 'codex-absent');
 process.env.KBU_USAGE_OPENCODE_DIR = join(root, 'opencode-absent');
 process.env.KBU_USAGE_GEMINI_DIR = join(root, 'gemini-absent');
 process.env.KBU_USAGE_ANTIGRAVITY_DIR = join(root, 'antigravity-absent');
+process.env.KBU_USAGE_COPILOT_DIR = join(root, 'copilot-absent');
+process.env.KBU_USAGE_ROO_DIRS = join(root, 'roo-absent');
 
 const wireDir = join(currentRoot, 'sessions', 'wd_private-project_abcd', 'session_1', 'agents', 'main');
 mkdirSync(wireDir, { recursive: true });
@@ -90,6 +92,8 @@ test('repeat sync sends no duplicate batch and hidden projects never enter paylo
       { source: 'opencode', status: 'skipped' },
       { source: 'gemini-cli', status: 'skipped' },
       { source: 'antigravity', status: 'skipped' },
+      { source: 'copilot-cli', status: 'skipped' },
+      { source: 'roo-code', status: 'skipped' },
     ],
   );
   assert.equal(second.buckets, 0);
@@ -108,4 +112,3 @@ test('repeat sync sends no duplicate batch and hidden projects never enter paylo
     { input: 10, cacheWrite: 3, cacheRead: 4, output: 2 },
   );
 });
-

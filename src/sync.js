@@ -2,6 +2,7 @@ import { loadConfig } from './config.js';
 import { fetchSettings, ingest } from './api.js';
 import { createSyncClient, forBatch } from './client-meta.js';
 import { enabledSources } from './parsers/index.js';
+import { validateUploadBucket, validateUploadSession } from './protocol.js';
 import {
   bucketKey,
   contentHash,
@@ -29,22 +30,23 @@ export function applyPrivacy(result, uploadProject) {
 // Run every enabled source in its own try/catch: one source's failure never
 // blocks the others. No roots → skipped (未检测到); roots but nothing parsed
 // → ok with 0 items; throw → failed (its old state is kept, see pruneState).
-export async function collectAll({ sessionSalt }) {
+export async function collectAll({ sessionSalt, enabledSourceIds = [], sourceOptions = {} }) {
   const results = [];
-  for (const source of enabledSources()) {
+  for (const source of enabledSources(enabledSourceIds)) {
     try {
-      const roots = (await source.roots()) || [];
+      const roots = (await source.roots({ sourceOptions })) || [];
       if (roots.length === 0) {
         results.push({ source: source.id, tier: source.tier, status: 'skipped', buckets: [], sessions: [] });
         continue;
       }
-      const parsed = await source.parse({ sessionSalt });
+      const parsed = await source.parse({ sessionSalt, sourceOptions });
       results.push({
         source: source.id,
         tier: source.tier,
-        status: 'ok',
+        status: parsed?.skipped ? 'partial' : 'ok',
         buckets: parsed?.buckets ?? [],
         sessions: parsed?.sessions ?? [],
+        ...(parsed?.warnings?.length ? { warnings: parsed.warnings } : {}),
       });
     } catch (error) {
       results.push({
@@ -74,7 +76,11 @@ export async function runSync({ quiet = false, surface = 'cli' } = {}) {
     throw new Error('服务端没有返回有效的隐私设置，本次同步已安全取消。');
   }
 
-  const collected = await collectAll({ sessionSalt: config.sessionSalt });
+  const collected = await collectAll({
+    sessionSalt: config.sessionSalt,
+    enabledSourceIds: config.enabledSources,
+    sourceOptions: config.sourceOptions,
+  });
   const sources = collected.results.map((result) => ({
     source: result.source,
     tier: result.tier,
@@ -82,6 +88,7 @@ export async function runSync({ quiet = false, surface = 'cli' } = {}) {
     buckets: result.buckets.length,
     sessions: result.sessions.length,
     ...(result.error ? { error: result.error } : {}),
+    ...(result.warnings ? { warnings: result.warnings } : {}),
   }));
   if (!quiet) {
     console.log('来源扫描：');
@@ -92,12 +99,15 @@ export async function runSync({ quiet = false, surface = 'cli' } = {}) {
         console.log(`  ✓ ${label}${result.buckets.length} buckets · ${result.sessions.length} sessions`);
       } else if (result.status === 'skipped') {
         console.log(`  - ${label}未检测到本地数据，已跳过`);
+      } else if (result.status === 'partial') {
+        console.log(`  ~ ${label}${result.buckets.length} buckets · ${result.sessions.length} sessions（部分读取，本来源旧数据已保留）`);
+        for (const warning of (result.warnings || []).slice(0, 2)) console.log(`      ${warning}`);
       } else {
         console.log(`  ✗ ${label}解析失败：${result.error}（已保留该来源的旧数据）`);
       }
     }
   }
-  const anyFailed = collected.results.some((result) => result.status === 'failed');
+  const anyFailed = collected.results.some((result) => ['failed', 'partial'].includes(result.status));
 
   const snapshot = applyPrivacy(
     { buckets: collected.buckets, sessions: collected.sessions },
@@ -108,20 +118,25 @@ export async function runSync({ quiet = false, surface = 'cli' } = {}) {
   const liveSessionKeys = new Set();
   const changedBuckets = [];
   const changedSessions = [];
+  const rejected = [];
 
   for (const bucket of snapshot.buckets) {
     const key = bucketKey(bucket);
     const hash = contentHash(bucket);
     liveBucketKeys.add(key);
-    if (state.buckets[key] !== hash) changedBuckets.push({ item: bucket, key, hash });
+    const error = validateUploadBucket(bucket);
+    if (error) rejected.push({ kind: 'bucket', source: bucket.source, key, error });
+    else if (state.buckets[key] !== hash) changedBuckets.push({ item: bucket, key, hash });
   }
   for (const session of snapshot.sessions) {
     const key = sessionKey(session);
     const hash = contentHash(session);
     liveSessionKeys.add(key);
-    if (state.sessions[key] !== hash) changedSessions.push({ item: session, key, hash });
+    const error = validateUploadSession(session);
+    if (error) rejected.push({ kind: 'session', source: session.source, key, error });
+    else if (state.sessions[key] !== hash) changedSessions.push({ item: session, key, hash });
   }
-  // Only ok sources may prune: skipped/failed sources keep their old state,
+  // Only ok sources may prune: skipped/partial/failed sources keep their old state,
   // so a transient failure or temporary uninstall never triggers a full
   // re-upload when the source comes back.
   const okSources = new Set(
@@ -134,8 +149,9 @@ export async function runSync({ quiet = false, surface = 'cli' } = {}) {
     if (!quiet) {
       console.log('暂无新增或变化的用量。');
       if (anyFailed) console.log('⚠ 部分来源解析失败，其余来源不受影响；失败来源的旧数据已保留。');
+      printRejected(rejected);
     }
-    return { buckets: 0, sessions: 0, sources };
+    return { buckets: 0, sessions: 0, sources, rejected: rejected.length };
   }
 
   const bucketBatches = Math.ceil(changedBuckets.length / BUCKET_BATCH);
@@ -144,6 +160,7 @@ export async function runSync({ quiet = false, surface = 'cli' } = {}) {
   const client = createSyncClient(surface);
   let bucketTotal = 0;
   let sessionTotal = 0;
+  let protectedBucketTotal = 0;
 
   for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
     const bucketBatch = changedBuckets.slice(
@@ -166,11 +183,30 @@ export async function runSync({ quiet = false, surface = 'cli' } = {}) {
     saveState(state);
     bucketTotal += Number(response.ingested?.buckets ?? bucketBatch.length);
     sessionTotal += Number(response.ingested?.sessions ?? sessionBatch.length);
+    protectedBucketTotal += Number(response.protected?.buckets ?? 0);
   }
   if (!quiet) {
     console.log(`已同步 ${bucketTotal} buckets · ${sessionTotal} sessions`);
+    if (protectedBucketTotal > 0) {
+      console.log(`服务端保留了 ${protectedBucketTotal} 个更大的已有 bucket（本次较小快照未覆盖）`);
+    }
     if (anyFailed) console.log('⚠ 部分来源解析失败，其余来源不受影响；失败来源的旧数据已保留。');
+    printRejected(rejected);
   }
-  return { buckets: bucketTotal, sessions: sessionTotal, sources };
+  return {
+    buckets: bucketTotal,
+    sessions: sessionTotal,
+    protectedBuckets: protectedBucketTotal,
+    sources,
+    rejected: rejected.length,
+  };
 }
 
+function printRejected(rejected) {
+  if (rejected.length === 0) return;
+  console.log(`⚠ 本地校验隔离了 ${rejected.length} 条异常记录，其余数据已继续同步：`);
+  for (const item of rejected.slice(0, 5)) {
+    console.log(`  - ${item.source} ${item.kind}: ${item.error}`);
+  }
+  if (rejected.length > 5) console.log(`  - 其余 ${rejected.length - 5} 条已省略`);
+}

@@ -16,6 +16,7 @@ mkdirSync(rootB, { recursive: true });
 process.env.KBU_USAGE_CLAUDE_DIRS = [rootA, rootB].join(delimiter);
 
 const { parse, roots } = await import('../src/parsers/claude-code.js');
+const { findClaudeDesktopRoots } = await import('../src/claude-roots.js');
 
 const SALT = 'test-session-salt'.padEnd(32, 'x');
 
@@ -200,4 +201,34 @@ test('session events feed the shared extractor (user vs assistant roles)', async
   assert.equal(result.sessions[0].messageCount, 4);
   assert.equal(result.sessions[0].userMessageCount, 1);
   assert.equal(result.sessions[0].activeSeconds, 120); // first response 10:02 → last 10:04
+});
+
+test('transcripts-only sessions are included without duplicating project sessions', async () => {
+  const dir = useDir('transcripts');
+  const transcripts = join(dir, 'transcripts');
+  mkdirSync(transcripts, { recursive: true });
+  writeFileSync(join(transcripts, 'transcript-only.jsonl'), `${[
+    { type: 'user', timestamp: '2026-08-01T11:00:00.000Z', cwd: '/Users/x/cowork' },
+    { type: 'assistant', timestamp: '2026-08-01T11:01:00.000Z', cwd: '/Users/x/cowork' },
+  ].map(JSON.stringify).join('\n')}\n`, 'utf8');
+
+  const result = await parse({ sessionSalt: SALT });
+  assert.equal(result.buckets.length, 0);
+  assert.equal(result.sessions.length, 1);
+  assert.equal(result.sessions[0].project, 'cowork');
+});
+
+test('Claude Desktop discovery finds Cowork private .claude roots', () => {
+  const desktop = join(root, 'desktop');
+  const coworkRoot = join(
+    desktop,
+    'local-agent-mode-sessions',
+    'local_abc',
+    'session_abc',
+    '.claude',
+  );
+  mkdirSync(join(coworkRoot, 'projects'), { recursive: true });
+  mkdirSync(join(desktop, 'local-agent-mode-sessions', 'rpm', 'ignored', '.claude'), { recursive: true });
+
+  assert.deepEqual(findClaudeDesktopRoots([desktop]), [coworkRoot]);
 });

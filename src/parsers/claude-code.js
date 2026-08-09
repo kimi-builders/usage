@@ -1,83 +1,50 @@
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { delimiter, join, basename } from 'node:path';
-import { homedir } from 'node:os';
+import { basename, join, sep } from 'node:path';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { aggregateToBuckets, extractSessions } from './index.js';
+import { getClaudeRoots } from '../claude-roots.js';
 
-/**
- * Claude Code parser (anthropics/claude-code).
- *
- * Claude Code stores one JSONL transcript per session under
- *   <root>/projects/<hyphen-joined-cwd>/<sessionId>.jsonl
- * (`transcripts/` is NOT scanned). Roots are resolved as follows:
- *
- * - KBU_USAGE_CLAUDE_DIRS set (even to an empty string): used exclusively,
- *   path.delimiter-separated. Empty means "no roots" (test hook / opt-out).
- * - Otherwise: $CLAUDE_CONFIG_DIR (`~` expanded) + ~/.claude + every
- *   ~/.claude-* directory in HOME that contains a projects/ subdir
- *   (multi-account setups keep parallel config homes).
- *
- * The same physical session file can appear under several roots (symlinked or
- * copied config homes); copies are deduped per session id keeping the "best"
- * copy. Individual usage records also carry a `uuid`, and copied session
- * files under DIFFERENT names would otherwise double-count, so entries are
- * deduped by uuid across all files of this source, keeping the payload with
- * the highest usage sum.
- */
+const MAX_WARNINGS = 20;
 
-function expandHome(value) {
-  if (value === '~') return homedir();
-  if (value.startsWith('~/')) return join(homedir(), value.slice(2));
-  return value;
-}
-
-// Dedup by realpath and keep only dirs that exist right now.
-function dedupeExisting(candidates) {
-  const seen = new Set();
-  const roots = [];
-  for (const candidate of candidates) {
-    if (!existsSync(candidate)) continue;
-    let real;
-    try {
-      real = realpathSync(candidate);
-    } catch {
-      continue;
-    }
-    if (seen.has(real)) continue;
-    seen.add(real);
-    roots.push(candidate);
-  }
-  return roots;
-}
-
-// Resolved lazily (not at import time) so importing the registry never
-// touches the filesystem — tests point the override at fixtures before use.
-function resolveRoots() {
-  const override = process.env.KBU_USAGE_CLAUDE_DIRS;
-  if (override !== undefined) {
-    if (!override.trim()) return [];
-    return dedupeExisting(
-      override.split(delimiter).map((dir) => dir.trim()).filter(Boolean).map(expandHome),
-    );
-  }
-  const candidates = [];
-  const configDir = process.env.CLAUDE_CONFIG_DIR?.trim();
-  if (configDir) candidates.push(expandHome(configDir));
-  const home = homedir();
-  candidates.push(join(home, '.claude'));
-  try {
-    for (const entry of readdirSync(home, { withFileTypes: true })) {
-      if (!entry.isDirectory() || !entry.name.startsWith('.claude-')) continue;
-      const dir = join(home, entry.name);
-      if (existsSync(join(dir, 'projects'))) candidates.push(dir);
-    }
-  } catch {
-    // HOME unreadable — fall back to the default candidates only.
-  }
-  return dedupeExisting(candidates);
+function addWarning(ctx, message) {
+  ctx.incomplete = true;
+  if (ctx.warnings.length < MAX_WARNINGS) ctx.warnings.push(message);
 }
 
 export function roots() {
-  return resolveRoots();
+  return getClaudeRoots();
+}
+
+function findJsonlFiles(dir, ctx) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      addWarning(ctx, `Claude Code: cannot read directory ${dir}: ${error.message}`);
+    }
+    return [];
+  }
+  const files = [];
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...findJsonlFiles(fullPath, ctx));
+    else if (entry.name.endsWith('.jsonl')) files.push(fullPath);
+  }
+  return files;
+}
+
+function projectFromRelative(filePath, baseDir) {
+  const prefix = `${baseDir}${sep}`;
+  if (!filePath.startsWith(prefix)) return 'unknown';
+  const firstSegment = filePath.slice(prefix.length).split(sep)[0];
+  const parts = firstSegment.split('-').filter(Boolean);
+  return parts.at(-1) || 'unknown';
+}
+
+function projectFromCwd(cwd, fallback) {
+  if (typeof cwd !== 'string') return fallback;
+  const trimmed = cwd.trim().replace(/[\\/]+$/, '');
+  return trimmed.split(/[\\/]/).filter(Boolean).at(-1) || fallback;
 }
 
 function tokenCount(value) {
@@ -85,180 +52,190 @@ function tokenCount(value) {
   return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
-function parseTimestamp(value) {
-  if (typeof value !== 'string' || !value) return null;
-  const time = Date.parse(value);
-  return Number.isNaN(time) ? null : new Date(time);
+function cacheCreationTokens(usage) {
+  const split = tokenCount(usage.cache_creation?.ephemeral_5m_input_tokens)
+    + tokenCount(usage.cache_creation?.ephemeral_1h_input_tokens);
+  return Math.max(tokenCount(usage.cache_creation_input_tokens), split);
 }
 
-// Collect <root>/projects/**/*.jsonl. Directory read failures are fatal for
-// this source (the caller marks it failed and keeps its old state); a missing
-// projects/ dir simply means no data.
-function findSessionFiles(root) {
-  const projectsDir = join(root, 'projects');
-  if (!existsSync(projectsDir)) return [];
-  const files = [];
+function candidateIsBetter(next, current) {
+  if (!current) return true;
+  if (next.size !== current.size) return next.size > current.size;
+  if (next.mtimeMs !== current.mtimeMs) return next.mtimeMs > current.mtimeMs;
+  return next.filePath.localeCompare(current.filePath) < 0;
+}
 
-  const walk = (dir, projectDirName) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const path = join(dir, entry.name);
-      if (entry.name.endsWith('.jsonl')) {
-        // Name check first: a directory named *.jsonl is still handed to
-        // readFileSync, which fails loudly instead of silently skipping data.
-        let stat;
-        try {
-          stat = statSync(path);
-        } catch {
-          continue; // vanished mid-scan
-        }
-        files.push({ path, projectDirName: projectDirName ?? entry.name, size: stat.size, mtimeMs: stat.mtimeMs });
-      } else if (entry.isDirectory()) {
-        walk(path, projectDirName ?? entry.name);
+function collectCandidates(scanRoots, directoryName, ctx) {
+  const groups = new Map();
+  for (const root of scanRoots) {
+    const baseDir = join(root, directoryName);
+    for (const filePath of findJsonlFiles(baseDir, ctx)) {
+      let stat;
+      try {
+        stat = statSync(filePath);
+      } catch (error) {
+        addWarning(ctx, `Claude Code: cannot stat ${filePath}: ${error.message}`);
+        continue;
       }
+      const sessionId = basename(filePath, '.jsonl');
+      const group = groups.get(sessionId) || [];
+      group.push({
+        filePath,
+        sessionId,
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        fallbackProject: directoryName === 'projects'
+          ? projectFromRelative(filePath, baseDir)
+          : 'unknown',
+      });
+      groups.set(sessionId, group);
     }
-  };
-  walk(projectsDir, null);
-  return files;
-}
-
-// Best physical copy per session id: largest size, then newest mtime, then
-// lexicographically smallest path (deterministic tie-break).
-function pickBestCopy(files) {
-  const byId = new Map();
-  for (const file of files) {
-    const sessionId = basename(file.path).slice(0, -'.jsonl'.length);
-    const current = byId.get(sessionId);
-    const better = !current
-      || file.size > current.size
-      || (file.size === current.size && file.mtimeMs > current.mtimeMs)
-      || (file.size === current.size && file.mtimeMs === current.mtimeMs && file.path < current.path);
-    if (better) byId.set(sessionId, { ...file, sessionId });
   }
-  return Array.from(byId.values());
+  for (const group of groups.values()) {
+    group.sort((left, right) => (
+      candidateIsBetter(left, right) ? -1 : candidateIsBetter(right, left) ? 1 : 0
+    ));
+  }
+  return groups;
 }
 
-function projectFromDirName(dirName) {
-  if (!dirName) return 'unknown';
-  const segments = dirName.split('-').filter(Boolean);
-  return segments.length > 0 ? segments[segments.length - 1] : 'unknown';
+function readJsonl(candidate, onObject) {
+  const content = readFileSync(candidate.filePath).subarray(0, candidate.size).toString('utf8');
+  for (const line of content.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      onObject(JSON.parse(line));
+    } catch {
+      // Isolate malformed/appending records. The next sync sees completed data.
+    }
+  }
 }
 
-function projectFromCwd(cwd) {
-  if (typeof cwd !== 'string' || !cwd) return null;
-  return basename(cwd.replace(/[/\\]+$/, '')) || null;
+function timingEvent(record, sessionId, project) {
+  if (!new Set(['user', 'assistant', 'tool_use', 'tool_result']).has(record.type)) return null;
+  const timestamp = new Date(record.timestamp);
+  if (!record.timestamp || Number.isNaN(timestamp.getTime())) return null;
+  return {
+    sessionId,
+    source: 'claude-code',
+    project,
+    timestamp,
+    role: record.type === 'user' ? 'user' : 'assistant',
+  };
 }
 
-const SESSION_EVENT_TYPES = new Set(['user', 'assistant', 'tool_use', 'tool_result']);
-const NO_REAL_MODEL = new Set(['', '<synthetic>']);
+function scanProjectCandidate(candidate) {
+  const entries = [];
+  const events = [];
+  let lastModel = null;
+  let sessionProject = candidate.fallbackProject;
+  let foundSessionCwd = false;
+  readJsonl(candidate, (record) => {
+    if (!foundSessionCwd && typeof record.cwd === 'string' && record.cwd.trim()) {
+      sessionProject = projectFromCwd(record.cwd, candidate.fallbackProject);
+      foundSessionCwd = true;
+    }
+    const event = timingEvent(record, candidate.sessionId, sessionProject);
+    if (event) events.push(event);
+    const usage = record.message?.usage;
+    if (record.type !== 'assistant' || !usage || typeof usage !== 'object') return;
+    const timestamp = new Date(record.timestamp);
+    if (!record.timestamp || Number.isNaN(timestamp.getTime())) return;
+    const rawModel = typeof record.message.model === 'string' ? record.message.model.trim() : '';
+    if (rawModel && rawModel !== '<synthetic>') lastModel = rawModel;
+    const inputTokens = tokenCount(usage.input_tokens);
+    const cacheWriteInputTokens = cacheCreationTokens(usage);
+    const cacheReadInputTokens = tokenCount(usage.cache_read_input_tokens);
+    const outputTokens = tokenCount(usage.output_tokens);
+    const usageScore = inputTokens + cacheWriteInputTokens + cacheReadInputTokens + outputTokens;
+    if (usageScore === 0) return;
+    entries.push({
+      uuid: typeof record.uuid === 'string' && record.uuid ? record.uuid : null,
+      usageScore,
+      source: 'claude-code',
+      model: rawModel && rawModel !== '<synthetic>' ? rawModel : lastModel || 'unknown',
+      project: sessionProject,
+      timestamp,
+      inputTokens,
+      cacheWriteInputTokens,
+      cacheReadInputTokens,
+      outputTokens,
+      reasoningOutputTokens: 0,
+      requestCount: 1,
+    });
+  });
+  for (const entry of entries) entry.project = sessionProject;
+  for (const event of events) event.project = sessionProject;
+  return { entries, events };
+}
+
+function scanTranscriptCandidate(candidate) {
+  const events = [];
+  readJsonl(candidate, (record) => {
+    const event = timingEvent(
+      record,
+      candidate.sessionId,
+      projectFromCwd(record.cwd, 'unknown'),
+    );
+    if (event) events.push(event);
+  });
+  return { entries: [], events };
+}
+
+function scanBestCandidate(candidates, scanner, ctx) {
+  for (const candidate of candidates) {
+    try {
+      return scanner(candidate);
+    } catch (error) {
+      addWarning(ctx, `Claude Code: cannot read ${candidate.filePath}: ${error.message}`);
+    }
+  }
+  return null;
+}
+
+function mergeUsageEntry(ctx, entry) {
+  if (!entry.uuid) {
+    ctx.anonymousEntries.push(entry);
+    return;
+  }
+  const current = ctx.entriesByUuid.get(entry.uuid);
+  if (!current || entry.usageScore > current.usageScore) ctx.entriesByUuid.set(entry.uuid, entry);
+}
 
 export async function parse({ sessionSalt } = {}) {
-  const roots = resolveRoots();
-  if (roots.length === 0) return null;
+  const ctx = {
+    entriesByUuid: new Map(),
+    anonymousEntries: [],
+    sessionEvents: [],
+    warnings: [],
+    incomplete: false,
+  };
+  const scanRoots = getClaudeRoots({ onWarning: (message) => addWarning(ctx, message) });
+  if (scanRoots.length === 0) return null;
 
-  const files = roots.flatMap((root) => findSessionFiles(root));
-  const winners = pickBestCopy(files);
-
-  const entries = [];
-  const sessionEvents = [];
-
-  for (const file of winners) {
-    let content;
-    try {
-      // Bound the parsed content to the byte size captured at discovery time:
-      // a line being appended right now is simply picked up by the next sync.
-      content = readFileSync(file.path).subarray(0, file.size).toString('utf8');
-    } catch (error) {
-      if (error?.code === 'ENOENT') continue; // vanished mid-scan
-      throw error;
-    }
-
-    let project = null;
-    let lastRealModel = null;
-
-    for (const line of content.split('\n')) {
-      if (!line.trim()) continue;
-      let record;
-      try { record = JSON.parse(line); } catch { continue; }
-
-      // Project = basename of the FIRST cwd in the file (file-level metadata,
-      // captured even from records that are later skipped).
-      if (!project) project = projectFromCwd(record.cwd);
-
-      // Invalid/missing timestamp → skip the record entirely. Never stamp
-      // "now": the parser is stateless, so a "now" fallback would re-key the
-      // same record into a fresh 30-min bucket on every sync (duplicates).
-      const ts = parseTimestamp(record?.timestamp);
-      if (!ts) continue;
-
-      const resolvedProject = project || projectFromDirName(file.projectDirName);
-
-      if (SESSION_EVENT_TYPES.has(record.type)) {
-        sessionEvents.push({
-          sessionId: file.sessionId,
-          source: 'claude-code',
-          project: resolvedProject,
-          timestamp: ts,
-          role: record.type === 'user' ? 'user' : 'assistant',
-        });
-      }
-
-      const usage = record.message?.usage;
-      if (!usage || typeof usage !== 'object') continue;
-
-      // Model: '<synthetic>'/'' records carry forward the last real model
-      // seen in the same file.
-      const rawModel = typeof record.message?.model === 'string' ? record.message.model.trim() : '';
-      if (!NO_REAL_MODEL.has(rawModel)) lastRealModel = rawModel;
-      const model = lastRealModel || 'unknown';
-
-      // Cache writes: current logs carry BOTH the cache_creation total and
-      // the 5m/1h breakdown — take the max, never the sum (they overlap).
-      const ephemeral = tokenCount(usage.cache_creation?.ephemeral_5m_input_tokens)
-        + tokenCount(usage.cache_creation?.ephemeral_1h_input_tokens);
-      const inputTokens = tokenCount(usage.input_tokens);
-      const cacheWriteInputTokens = Math.max(tokenCount(usage.cache_creation_input_tokens), ephemeral);
-      const cacheReadInputTokens = tokenCount(usage.cache_read_input_tokens);
-      const outputTokens = tokenCount(usage.output_tokens);
-      if (!inputTokens && !cacheWriteInputTokens && !cacheReadInputTokens && !outputTokens) continue;
-
-      entries.push({
-        uuid: typeof record.uuid === 'string' && record.uuid ? record.uuid : null,
-        source: 'claude-code',
-        model,
-        project: resolvedProject,
-        timestamp: ts,
-        inputTokens,
-        cacheWriteInputTokens,
-        cacheReadInputTokens,
-        outputTokens,
-        reasoningOutputTokens: 0,
-        requestCount: 1,
-      });
-    }
+  const projectGroups = collectCandidates(scanRoots, 'projects', ctx);
+  const projectSessionIds = new Set();
+  for (const [sessionId, candidates] of projectGroups) {
+    const parsed = scanBestCandidate(candidates, scanProjectCandidate, ctx);
+    if (!parsed) continue;
+    projectSessionIds.add(sessionId);
+    ctx.sessionEvents.push(...parsed.events);
+    for (const entry of parsed.entries) mergeUsageEntry(ctx, entry);
   }
 
-  // Entry-level uuid dedup across ALL files (copied sessions under different
-  // names): keep the payload with the highest usage sum. Entries without a
-  // uuid are always kept.
-  const usageSum = (e) => e.inputTokens + e.cacheWriteInputTokens + e.cacheReadInputTokens
-    + e.outputTokens + e.reasoningOutputTokens;
-  const byUuid = new Map();
-  const deduped = [];
-  for (const entry of entries) {
-    if (!entry.uuid) {
-      deduped.push(entry);
-      continue;
-    }
-    const current = byUuid.get(entry.uuid);
-    if (!current || usageSum(entry) > usageSum(current)) {
-      byUuid.set(entry.uuid, entry);
-    }
+  const transcriptGroups = collectCandidates(scanRoots, 'transcripts', ctx);
+  for (const [sessionId, candidates] of transcriptGroups) {
+    if (projectSessionIds.has(sessionId)) continue;
+    const parsed = scanBestCandidate(candidates, scanTranscriptCandidate, ctx);
+    if (parsed) ctx.sessionEvents.push(...parsed.events);
   }
-  for (const entry of byUuid.values()) deduped.push(entry);
-  for (const entry of deduped) delete entry.uuid;
 
+  const entries = [...ctx.anonymousEntries, ...ctx.entriesByUuid.values()]
+    .map(({ uuid: _uuid, usageScore: _usageScore, ...entry }) => entry);
   return {
-    buckets: aggregateToBuckets(deduped),
-    sessions: extractSessions(sessionEvents, sessionSalt),
+    buckets: aggregateToBuckets(entries),
+    sessions: extractSessions(ctx.sessionEvents, sessionSalt),
+    ...(ctx.incomplete ? { skipped: true } : {}),
+    ...(ctx.warnings.length > 0 ? { warnings: ctx.warnings } : {}),
   };
 }

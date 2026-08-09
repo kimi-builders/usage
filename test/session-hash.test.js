@@ -22,3 +22,109 @@ test('session identifiers are stable per installation and unlinkable across salt
   assert.equal(first.includes('session-id'), false);
 });
 
+test('session activity keeps calendar hours and splits active time across midnight', () => {
+  const result = extractSessions([
+    {
+      sessionId: 'cross-midnight',
+      source: 'codex',
+      project: 'project',
+      timestamp: new Date('2026-08-01T23:58:00.000Z'),
+      role: 'user',
+    },
+    {
+      sessionId: 'cross-midnight',
+      source: 'codex',
+      project: 'project',
+      timestamp: new Date('2026-08-01T23:59:00.000Z'),
+      role: 'assistant',
+    },
+    {
+      sessionId: 'cross-midnight',
+      source: 'codex',
+      project: 'project',
+      timestamp: new Date('2026-08-02T00:01:00.000Z'),
+      role: 'assistant',
+    },
+  ], 's'.repeat(32))[0];
+
+  assert.equal(result.durationSeconds, 180);
+  assert.equal(result.activeSeconds, 120);
+  assert.deepEqual(result.activityHours, [
+    {
+      hourStart: '2026-08-01T23:00:00.000Z',
+      activeSeconds: 60,
+      userMessageCount: 1,
+    },
+    {
+      hourStart: '2026-08-02T00:00:00.000Z',
+      activeSeconds: 60,
+      userMessageCount: 0,
+    },
+  ]);
+});
+
+test('session timing caps long idle gaps instead of counting offline days', () => {
+  const result = extractSessions([
+    {
+      sessionId: 'reopened-session',
+      source: 'claude-code',
+      project: 'project',
+      timestamp: new Date('2026-08-01T10:00:00.000Z'),
+      role: 'user',
+    },
+    {
+      sessionId: 'reopened-session',
+      source: 'claude-code',
+      project: 'project',
+      timestamp: new Date('2026-08-08T10:00:00.000Z'),
+      role: 'assistant',
+    },
+    {
+      sessionId: 'reopened-session',
+      source: 'claude-code',
+      project: 'project',
+      timestamp: new Date('2026-08-15T10:00:00.000Z'),
+      role: 'assistant',
+    },
+  ], 's'.repeat(32))[0];
+
+  assert.equal(result.durationSeconds, 3_600);
+  assert.equal(result.activeSeconds, 300);
+  assert.equal(result.activityHours.at(-1).hourStart, '2026-08-08T10:00:00.000Z');
+  assert.equal(result.activityHours.at(-1).activeSeconds, 300);
+});
+
+test('fractional event gaps are rounded once per hour and never exceed the hour limit', () => {
+  const base = new Date('2026-08-01T10:00:00.000Z').getTime();
+  const fractionalEvents = [
+    {
+      sessionId: 'fractional-gaps',
+      source: 'codex',
+      project: 'project',
+      timestamp: new Date(base),
+      role: 'user',
+    },
+    {
+      sessionId: 'fractional-gaps',
+      source: 'codex',
+      project: 'project',
+      timestamp: new Date(base + 1_000),
+      role: 'assistant',
+    },
+  ];
+  for (let index = 1; index <= 13; index += 1) {
+    fractionalEvents.push({
+      sessionId: 'fractional-gaps',
+      source: 'codex',
+      project: 'project',
+      timestamp: new Date(base + 1_000 + index * 276_500),
+      role: 'assistant',
+    });
+  }
+
+  const result = extractSessions(fractionalEvents, 's'.repeat(32))[0];
+
+  assert.equal(result.activeSeconds, 3_595);
+  assert.equal(result.activityHours.reduce((sum, hour) => sum + hour.activeSeconds, 0), 3_595);
+  assert.ok(result.activityHours.every((hour) => hour.activeSeconds <= 3_600));
+});

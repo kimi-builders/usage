@@ -52,6 +52,10 @@ export async function run(args) {
     console.log(`站点: ${config?.apiUrl || 'https://kimi.builders'}`);
     return;
   }
+  if (command === 'sources') {
+    const { runSources } = await import('./sources.js');
+    return runSources(args.slice(1));
+  }
   if (['help', '--help', '-h'].includes(command)) {
     console.log(`
 @kimi-builders/usage
@@ -61,6 +65,9 @@ export async function run(args) {
   npx @kimi-builders/usage inspect --dry-run
   npx @kimi-builders/usage summary [--days 7]
   npx @kimi-builders/usage status
+  npx @kimi-builders/usage sources list
+  npx @kimi-builders/usage sources enable cursor --csv PATH
+  npx @kimi-builders/usage sources disable cursor
   npx @kimi-builders/usage reset --local
 `);
     return;

@@ -20,6 +20,8 @@ process.env.KBU_USAGE_CODEX_HOME = codexHome;
 process.env.KBU_USAGE_OPENCODE_DIR = join(root, 'opencode-absent');
 process.env.KBU_USAGE_GEMINI_DIR = join(root, 'gemini-absent');
 process.env.KBU_USAGE_ANTIGRAVITY_DIR = join(root, 'antigravity-absent');
+process.env.KBU_USAGE_COPILOT_DIR = join(root, 'copilot-absent');
+process.env.KBU_USAGE_ROO_DIRS = join(root, 'roo-absent');
 process.env.KBU_USAGE_CONFIG_DIR = join(root, 'config');
 process.env.KBU_USAGE_STATE_DIR = stateDir;
 
@@ -121,6 +123,8 @@ test('a failing source never blocks the others, and its old state survives', asy
       { source: 'opencode', status: 'skipped' },
       { source: 'gemini-cli', status: 'skipped' },
       { source: 'antigravity', status: 'skipped' },
+      { source: 'copilot-cli', status: 'skipped' },
+      { source: 'roo-code', status: 'skipped' },
     ],
   );
   assert.equal(typeof result.sources[2].error, 'string');
@@ -173,6 +177,8 @@ test("a skipped source's state survives too", async () => {
       { source: 'opencode', status: 'skipped' },
       { source: 'gemini-cli', status: 'skipped' },
       { source: 'antigravity', status: 'skipped' },
+      { source: 'copilot-cli', status: 'skipped' },
+      { source: 'roo-code', status: 'skipped' },
     ],
   );
   assert.ok(lines.some((line) => line.includes('- claude-code') && line.includes('未检测到')));
