@@ -58,9 +58,21 @@ export function aggregateToBuckets(entries) {
     ).trim().slice(0, 160);
     const reasoningEffort = String(entry.reasoningEffort || '').trim().toLowerCase().slice(0, 32);
     const agentVersion = String(entry.agentVersion || '').trim().slice(0, 80);
+    const contextTier = String(entry.contextTier || '').trim().toLowerCase().slice(0, 16);
+    const processingTier = String(entry.processingTier || '').trim().toLowerCase().slice(0, 16);
     const project = String(entry.project || 'unknown').slice(0, 120);
     const bucketStart = roundToHalfHour(entry.timestamp).toISOString();
-    const key = [entry.source, model, modelProvider, reasoningEffort, agentVersion, project, bucketStart]
+    const key = [
+      entry.source,
+      model,
+      modelProvider,
+      reasoningEffort,
+      agentVersion,
+      contextTier,
+      processingTier,
+      project,
+      bucketStart,
+    ]
       .join('|');
     if (!buckets.has(key)) {
       buckets.set(key, {
@@ -70,10 +82,14 @@ export function aggregateToBuckets(entries) {
         ...(modelProvider ? { modelProvider } : {}),
         ...(reasoningEffort ? { reasoningEffort } : {}),
         ...(agentVersion ? { agentVersion } : {}),
+        ...(contextTier ? { contextTier } : {}),
+        ...(processingTier ? { processingTier } : {}),
         project,
         bucketStart,
         inputTokens: 0,
         cacheWriteInputTokens: 0,
+        cacheWrite5mInputTokens: 0,
+        cacheWrite1hInputTokens: 0,
         cacheReadInputTokens: 0,
         outputTokens: 0,
         reasoningOutputTokens: 0,
@@ -84,20 +100,35 @@ export function aggregateToBuckets(entries) {
     const bucket = buckets.get(key);
     bucket.inputTokens += entry.inputTokens || 0;
     bucket.cacheWriteInputTokens += entry.cacheWriteInputTokens || 0;
+    bucket.cacheWrite5mInputTokens += entry.cacheWrite5mInputTokens || 0;
+    bucket.cacheWrite1hInputTokens += entry.cacheWrite1hInputTokens || 0;
     bucket.cacheReadInputTokens += entry.cacheReadInputTokens || 0;
     bucket.outputTokens += entry.outputTokens || 0;
     bucket.reasoningOutputTokens += entry.reasoningOutputTokens || 0;
     bucket.requestCount += entry.requestCount || 1;
   }
-  return Array.from(buckets.values()).map((bucket) => ({
-    ...bucket,
-    inputTokens: tokenCount(bucket.inputTokens),
-    cacheWriteInputTokens: tokenCount(bucket.cacheWriteInputTokens),
-    cacheReadInputTokens: tokenCount(bucket.cacheReadInputTokens),
-    outputTokens: tokenCount(bucket.outputTokens),
-    reasoningOutputTokens: tokenCount(bucket.reasoningOutputTokens),
-    requestCount: tokenCount(bucket.requestCount),
-  }));
+  return Array.from(buckets.values()).map((bucket) => {
+    const {
+      cacheWrite5mInputTokens,
+      cacheWrite1hInputTokens,
+      ...base
+    } = bucket;
+    return {
+      ...base,
+      inputTokens: tokenCount(bucket.inputTokens),
+      cacheWriteInputTokens: tokenCount(bucket.cacheWriteInputTokens),
+      ...(cacheWrite5mInputTokens > 0
+        ? { cacheWrite5mInputTokens: tokenCount(cacheWrite5mInputTokens) }
+        : {}),
+      ...(cacheWrite1hInputTokens > 0
+        ? { cacheWrite1hInputTokens: tokenCount(cacheWrite1hInputTokens) }
+        : {}),
+      cacheReadInputTokens: tokenCount(bucket.cacheReadInputTokens),
+      outputTokens: tokenCount(bucket.outputTokens),
+      reasoningOutputTokens: tokenCount(bucket.reasoningOutputTokens),
+      requestCount: tokenCount(bucket.requestCount),
+    };
+  });
 }
 
 export function extractSessions(events, sessionSalt) {
@@ -127,7 +158,6 @@ export function extractSessions(events, sessionSalt) {
     //   idle week into a week of work.
     const ACTIVE_GAP_CAP_MILLISECONDS = 5 * 60 * 1000;
     const DURATION_GAP_CAP_MILLISECONDS = 30 * 60 * 1000;
-    let durationMilliseconds = 0;
     let previousTurnEvent = null;
     let previousAssistant = null;
     const activityByHour = new Map();
@@ -137,23 +167,30 @@ export function extractSessions(events, sessionSalt) {
       hour.setUTCMinutes(0, 0, 0);
       const key = hour.toISOString();
       if (!activityByHour.has(key)) {
-        activityByHour.set(key, { hourStart: key, activeMilliseconds: 0, userMessageCount: 0 });
+        activityByHour.set(key, {
+          hourStart: key,
+          activeMilliseconds: 0,
+          engagedMilliseconds: 0,
+          messageCount: 0,
+          userMessageCount: 0,
+        });
       }
       return activityByHour.get(key);
     };
-    const addActiveSpan = (start, milliseconds) => {
+    const addSpan = (field, start, milliseconds) => {
       let cursor = start.getTime();
       let remaining = milliseconds;
       while (remaining > 0) {
         const hourEnd = Math.floor(cursor / 3_600_000) * 3_600_000 + 3_600_000;
         const chunk = Math.min(remaining, hourEnd - cursor);
-        ensureHour(new Date(cursor)).activeMilliseconds += chunk;
+        ensureHour(new Date(cursor))[field] += chunk;
         cursor += chunk;
         remaining -= chunk;
       }
     };
 
     for (const event of sessionEvents) {
+      ensureHour(event.timestamp).messageCount += 1;
       if (event.role === 'user') {
         ensureHour(event.timestamp).userMessageCount += 1;
         previousTurnEvent = event;
@@ -162,12 +199,13 @@ export function extractSessions(events, sessionSalt) {
       }
       if (previousTurnEvent !== null) {
         const gapMilliseconds = Math.max(0, event.timestamp - previousTurnEvent.timestamp);
-        durationMilliseconds += Math.min(gapMilliseconds, DURATION_GAP_CAP_MILLISECONDS);
+        const capped = Math.min(gapMilliseconds, DURATION_GAP_CAP_MILLISECONDS);
+        if (capped > 0) addSpan('engagedMilliseconds', previousTurnEvent.timestamp, capped);
       }
       if (previousAssistant !== null) {
         const gapMilliseconds = Math.max(0, event.timestamp - previousAssistant.timestamp);
         const capped = Math.min(gapMilliseconds, ACTIVE_GAP_CAP_MILLISECONDS);
-        if (capped > 0) addActiveSpan(previousAssistant.timestamp, capped);
+        if (capped > 0) addSpan('activeMilliseconds', previousAssistant.timestamp, capped);
       }
       if (previousTurnEvent !== null) {
         previousTurnEvent = event;
@@ -184,15 +222,18 @@ export function extractSessions(events, sessionSalt) {
       }
     }
     const activityHours = [...activityByHour.values()]
-      .map(({ activeMilliseconds, ...hour }) => ({
+      .map(({ activeMilliseconds, engagedMilliseconds, ...hour }) => ({
         ...hour,
         // Round once per calendar hour. Rounding every individual event gap
         // can accumulate fractional milliseconds past the 3,600-second API
         // limit even though the real span never exceeds one hour.
         activeSeconds: Math.min(3_600, Math.round(activeMilliseconds / 1000)),
+        engagedSeconds: Math.min(3_600, Math.round(engagedMilliseconds / 1000)),
       }))
       .sort((left, right) => left.hourStart.localeCompare(right.hourStart));
     const activeSeconds = activityHours.reduce((sum, hour) => sum + hour.activeSeconds, 0);
+    const durationSeconds = activityHours.reduce((sum, hour) => sum + hour.engagedSeconds, 0);
+    const messageCount = activityHours.reduce((sum, hour) => sum + hour.messageCount, 0);
     sessions.push({
       source: first.source,
       ...(agentVersion ? { agentVersion } : {}),
@@ -200,9 +241,9 @@ export function extractSessions(events, sessionSalt) {
       sessionHash: createHmac('sha256', sessionSalt).update(sessionId).digest('hex'),
       firstMessageAt: first.timestamp.toISOString(),
       lastMessageAt: last.timestamp.toISOString(),
-      durationSeconds: Math.round(durationMilliseconds / 1000),
+      durationSeconds,
       activeSeconds,
-      messageCount: sessionEvents.length,
+      messageCount,
       userMessageCount,
       userPromptHours,
       activityHours,

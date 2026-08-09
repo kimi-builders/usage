@@ -20,7 +20,15 @@ function bucketBaseKey(bucket) {
 }
 
 function hasRequestMetadata(bucket) {
-  return Boolean(bucket.modelProvider || bucket.reasoningEffort || bucket.agentVersion);
+  return Boolean(
+    bucket.modelProvider
+    || bucket.reasoningEffort
+    || bucket.agentVersion
+    || bucket.contextTier
+    || bucket.processingTier
+    || bucket.cacheWrite5mInputTokens
+    || bucket.cacheWrite1hInputTokens,
+  );
 }
 
 /* Keep all metadata variants of one former base bucket in the same request.

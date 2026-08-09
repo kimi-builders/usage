@@ -18,15 +18,26 @@ function clean(value) {
 
 export function terminalInfo(env = process.env) {
   const version = clean(env.TERM_PROGRAM_VERSION);
-  if (clean(env.WT_SESSION)) return { name: 'Windows Terminal', version };
+  if (clean(env.WT_SESSION)) return { name: 'Windows Terminal', version, confidence: 'detected' };
 
   const program = clean(env.TERM_PROGRAM);
-  if (program) return { name: TERM_PROGRAM_LABELS.get(program.toLowerCase()) || program, version };
+  if (program) {
+    return {
+      name: TERM_PROGRAM_LABELS.get(program.toLowerCase()) || program,
+      version,
+      confidence: 'detected',
+    };
+  }
 
   const emulator = clean(env.TERMINAL_EMULATOR);
-  if (/jetbrains/i.test(emulator)) return { name: 'JetBrains Terminal', version };
-  if (emulator) return { name: emulator, version };
-  return { name: 'CLI', version };
+  if (/jetbrains/i.test(emulator)) {
+    return { name: 'JetBrains Terminal', version, confidence: 'detected' };
+  }
+  if (emulator) return { name: emulator, version, confidence: 'detected' };
+  // Background services and sandboxed runners commonly lack terminal env
+  // variables. Keep an explicit low-confidence fallback so the server never
+  // replaces a previously detected Warp/iTerm/Terminal fact with "CLI".
+  return { name: 'CLI', version, confidence: 'fallback' };
 }
 
 export function terminalLabel(env = process.env) {

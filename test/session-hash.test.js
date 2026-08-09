@@ -53,11 +53,15 @@ test('session activity keeps calendar hours and splits active time across midnig
     {
       hourStart: '2026-08-01T23:00:00.000Z',
       activeSeconds: 60,
+      engagedSeconds: 120,
+      messageCount: 2,
       userMessageCount: 1,
     },
     {
       hourStart: '2026-08-02T00:00:00.000Z',
       activeSeconds: 60,
+      engagedSeconds: 60,
+      messageCount: 1,
       userMessageCount: 0,
     },
   ]);
@@ -90,8 +94,20 @@ test('session timing caps long idle gaps instead of counting offline days', () =
 
   assert.equal(result.durationSeconds, 3_600);
   assert.equal(result.activeSeconds, 300);
-  assert.equal(result.activityHours.at(-1).hourStart, '2026-08-08T10:00:00.000Z');
-  assert.equal(result.activityHours.at(-1).activeSeconds, 300);
+  assert.deepEqual(result.activityHours.at(-2), {
+    hourStart: '2026-08-08T10:00:00.000Z',
+    messageCount: 1,
+    userMessageCount: 0,
+    activeSeconds: 300,
+    engagedSeconds: 1_800,
+  });
+  assert.deepEqual(result.activityHours.at(-1), {
+    hourStart: '2026-08-15T10:00:00.000Z',
+    messageCount: 1,
+    userMessageCount: 0,
+    activeSeconds: 0,
+    engagedSeconds: 0,
+  });
 });
 
 test('fractional event gaps are rounded once per hour and never exceed the hour limit', () => {

@@ -28,11 +28,19 @@ test('terminal and OS versions stay in separate factual fields', () => {
       version: '26.5.2',
     }),
     {
-      terminal: { name: 'Warp', version: 'v0.2026.07.29.09.05.stable_02' },
+      terminal: {
+        name: 'Warp',
+        version: 'v0.2026.07.29.09.05.stable_02',
+        confidence: 'detected',
+      },
       os: { name: 'macOS', version: '26.5.2', architecture: 'arm64' },
     },
   );
-  assert.deepEqual(terminalInfo({ TERM_PROGRAM: 'WarpTerminal' }), { name: 'Warp', version: '' });
+  assert.deepEqual(terminalInfo({ TERM_PROGRAM: 'WarpTerminal' }), {
+    name: 'Warp',
+    version: '',
+    confidence: 'detected',
+  });
 });
 
 test('common terminal environments use community-facing names', () => {

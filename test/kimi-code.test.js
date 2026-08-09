@@ -115,6 +115,8 @@ test('current Kimi parser counts all delta scopes, cache creation, and subagents
       {
         hourStart: '2026-07-17T00:00:00.000Z',
         activeSeconds: 120,
+        engagedSeconds: 180,
+        messageCount: 4,
         userMessageCount: 1,
       },
     ],

@@ -312,6 +312,7 @@ export async function parse({ sessionSalt } = {}) {
         current = {
           input_tokens: tokenCount(total.input_tokens),
           cached_input_tokens: tokenCount(total.cached_input_tokens ?? total.cache_read_input_tokens),
+          cache_write_input_tokens: tokenCount(total.cache_write_input_tokens),
           output_tokens: tokenCount(total.output_tokens),
           reasoning_output_tokens: tokenCount(total.reasoning_output_tokens),
           total_tokens: tokenCount(total.total_tokens),
@@ -338,22 +339,35 @@ export async function parse({ sessionSalt } = {}) {
       // OpenAI fields overlap (cached ⊂ input, reasoning ⊂ output) — split
       // into mutually exclusive fields.
       const cached = tokenCount(delta.cached_input_tokens ?? delta.cache_read_input_tokens);
+      const cacheWrite = tokenCount(delta.cache_write_input_tokens);
       const reasoning = tokenCount(delta.reasoning_output_tokens);
-      const inputTokens = Math.max(0, tokenCount(delta.input_tokens) - cached);
+      const promptInputTokens = tokenCount(delta.input_tokens);
+      const inputTokens = Math.max(0, promptInputTokens - cached - cacheWrite);
       const outputTokens = Math.max(0, tokenCount(delta.output_tokens) - reasoning);
-      if (!inputTokens && !cached && !outputTokens && !reasoning) continue;
+      if (!inputTokens && !cached && !cacheWrite && !outputTokens && !reasoning) continue;
 
       const model = info?.model || record.payload?.model || stickyModel || 'unknown';
+      const modelName = String(model).toLowerCase();
+      const contextTier = modelName.startsWith('gpt-5.6')
+        ? (promptInputTokens > 272_000 ? 'long' : 'short')
+        : '';
+      const rawProcessingTier = String(
+        info?.service_tier || record.payload?.service_tier || '',
+      ).trim().toLowerCase();
+      const processingTier = new Set(['standard', 'batch', 'flex', 'priority'])
+        .has(rawProcessingTier) ? rawProcessingTier : '';
       entries.push({
         source: 'codex',
         model,
         ...(modelProvider ? { modelProvider } : {}),
         ...(stickyEffort ? { reasoningEffort: stickyEffort } : {}),
         ...(agentVersion ? { agentVersion } : {}),
+        ...(contextTier ? { contextTier } : {}),
+        ...(processingTier ? { processingTier } : {}),
         project,
         timestamp: new Date(timestampMs),
         inputTokens,
-        cacheWriteInputTokens: 0,
+        cacheWriteInputTokens: cacheWrite,
         cacheReadInputTokens: cached,
         outputTokens,
         reasoningOutputTokens: reasoning,

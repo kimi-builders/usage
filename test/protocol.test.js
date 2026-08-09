@@ -23,6 +23,17 @@ test('upload preflight accepts a valid session at the hourly limit', () => {
   assert.equal(validateUploadSession(baseSession), null);
 });
 
+test('upload preflight accepts complete v3 session-hour facts', () => {
+  assert.equal(validateUploadSession({
+    ...baseSession,
+    activityHours: [{
+      ...baseSession.activityHours[0],
+      engagedSeconds: 3_600,
+      messageCount: 14,
+    }],
+  }), null);
+});
+
 test('upload preflight isolates an activity hour above the server limit', () => {
   const error = validateUploadSession({
     ...baseSession,
@@ -46,4 +57,29 @@ test('upload preflight rejects bucket fields that would poison a batch', () => {
     measurement: 'exact',
   });
   assert.match(error, /30-minute boundary/);
+});
+
+test('upload preflight validates pricing dimensions and cache TTL partitions', () => {
+  const base = {
+    source: 'claude-code',
+    model: 'claude-opus-5',
+    contextTier: 'short',
+    processingTier: 'standard',
+    bucketStart: '2026-08-01T10:00:00.000Z',
+    inputTokens: 1,
+    cacheWriteInputTokens: 30,
+    cacheWrite5mInputTokens: 10,
+    cacheWrite1hInputTokens: 20,
+    cacheReadInputTokens: 0,
+    outputTokens: 1,
+    reasoningOutputTokens: 0,
+    requestCount: 1,
+    measurement: 'exact',
+  };
+  assert.equal(validateUploadBucket(base), null);
+  assert.match(
+    validateUploadBucket({ ...base, cacheWrite1hInputTokens: 21 }),
+    /cache-write TTL partitions/,
+  );
+  assert.match(validateUploadBucket({ ...base, contextTier: 'huge' }), /contextTier/);
 });

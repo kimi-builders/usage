@@ -129,6 +129,35 @@ test('OpenAI overlapping fields are normalized to exclusive ones', async () => {
   );
 });
 
+test('GPT-5.6 request context and processing tiers remain separate facts', async () => {
+  const home = useHome('pricing-tiers');
+  writeRollout(home, 'sessions', 'rollout-a.jsonl', [
+    meta('s1', '2026-08-01T10:00:00.000Z'),
+    { timestamp: '2026-08-01T10:00:30.000Z', type: 'turn_context', payload: { model: 'gpt-5.6-sol' } },
+    tokenEvent('2026-08-01T10:01:00.000Z', {
+      model: 'gpt-5.6-sol',
+      service_tier: 'priority',
+      last_token_usage: usage(300_001, 250_000, 10, 0),
+    }),
+    tokenEvent('2026-08-01T10:02:00.000Z', {
+      model: 'gpt-5.6-sol',
+      service_tier: 'standard',
+      last_token_usage: usage(200_000, 150_000, 10, 0),
+    }),
+  ]);
+  const result = await parse({ sessionSalt: SALT });
+  assert.equal(result.buckets.length, 2);
+  assert.deepEqual(
+    result.buckets
+      .map((bucket) => [bucket.contextTier, bucket.processingTier, bucket.inputTokens])
+      .sort(),
+    [
+      ['long', 'priority', 50_001],
+      ['short', 'standard', 50_000],
+    ],
+  );
+});
+
 test('physical copies of one session keep the file with the most records', async () => {
   const home = useHome('copies');
   writeRollout(home, 'sessions', 'rollout-a.jsonl', [

@@ -53,9 +53,11 @@ function tokenCount(value) {
 }
 
 function cacheCreationTokens(usage) {
-  const split = tokenCount(usage.cache_creation?.ephemeral_5m_input_tokens)
-    + tokenCount(usage.cache_creation?.ephemeral_1h_input_tokens);
-  return Math.max(tokenCount(usage.cache_creation_input_tokens), split);
+  const fiveMinute = tokenCount(usage.cache_creation?.ephemeral_5m_input_tokens);
+  const oneHour = tokenCount(usage.cache_creation?.ephemeral_1h_input_tokens);
+  const split = fiveMinute + oneHour;
+  const total = Math.max(tokenCount(usage.cache_creation_input_tokens), split);
+  return { total, fiveMinute, oneHour };
 }
 
 function candidateIsBetter(next, current) {
@@ -147,7 +149,8 @@ function scanProjectCandidate(candidate) {
     const rawModel = typeof record.message.model === 'string' ? record.message.model.trim() : '';
     if (rawModel && rawModel !== '<synthetic>') lastModel = rawModel;
     const inputTokens = tokenCount(usage.input_tokens);
-    const cacheWriteInputTokens = cacheCreationTokens(usage);
+    const cacheWrite = cacheCreationTokens(usage);
+    const cacheWriteInputTokens = cacheWrite.total;
     const cacheReadInputTokens = tokenCount(usage.cache_read_input_tokens);
     const outputTokens = tokenCount(usage.output_tokens);
     const usageScore = inputTokens + cacheWriteInputTokens + cacheReadInputTokens + outputTokens;
@@ -164,6 +167,8 @@ function scanProjectCandidate(candidate) {
       timestamp,
       inputTokens,
       cacheWriteInputTokens,
+      cacheWrite5mInputTokens: cacheWrite.fiveMinute,
+      cacheWrite1hInputTokens: cacheWrite.oneHour,
       cacheReadInputTokens,
       outputTokens,
       reasoningOutputTokens: 0,

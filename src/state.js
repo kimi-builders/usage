@@ -49,6 +49,8 @@ export function bucketKey(bucket) {
     bucket.modelProvider,
     bucket.reasoningEffort,
     bucket.agentVersion,
+    bucket.contextTier,
+    bucket.processingTier,
   ].map((value) => value || '');
   return dimensions.some(Boolean) ? [...base, ...dimensions].join('|') : base.join('|');
 }

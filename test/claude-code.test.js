@@ -107,6 +107,14 @@ test('token mapping: exclusive fields, cache write = max(total, 5m+1h)', async (
     output: 31,
     requests: 3,
   });
+  assert.equal(
+    result.buckets.reduce((sum, bucket) => sum + (bucket.cacheWrite5mInputTokens || 0), 0),
+    48,
+  );
+  assert.equal(
+    result.buckets.reduce((sum, bucket) => sum + (bucket.cacheWrite1hInputTokens || 0), 0),
+    69,
+  );
   assert.equal(result.buckets[0].reasoningOutputTokens, 0);
 });
 

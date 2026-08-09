@@ -72,6 +72,16 @@ function validateBucket(value) {
   optionalText(item.modelProvider, 'bucket.modelProvider', 80);
   optionalText(item.reasoningEffort, 'bucket.reasoningEffort', 32);
   optionalText(item.agentVersion, 'bucket.agentVersion', 80);
+  if (item.contextTier !== undefined
+    && !new Set(['short', 'long']).has(text(item.contextTier, 'bucket.contextTier', 16))) {
+    throw new Error('bucket.contextTier is unsupported');
+  }
+  if (item.processingTier !== undefined
+    && !new Set(['standard', 'batch', 'flex', 'priority']).has(
+      text(item.processingTier, 'bucket.processingTier', 16),
+    )) {
+    throw new Error('bucket.processingTier is unsupported');
+  }
   project(item.project, 'bucket.project');
   const bucketStart = timestamp(item.bucketStart, 'bucket.bucketStart');
   if (
@@ -85,6 +95,15 @@ function validateBucket(value) {
     'inputTokens', 'cacheWriteInputTokens', 'cacheReadInputTokens',
     'outputTokens', 'reasoningOutputTokens',
   ]) safeInteger(item[field], `bucket.${field}`);
+  const cacheWrite5m = item.cacheWrite5mInputTokens === undefined
+    ? 0
+    : safeInteger(item.cacheWrite5mInputTokens, 'bucket.cacheWrite5mInputTokens');
+  const cacheWrite1h = item.cacheWrite1hInputTokens === undefined
+    ? 0
+    : safeInteger(item.cacheWrite1hInputTokens, 'bucket.cacheWrite1hInputTokens');
+  if (cacheWrite5m + cacheWrite1h > item.cacheWriteInputTokens) {
+    throw new Error('bucket cache-write TTL partitions cannot exceed cacheWriteInputTokens');
+  }
   safeInteger(item.requestCount, 'bucket.requestCount', MAX_COUNT);
   if (item.creditUnits !== undefined && (
     typeof item.creditUnits !== 'number'
@@ -127,7 +146,10 @@ function validateSession(value) {
   const lastHour = Math.floor(lastMessageAt.getTime() / 3_600_000) * 3_600_000;
   const seen = new Set();
   let hourActiveSeconds = 0;
+  let hourEngagedSeconds = 0;
+  let hourMessageCount = 0;
   let hourUserMessages = 0;
+  let hasExtendedHours = false;
   item.activityHours.forEach((value, index) => {
     const hour = record(value, `session.activityHours[${index}]`);
     const hourStart = timestamp(hour.hourStart, `session.activityHours[${index}].hourStart`);
@@ -147,6 +169,22 @@ function validateSession(value) {
       `session.activityHours[${index}].activeSeconds`,
       3_600,
     );
+    if (hour.engagedSeconds !== undefined || hour.messageCount !== undefined) {
+      if (hour.engagedSeconds === undefined || hour.messageCount === undefined) {
+        throw new Error('session activity hours must provide engagedSeconds and messageCount together');
+      }
+      hasExtendedHours = true;
+      hourEngagedSeconds += safeInteger(
+        hour.engagedSeconds,
+        `session.activityHours[${index}].engagedSeconds`,
+        3_600,
+      );
+      hourMessageCount += safeInteger(
+        hour.messageCount,
+        `session.activityHours[${index}].messageCount`,
+        MAX_COUNT,
+      );
+    }
     hourUserMessages += safeInteger(
       hour.userMessageCount,
       `session.activityHours[${index}].userMessageCount`,
@@ -155,6 +193,10 @@ function validateSession(value) {
   });
   if (hourActiveSeconds !== activeSeconds || hourUserMessages !== userMessageCount) {
     throw new Error('session.activityHours totals must match the session counters');
+  }
+  if (hasExtendedHours
+    && (hourEngagedSeconds !== item.durationSeconds || hourMessageCount !== item.messageCount)) {
+    throw new Error('session extended activity hours must match duration and message counters');
   }
 }
 
