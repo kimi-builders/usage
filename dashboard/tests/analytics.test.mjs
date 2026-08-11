@@ -38,6 +38,19 @@ test('analysis separates selected range, equal previous window, and lifetime tot
   assert.equal(report.peakTokens, 300);
 });
 
+test('24H uses exactly 24 hourly slots with unambiguous date and hour labels', () => {
+  const report = analyze(data, { range: '24h' });
+  const expectedLabel = (value) => `${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')} ${String(value.getHours()).padStart(2, '0')}:00`;
+  const last = new Date(data.generatedAt);
+  last.setMinutes(0, 0, 0);
+  const first = new Date(last);
+  first.setHours(first.getHours() - 23);
+  assert.equal(report.seriesUnit, 'hour');
+  assert.equal(report.series.length, 24);
+  assert.equal(report.series[0].label, expectedLabel(first));
+  assert.equal(report.series.at(-1).label, expectedLabel(last));
+});
+
 test('model identity and source filters stay precise', () => {
   assert.deepEqual(availableModels(data, 'kimi-code'), ['kimi-k3', 'kimi-k3-256k']);
   const report = analyze(data, { range: 'all', source: 'kimi-code', model: 'kimi-k3-256k' });

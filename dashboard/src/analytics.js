@@ -172,10 +172,13 @@ function addUnit(date, unit, amount = 1) {
   return value;
 }
 
-function labelForSeries(date, unit) {
+function labelForSeries(date, unit, range) {
   const value = new Date(date);
-  if (unit === 'hour') return value.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
-  return value.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  const hour = String(value.getHours()).padStart(2, '0');
+  if (unit === 'hour') return range === 'today' ? `${hour}:00` : `${month}-${day} ${hour}:00`;
+  return `${month}-${day}`;
 }
 
 function activityByUnit(activityHours, unit) {
@@ -206,12 +209,16 @@ function buildSeries(buckets, activityHours, range, start, end) {
   if (!first && observedKeys.length) first = new Date(observedKeys[0]);
   if (!first) first = unitStart(end, unit);
   const last = unitStart(end, unit);
+  // “24H” is 24 hourly slots including the current partial hour. Flooring both
+  // endpoints of a rolling 24-hour window would otherwise render 25 bars and
+  // used to trigger a Recharts transition crash when switching from 30D.
+  if (range === '24h') first = addUnit(last, 'hour', -23);
   const rows = [];
   for (let cursor = first; cursor <= last; cursor = addUnit(cursor, unit)) {
     const key = cursor.toISOString();
     rows.push({
       key,
-      label: labelForSeries(key, unit),
+      label: labelForSeries(key, unit, range),
       ...sumBuckets(groups.get(key) || []),
       ...(activity.get(key) || { activeSeconds: 0, engagedSeconds: 0, messageCount: 0, userMessageCount: 0 }),
     });
@@ -358,7 +365,7 @@ function buildWeeklySeries(buckets, activityHours, end) {
     const totals = sumBuckets(bucketGroups.get(key) || []);
     rows.push({
       key,
-      label: labelForSeries(key, 'week'),
+      label: labelForSeries(key, 'week', 'all'),
       ...totals,
       cost: totals.costMicros / 1e6,
       activeHours: (activity.get(key)?.activeSeconds || 0) / 3600,
