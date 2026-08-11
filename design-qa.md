@@ -41,6 +41,18 @@
   - `/private/tmp/local-polished-share-all.png`
 - Keyboard-focusable metric explanation state:
   - `/private/tmp/local-metric-tooltip-final-after-reload.png`
+- Borderless Agent treatments and aligned community navigation:
+  - `/private/tmp/kbu-agent-frame-before.png`
+  - `/private/tmp/kbu-agent-sources-after.png`
+  - `/private/tmp/kbu-agent-filter-after.png`
+  - `/private/tmp/kbu-poster-agents-after.png`
+  - `/private/tmp/kbu-agent-filter-compare.png`
+- Scroll-aware local navigation:
+  - `/private/tmp/kbu-scrollspy-before.png`
+  - `/private/tmp/kbu-scrollspy-sources-after.png`
+  - `/private/tmp/kbu-scrollspy-trend-after.png`
+  - `/private/tmp/kbu-scrollspy-activity-final.png`
+  - `/private/tmp/kbu-scrollspy-compare.png`
 
 The source repository was inspected read-only for the current mobile shell, filter disclosure, stacked record cards, bottom navigation, and responsive breakpoints. No community-site file was modified.
 
@@ -59,11 +71,12 @@ The source repository was inspected read-only for the current mobile shell, filt
 - Local posters no longer emit a QR code or a localhost/community URL that a recipient cannot open. The shared footer is now a local/private provenance seal plus pricing and privacy notes.
 - Poster main views now specialize by range: hourly/four-part stacks for Today and 24H, a 7 × 24 activity matrix for 7D, a daily four-part stack with 7-day average for 30D, a 13-week footprint for 90D, and a 26-week footprint for All. Month/weekday labels, Y-axis values, heat legends, peak marks, colored Agent artwork, weekly streak, and zero-input leverage fallback are explicit.
 - Every equal-period change shown in the hero/stat cards is hover- and keyboard-focusable and explains the current value, previous value, comparison window, formula, and result. Cache quality explains the formula, current value, thresholds, and cost implication.
-- Agent identity uses the maintained LobeHub brand SVG set (color variants where available) across filters, distributions, records, source health, and poster output. Mono-only brands retain a colored frame and remain legible in both themes.
+- Agent identity uses the maintained LobeHub brand SVG set (color variants where available) across filters, distributions, records, source health, and poster output. Every context now presents the original brand artwork without an app-added border, wash, radius, or inset shadow.
 - The poster Agent section now carries brand marks, rank, Token share, and per-Agent accent bars; the bottom insight row separates top model from recorded reasoning intensity and reasoning Token volume.
 - Device/source panels use actual terminal, OS, Collector, and Agent-version fields; local-only and community-sync boundaries are explicit.
 - The desktop activity grid now fits all 24 columns without horizontal scrolling at the 1280px reference viewport (`clientWidth === scrollWidth === 624px`). Mobile retains intentional horizontal scrolling below 760px.
 - Mobile has a sticky top bar, full navigation drawer, fixed five-item bottom bar, one-column actions/cards, horizontally scrollable charts/heatmap, stacked record cards, and bottom-sheet dialogs.
+- Desktop, drawer, and bottom navigation now share one active-section state. Direct hash loads restore their section after async data rendering, clicks work even when the URL already has the same hash, and passive scroll tracking moves the active indicator as sections cross the fixed-header threshold.
 
 ## Automated verification
 
@@ -79,5 +92,9 @@ The current community 24H poster and the local 24H poster were captured in the s
 24H, 7D, 30D, and All poster previews were rendered from real local data; Today and 90D share the already-verified hourly and footprint primitives. The metric explanation trigger was checked with keyboard focus as a real rendered tooltip. Community source files remained read-only.
 
 The earlier full-dashboard mobile runtime comparison remains tracked separately because the automation viewport cannot be reduced below 760px; it does not block this poster-and-tooltip scope.
+
+The Agent filter, source/distribution rows, and poster Agent lineup were rechecked against the supplied references. Runtime computed styles confirm `border: 0`, transparent background, zero radius, and no shadow for every sampled Agent mark, including poster output. The desktop community CTA now has no text decoration and exactly matches the primary navigation's 15px icon, 11px JetBrains Mono text, 13px gap, and 36px minimum height.
+
+The navigation regression was reproduced before the fix: loading `#sources` left `scrollY === 0` and incorrectly kept `#top` active because the async dashboard sections did not exist during the browser's first anchor pass. Post-fix browser checks confirmed `#sources` restores to the bottom section with matching `aria-current`, clicking Trends lands it 72px below the fixed header, and manual scrolling to Activity changes the active indicator without a click. The focused before/after comparison shows the indicator moving from the permanently pinned Overview state to the visible Activity section.
 
 final result: passed

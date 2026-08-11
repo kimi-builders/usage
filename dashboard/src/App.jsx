@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Activity, BarChart3, Cloud, Command, Database, Download, ExternalLink, FileText,
   Globe2, Home, Info, LayoutDashboard, Menu, Moon, RefreshCw, Share2, ShieldCheck,
@@ -65,19 +65,25 @@ const LOCAL_LINKS = [
   ['#top', Home, '总览', 'Overview'], ['#trend', BarChart3, '趋势', 'Trends'], ['#activity', Activity, '活跃', 'Activity'],
   ['#distribution', LayoutDashboard, '分布', 'Distribution'], ['#records', FileText, '明细', 'Records'], ['#sources', Database, '本机', 'Device'],
 ];
+const LOCAL_SECTION_IDS = LOCAL_LINKS.map(([href]) => href.slice(1));
 
-function DesktopNav({ zh, communityUrl }) {
-  return <aside className="left-nav"><a className="community-cta primary-btn" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={14}/>{zh ? '打开社区看板' : 'Open community'}</a><nav>{LOCAL_LINKS.map(([href, Icon, cn, en], index) => <a className={index === 0 ? 'active' : ''} href={href} key={href}><Icon size={15}/>{zh ? cn : en}</a>)}</nav><nav className="nav-bottom"><a href="https://kimi.builders" target="_blank" rel="noreferrer"><Globe2 size={15}/>{zh ? '社区首页' : 'Community'}</a><a href="https://github.com/kimi-builders/usage" target="_blank" rel="noreferrer"><Command size={15}/>GitHub</a><a href="#sources"><Info size={15}/>{zh ? '隐私与数据源' : 'Privacy & sources'}</a></nav></aside>;
+function sectionFromHash(hash = '') {
+  const id = hash.replace(/^#/, '');
+  return LOCAL_SECTION_IDS.includes(id) ? id : 'top';
 }
 
-function MobileDrawer({ open, onClose, zh, communityUrl, theme, setTheme, setLocale }) {
+function DesktopNav({ zh, communityUrl, activeSection, onNavigate }) {
+  return <aside className="left-nav"><a className="community-cta primary-btn" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={15}/>{zh ? '打开社区看板' : 'Open community'}</a><nav>{LOCAL_LINKS.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a className={active ? 'active' : ''} href={href} key={href} aria-current={active ? 'location' : undefined} onClick={(event) => onNavigate(event, href)}><Icon size={15}/>{zh ? cn : en}</a>; })}</nav><nav className="nav-bottom"><a href="https://kimi.builders" target="_blank" rel="noreferrer"><Globe2 size={15}/>{zh ? '社区首页' : 'Community'}</a><a href="https://github.com/kimi-builders/usage" target="_blank" rel="noreferrer"><Command size={15}/>GitHub</a><a href="#sources" onClick={(event) => onNavigate(event, '#sources')}><Info size={15}/>{zh ? '隐私与数据源' : 'Privacy & sources'}</a></nav></aside>;
+}
+
+function MobileDrawer({ open, onClose, zh, communityUrl, theme, setTheme, setLocale, activeSection, onNavigate }) {
   if (!open) return null;
-  return <div className="mobile-drawer-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside className="mobile-drawer"><header><a className="brand" href="#top" onClick={onClose}><img src="/brand/logo-tile.svg" alt=""/><span>kimi.builders</span><small>LOCAL</small></a><button className="icon-btn" type="button" onClick={onClose}><X size={19}/></button></header><div className="drawer-account"><ShieldCheck size={18}/><div><b>{zh ? '本地私有看板' : 'Private local dashboard'}</b><span>127.0.0.1 · {zh ? '零上传' : 'zero upload'}</span></div></div><nav>{LOCAL_LINKS.map(([href, Icon, cn, en]) => <a href={href} key={href} onClick={onClose}><Icon size={17}/>{zh ? cn : en}</a>)}</nav><div className="drawer-actions"><button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>} {zh ? '切换主题' : 'Switch theme'}</button><button type="button" onClick={() => setLocale(zh ? 'en' : 'zh')}><Globe2 size={16}/>{zh ? 'English' : '中文'}</button></div><a className="drawer-community" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={16}/>{zh ? '打开社区用量中心' : 'Open community usage'}<ExternalLink size={13}/></a></aside></div>;
+  return <div className="mobile-drawer-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside className="mobile-drawer"><header><a className="brand" href="#top" onClick={(event) => { onNavigate(event, '#top'); onClose(); }}><img src="/brand/logo-tile.svg" alt=""/><span>kimi.builders</span><small>LOCAL</small></a><button className="icon-btn" type="button" onClick={onClose}><X size={19}/></button></header><div className="drawer-account"><ShieldCheck size={18}/><div><b>{zh ? '本地私有看板' : 'Private local dashboard'}</b><span>127.0.0.1 · {zh ? '零上传' : 'zero upload'}</span></div></div><nav>{LOCAL_LINKS.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a className={active ? 'active' : ''} href={href} key={href} aria-current={active ? 'location' : undefined} onClick={(event) => { onNavigate(event, href); onClose(); }}><Icon size={17}/>{zh ? cn : en}</a>; })}</nav><div className="drawer-actions"><button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>} {zh ? '切换主题' : 'Switch theme'}</button><button type="button" onClick={() => setLocale(zh ? 'en' : 'zh')}><Globe2 size={16}/>{zh ? 'English' : '中文'}</button></div><a className="drawer-community" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={16}/>{zh ? '打开社区用量中心' : 'Open community usage'}<ExternalLink size={13}/></a></aside></div>;
 }
 
-function MobileNav({ zh }) {
+function MobileNav({ zh, activeSection, onNavigate }) {
   const links = [LOCAL_LINKS[0], LOCAL_LINKS[1], LOCAL_LINKS[2], LOCAL_LINKS[4], LOCAL_LINKS[5]];
-  return <nav className="mobile-tabs">{links.map(([href, Icon, cn, en], index) => <a href={href} className={index === 2 ? 'active' : ''} key={href}><span className={index === 2 ? 'primary' : ''}><Icon size={index === 2 ? 18 : 19}/></span><small>{zh ? cn : en}</small></a>)}</nav>;
+  return <nav className="mobile-tabs">{links.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a href={href} className={active ? 'active' : ''} aria-current={active ? 'location' : undefined} onClick={(event) => onNavigate(event, href)} key={href}><span className={active ? 'primary' : ''}><Icon size={active ? 18 : 19}/></span><small>{zh ? cn : en}</small></a>; })}</nav>;
 }
 
 function Loading({ zh }) {
@@ -100,6 +106,8 @@ export function App() {
   const [heatMetric, setHeatMetric] = useState('tokens');
   const [dialog, setDialog] = useState(null);
   const [drawer, setDrawer] = useState(false);
+  const [activeSection, setActiveSection] = useState(() => typeof window === 'undefined' ? 'top' : sectionFromHash(window.location.hash));
+  const initialAnchorHandled = useRef(false);
   const zh = locale === 'zh';
   const t = COPY[locale];
 
@@ -117,6 +125,57 @@ export function App() {
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('kbu.theme', theme); }, [theme]);
   useEffect(() => { document.documentElement.lang = zh ? 'zh-CN' : 'en'; localStorage.setItem('kbu.locale', locale); }, [locale, zh]);
   useEffect(() => { localStorage.setItem('kbu.currency', currency); }, [currency]);
+  useEffect(() => {
+    if (!data) return undefined;
+    let frame = 0;
+    const updateActiveSection = () => {
+      frame = 0;
+      const marker = window.scrollY + 88;
+      let next = 'top';
+      for (const id of LOCAL_SECTION_IDS) {
+        const section = document.getElementById(id);
+        if (section && section.getBoundingClientRect().top + window.scrollY <= marker) next = id;
+      }
+      if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2) next = LOCAL_SECTION_IDS.at(-1);
+      setActiveSection((current) => current === next ? current : next);
+    };
+    const scheduleUpdate = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(updateActiveSection);
+    };
+    if (!initialAnchorHandled.current) {
+      initialAnchorHandled.current = true;
+      const initialId = sectionFromHash(window.location.hash);
+      window.requestAnimationFrame(() => {
+        document.getElementById(initialId)?.scrollIntoView({ behavior: 'instant', block: 'start' });
+        setActiveSection(initialId);
+        window.requestAnimationFrame(updateActiveSection);
+      });
+    } else {
+      scheduleUpdate();
+    }
+    window.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('resize', scheduleUpdate);
+    window.addEventListener('hashchange', scheduleUpdate);
+    window.addEventListener('popstate', scheduleUpdate);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('resize', scheduleUpdate);
+      window.removeEventListener('hashchange', scheduleUpdate);
+      window.removeEventListener('popstate', scheduleUpdate);
+    };
+  }, [data]);
+
+  const navigateSection = (event, href) => {
+    event.preventDefault();
+    const id = sectionFromHash(href);
+    const section = document.getElementById(id);
+    if (!section) return;
+    if (window.location.hash !== href) window.history.pushState(null, '', href);
+    setActiveSection(id);
+    section.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  };
 
   const options = useMemo(() => data ? filterOptions(data) : null, [data]);
   const report = useMemo(() => data ? analyze(data, filters) : null, [data, filters]);
@@ -135,7 +194,7 @@ export function App() {
 
   return <div className="app-shell" id="top">
     <header className="global-topbar"><div className="mobile-brand-wrap"><button className="mobile-menu-button" type="button" onClick={() => setDrawer(true)}><Menu size={20}/></button><a className="brand" href="#top"><img src="/brand/logo-tile.svg" alt=""/><span>kimi<span>.</span>builders</span><small>LOCAL</small></a></div><div className="global-actions"><span className="local-pill"><ShieldCheck size={12}/>{t.local}</span><button className="icon-btn" type="button" onClick={() => setLocale(zh ? 'en' : 'zh')} title="Language">{zh ? '文' : 'En'}</button><button className="icon-btn" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title="Theme">{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}</button></div></header>
-    <DesktopNav zh={zh} communityUrl={data.community.url}/><MobileDrawer open={drawer} onClose={() => setDrawer(false)} zh={zh} communityUrl={data.community.url} theme={theme} setTheme={setTheme} setLocale={setLocale}/><MobileNav zh={zh}/>
+    <DesktopNav zh={zh} communityUrl={data.community.url} activeSection={activeSection} onNavigate={navigateSection}/><MobileDrawer open={drawer} onClose={() => setDrawer(false)} zh={zh} communityUrl={data.community.url} theme={theme} setTheme={setTheme} setLocale={setLocale} activeSection={activeSection} onNavigate={navigateSection}/><MobileNav zh={zh} activeSection={activeSection} onNavigate={navigateSection}/>
     <main className="page-content">
       <section className="page-heading"><div><h1><BarChart3 size={22}/>{t.title}</h1><p>{t.subtitle}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{t.local}</span><i/><span>{t.lastSync} {new Date(data.generatedAt).toLocaleString(zh ? 'zh-CN' : 'en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>{staleHours > 24 ? <b>{zh ? `超过 ${Math.floor(staleHours)} 小时未扫描` : `${Math.floor(staleHours)}h stale`}</b> : null}</div></div><div className="page-actions"><Button onClick={() => setDialog('method')}><Info size={14}/>{t.method}</Button><Button onClick={() => setDialog('export')}><Download size={14}/>{t.export}</Button><Button onClick={() => setDialog('share')}><Share2 size={14}/>{t.share}</Button><Button primary onClick={() => load(true)} disabled={refreshing}><RefreshCw className={refreshing ? 'spin' : ''} size={14}/>{t.refresh}</Button></div></section>
 
