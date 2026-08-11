@@ -214,5 +214,12 @@ export function estimateLocalBucketCost(bucket) {
     unpricedTokens,
     assumedTokens,
     priceVersion: price.version,
+    pricePattern: price.pattern,
+    priceSourceUrl: price.sourceUrl,
+    priceInput: price.input,
+    priceCacheRead: price.cacheRead,
+    priceOutput: price.output,
+    priceContextTier: price.contextTier || null,
+    priceProcessingTier: price.processingTier || null,
   };
 }

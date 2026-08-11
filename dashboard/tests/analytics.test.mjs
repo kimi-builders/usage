@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { analyze, availableModels } from '../src/analytics.js';
+import { analyze, availableModels, buildRecords, filterOptions, heatmapView } from '../src/analytics.js';
 
 function bucket(id, source, model, bucketStart, total) {
   return {
@@ -8,11 +8,14 @@ function bucket(id, source, model, bucketStart, total) {
     cacheReadInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0,
     totalTokens: total, requestCount: 1, costMicros: total * 10,
     pricedTokens: total, unpricedTokens: 0, assumedTokens: 0,
+    modelCanonical: model, reasoningEffort: source === 'codex' ? 'high' : null,
+    agentVersion: source === 'codex' ? '0.147.0' : '1.44.0', project: source === 'codex' ? 'site' : 'cli',
   };
 }
 
 const data = {
   generatedAt: '2026-08-11T12:00:00.000Z',
+  device: { terminal: { name: 'Warp' }, os: { name: 'macOS' } },
   buckets: [
     bucket(1, 'kimi-code', 'kimi-k3', '2026-08-10T12:00:00.000Z', 300),
     bucket(2, 'codex', 'gpt-5.6-sol', '2026-08-01T12:00:00.000Z', 200),
@@ -41,4 +44,51 @@ test('model identity and source filters stay precise', () => {
   assert.equal(report.totals.totalTokens, 100);
   assert.equal(report.topModel, 'kimi-k3-256k');
   assert.equal(report.toolCount, 1);
+});
+
+test('multi-dimension filters use AND across dimensions and OR within one dimension', () => {
+  const report = analyze(data, {
+    range: 'all',
+    sources: ['kimi-code', 'codex'],
+    models: ['kimi-k3', 'gpt-5.6-sol'],
+    efforts: ['high'],
+    agentVersions: ['0.147.0'],
+    projects: ['site'],
+    devices: ['Warp · macOS'],
+  });
+  assert.equal(report.totals.totalTokens, 200);
+  assert.equal(report.sourceRows[0].id, 'codex');
+  assert.equal(report.recordsByDay.length, 1);
+});
+
+test('heatmap keeps detailed token, cost, time, and prompt facts in the same cell', () => {
+  const report = analyze(data, { range: 'all' });
+  const instant = new Date('2026-08-10T12:00:00.000Z');
+  const localCell = report.heatmap.cells[(instant.getDay() + 6) % 7][instant.getHours()];
+  assert.equal(localCell.totalTokens, 300);
+  assert.equal(localCell.activeSeconds, 120);
+  assert.equal(localCell.userMessageCount, 2);
+  assert.equal(localCell.costMicros, 3_000);
+  assert.equal(localCell.observed, true);
+  assert.equal(report.heatmap.cells[(instant.getDay() + 6) % 7][(instant.getHours() + 1) % 24].observed, false);
+  assert.equal(heatmapView(report.heatmap, 'prompts').slots[0].value, 2);
+  assert.equal(heatmapView(report.heatmap, 'prompts').peak.cell, localCell);
+});
+
+test('records switch between 30-minute facts and daily grouped rows', () => {
+  const duplicate = { ...data.buckets[0], id: 4, bucketStart: '2026-08-10T12:30:00.000Z', totalTokens: 50, inputTokens: 50 };
+  const rows = [data.buckets[0], duplicate];
+  assert.equal(buildRecords(rows, 'bucket').length, 2);
+  const daily = buildRecords(rows, 'day');
+  assert.equal(daily.length, 1);
+  assert.equal(daily[0].totalTokens, 350);
+  assert.equal(daily[0].requestCount, 2);
+});
+
+test('filter options preserve private/unknown dimensions as explicit empty values', () => {
+  const options = filterOptions({ ...data, buckets: [...data.buckets, { ...data.buckets[0], id: 9, project: null, reasoningEffort: null }] });
+  assert.deepEqual(options.devices, ['Warp · macOS']);
+  assert.ok(options.projects.includes(''));
+  assert.ok(options.efforts.includes(''));
+  assert.deepEqual(options.sources.slice(0, 2), ['kimi-code', 'codex']);
 });

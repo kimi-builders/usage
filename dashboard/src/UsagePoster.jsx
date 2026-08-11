@@ -76,7 +76,7 @@ function StackedBars({ report, range }) {
         })}
       </div>
       <svg className="poster-average" viewBox="0 0 900 200" preserveAspectRatio="none" aria-hidden="true">
-        <polyline points={data.map((item, index) => `${(index / Math.max(1, data.length - 1)) * 900},${190 - (item.rollingAverage / max) * 176}`).join(' ')} fill="none" stroke="#8a9099" strokeWidth="2" strokeDasharray="8 7" />
+        <polyline points={data.map((item, index) => `${(index / Math.max(1, data.length - 1)) * 900},${190 - ((item.rollingTokens || 0) / max) * 176}`).join(' ')} fill="none" stroke="#8a9099" strokeWidth="2" strokeDasharray="8 7" />
       </svg>
       <span className="poster-chart-type">{range === 'today' || range === '24h' ? '每柱一小时' : '每柱一天'} · TOKEN 峰叠</span>
     </div>
@@ -84,7 +84,11 @@ function StackedBars({ report, range }) {
 }
 
 function PosterHeatmap({ report }) {
-  return <div className="poster-week-heat"><div className="poster-heat-hours">{[0, 3, 6, 9, 12, 15, 18, 21].map((h) => <span key={h}>{String(h).padStart(2, '0')}</span>)}</div>{report.heatmap.cells.map((row, day) => <div key={day}><span>{['一','二','三','四','五','六','日'][day]}</span>{row.map((value, hour) => <i key={hour} style={{ opacity: report.heatmap.max ? .15 + .85 * value / report.heatmap.max : .08 }} />)}</div>)}</div>;
+  const max = Math.max(0, ...report.heatmap.cells.flat().map((cell) => cell.totalTokens));
+  const peak = report.heatmap.cells.flatMap((row, day) => row.map((cell, hour) => ({ day, hour, value: cell.totalTokens }))).sort((left, right) => right.value - left.value)[0];
+  return <div className="poster-week-heat"><div className="poster-heat-hours">{[0, 3, 6, 9, 12, 15, 18, 21].map((h) => <span key={h}>{String(h).padStart(2, '0')}</span>)}</div>{report.heatmap.cells.map((row, day) => <div key={day}><span>{['一','二','三','四','五','六','日'][day]}</span>{row.map((cell, hour) => cell.observed
+    ? <i key={hour} data-peak={peak?.value > 0 && peak.day === day && peak.hour === hour ? 'true' : undefined} style={{ opacity: max ? .15 + .85 * cell.totalTokens / max : .08 }} />
+    : <i key={hour} className="poster-heat-missing" />)}</div>)}</div>;
 }
 
 function ContributionCalendar({ report }) {
@@ -124,7 +128,7 @@ export const UsagePoster = forwardRef(function UsagePoster({ report, range, iden
       <section className="poster-identity">
         <div className="poster-avatar">{identity.name.slice(0, 2).toUpperCase()}</div>
         <div><strong>{identity.name}</strong><span>@{identity.handle}　<b>kimi.builders/usage</b></span></div>
-        <div className="poster-streak"><b>{report.streaks.weeklyCurrent}</b><strong>周连续构建</strong><span>WEEK STREAK</span></div>
+        <div className="poster-streak"><b>{report.streaks.current}</b><strong>日连续构建</strong><span>DAY STREAK</span></div>
         <div className="poster-span"><strong>{fmt(start)} — {fmt(report.end)}</strong><span>数据起止 SPAN</span></div>
       </section>
       <section className="poster-hero">
@@ -146,14 +150,17 @@ export const UsagePoster = forwardRef(function UsagePoster({ report, range, iden
         <div><span>▱ 会话 SESS</span><strong>{report.sessions.length.toLocaleString('en-US')}</strong></div>
       </section>
       <section className="poster-agents">
-        <div className="poster-subhead"><span>常用 AGENT</span><small>共 {report.sourceRows.length} 个 · 按 TOKEN</small></div>
-        <div>{report.sourceRows.slice(0, 5).map((row) => <article key={row.id}><ToolGlyph id={row.id} size={25} /><strong>{sourceLabel(row.id)}</strong><span>{compact(row.totalTokens)} · {percent(row.share, 0)}</span><i><b style={{ width: `${Math.max(3, row.share * 100)}%` }} /></i></article>)}</div>
+        <div className="poster-subhead"><span>AGENT 阵列</span><small>TOP {Math.min(5, report.sourceRows.length)} / {report.sourceRows.length} · 按 TOKEN 排名</small></div>
+        <div>{report.sourceRows.slice(0, 5).map((row, index) => <article key={row.id}><small className="poster-agent-rank">0{index + 1}</small><ToolGlyph id={row.id} size={25} /><strong>{sourceLabel(row.id)}</strong><span>{compact(row.totalTokens)} <b>{percent(row.share, 0)}</b></span><i><b style={{ width: `${Math.max(3, row.share * 100)}%` }} /></i></article>)}</div>
       </section>
-      <section className="poster-model"><span>主力模型</span><strong>{report.topModel || 'NO MODEL DATA'}</strong><b>{compact(report.modelRows[0]?.totalTokens || 0)} · {percent(report.modelRows[0]?.share || 0, 0)}</b></section>
+      <section className="poster-model">
+        <div><span>主力模型 / TOP MODEL</span><strong>{report.topModel || 'NO MODEL DATA'}</strong><small>{compact(report.modelRows[0]?.totalTokens || 0)} · {percent(report.modelRows[0]?.share || 0, 0)}</small></div>
+        <div><span>推理强度 / REASONING</span><strong>{report.topReasoning ? report.topReasoning.toUpperCase() : 'NOT RECORDED'}</strong><small>{compact(report.totals.reasoningOutputTokens)} 推理 TOKEN</small></div>
+      </section>
       <footer className="poster-footer">
         <div className="poster-qr"><Qr value={communityUrl} /></div>
         <div><strong>@{identity.handle} · {rangeZh} · {fmt(generatedAt)}</strong><span>扫码查看实时用量看板</span></div>
-        <div><span>标准 API 计价估算</span><span>本地私密同步 · 不含对话内容</span><span>杠杆 ×{report.inputLeverage.toFixed(1)} = 总量 ÷ 新鲜输入</span></div>
+        <div><span>标准 API 计价估算</span><span>本地私密同步 · 不含对话内容</span><span>杠杆 ×{(report.inputLeverage || 0).toFixed(1)} = 总量 ÷ 新鲜输入</span></div>
       </footer>
       <span className="poster-corner">{rangeEn}</span>
     </article>

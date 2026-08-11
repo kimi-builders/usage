@@ -1,57 +1,57 @@
-# Local Usage — Design QA
+# Local Usage Dashboard — Design QA
 
-## Visual truth
+## Source and prototype evidence
 
-- Current community page: `/private/tmp/kb-qa-usage-top.png`
-- Current community poster: `/private/tmp/kb-uni-usage-30d-zh.png`
-- Local implementation: `/private/tmp/kbu-replica-top-final.png`
-- Generated local poster: `/private/tmp/kbu-poster-30d-final.png`
-- Page comparison: `/private/tmp/kbu-compare-top-final.png`
-- Poster comparison: `/private/tmp/kbu-compare-poster-final.png`
-- Export light theme: `/private/tmp/kbu-export-light.png`
-- Export dark theme: `/private/tmp/kbu-export-dark.png`
+- Current community desktop, full-page sequence: `/private/tmp/kb-live-desk-01.png` through `/private/tmp/kb-live-desk-06.png`
+- Current community desktop montage: `/private/tmp/kb-live-desk-grid.png`
+- Current community top: `/private/tmp/kb-live-desk-top.png`
+- Community calculation, export, share, and filter states:
+  - `/private/tmp/kb-live-method.png`
+  - `/private/tmp/kb-live-export.png`
+  - `/private/tmp/kb-live-share.png`
+  - `/private/tmp/kb-live-filter-agent.png`
+- Local desktop top: `/private/tmp/kbu-local-desk-top.png`
+- Local calculation dialog: `/private/tmp/kbu-local-method.png`
+- Local share dialog and poster: `/private/tmp/kbu-local-share.png`
+- Local records and column selector: `/private/tmp/kbu-local-records.png`
+- Local light-theme export: `/private/tmp/kbu-local-export-light.png`
+- Current top comparison: `/private/tmp/kbu-top-compare.png`
+- Refined activity heatmap, peak hover state: `/private/tmp/kbu-polished-heatmap-hover.png`
+- Reference/prototype heatmap comparison: `/private/tmp/heatmap-comparison.png`
+- Brand Agent icons in light theme: `/private/tmp/kbu-polished-icons-optimized.png`
+- Final 1080 × 1440 poster render: `/private/tmp/kbu-polished-poster-final.png`
+- Seven-day poster with the refined 7 × 24 heatmap: `/private/tmp/kbu-polished-poster-7d.png`
 
-The page comparison uses populated 30D/all-Agent/all-model states. The 1440 × 900 community capture was normalized to the in-app browser's 1265 × 712 content viewport before comparison. The poster comparison preserves both original 1080 × 1440 images.
+The source repository was inspected read-only for the current mobile shell, filter disclosure, stacked record cards, bottom navigation, and responsive breakpoints. No community-site file was modified.
 
-## Result
+## Functional result
 
-No actionable P0, P1, or P2 visual issue remains.
-
-- Desktop shell, spacing, control treatment, three-card hero, ten-metric strip, chart panels, typography, dark tokens, and light tokens match the current community implementation.
-- The local navigation intentionally maps the community shell to working analytics anchors. No dead community route is presented as a local feature.
-- A fresh local scan omits the community page's stale-data banner; the banner remains implemented and appears after 24 hours.
-- The local poster matches the community poster's header, identity band, Token hero, flow diagram, trend band, KPI strip, Agent/model rankings, QR footer, palette, and 1080 × 1440 export contract.
-- Local identity is editable and browser-local because the local dashboard has no community account identity. Project, device, and conversation content never enter the poster.
-
-## Functional QA
-
-- Range, Agent, model, theme, locale, calculation notes, export, refresh, share, and all analytics anchors are operational.
-- CSV and JSON export render correctly in both themes. CSV values are UTF-8 BOM encoded, quoted, and protected against spreadsheet formula injection.
-- Poster generation succeeded for Today, 24H, 7D, 30D, 90D, and All. Today/24H use hourly bars; 7D uses the weekday/hour heatmap; 30D uses daily stacked bars; 90D/All use a contribution calendar.
-- The poster PNG is generated locally at 1080 × 1440, has a functional QR, and can be downloaded or sent through the native share sheet when supported.
-- Browser console: 0 errors and 0 warnings after page, dialog, theme, and poster-range checks.
-- Source choices now use the actual Collector `source` contract instead of blank option labels.
-- Collector, Agent, terminal, OS, and price-catalog facts remain separate fields in the source panel.
-
-## Responsive contract
-
-- Under 760px the desktop rail is removed and a fixed five-item mobile navigation appears, providing access to overview, trend, activity, records, and sources.
-- Header actions become an even two-column grid; Hero cards and distribution cards become a single column; KPI cells become two columns; table and heatmap retain intentional horizontal scrolling.
-- Dialogs become bottom sheets, poster preview stays bounded, and share controls remain reachable below the preview.
-- The in-app browser exposes a fixed viewport and Codex disallows Computer Use against its own window, so this pass could not create a new 390px runtime screenshot. The responsive rules and mobile navigation structure were inspected directly; this limitation did not require a product-code workaround or a second browser.
+- Six standard ranges work: Today, 24H, 7D, 30D, 90D, and All.
+- Agent, model, project, reasoning effort, Agent version, and device are multi-select filters with staged Apply/Cancel behavior and removable active chips.
+- Trend metrics switch between Token, standard-API cost, and active time; the natural-week chart follows the selected metric.
+- The activity heatmap switches between Token, cost, time, and user messages. It now distinguishes observed zeroes from collection gaps, uses a six-step blue ramp, marks the selected-metric peak with a white glow, and exposes a keyboard-accessible detailed tooltip with Token legs, hit rate, cost, active time, and user messages. TOP 5 follows the chosen metric.
+- Agent/model/project/device distributions independently switch between Token and cost and show both share and API-equivalent value.
+- Records switch between daily and 30-minute grain, support seven optional columns, paginate at 25 rows, and become mobile cards below 760px.
+- Export distinguishes current-filter CSV from all-history private JSON, shows exact counts and truncation state, applies CSV formula-injection protection, and renders correctly in dark and light themes.
+- Calculation notes include formulas, time semantics, comparison semantics, pricing coverage, and the current log-model-to-price match table.
+- Share poster generation succeeds locally at 1080 × 1440 and supports all six ranges, editable local identity, PNG download, and native share.
+- Agent identity uses the maintained LobeHub brand SVG set (color variants where available) across filters, distributions, records, source health, and poster output. Mono-only brands retain a colored frame and remain legible in both themes.
+- The poster Agent section now carries brand marks, rank, Token share, and per-Agent accent bars; the bottom insight row separates top model from recorded reasoning intensity and reasoning Token volume.
+- Device/source panels use actual terminal, OS, Collector, and Agent-version fields; local-only and community-sync boundaries are explicit.
+- Mobile has a sticky top bar, full navigation drawer, fixed five-item bottom bar, one-column actions/cards, horizontally scrollable charts/heatmap, stacked record cards, and bottom-sheet dialogs.
 
 ## Automated verification
 
-- Collector suite: 87/87 passed.
-- Dashboard suite: 6/6 passed, including range/previous-period/lifetime/model-identity analytics.
-- Vite production build passed and emitted the packaged client/server artifacts.
-- Build warning: the single initial JS chunk is 622 kB (192 kB gzip). It is acceptable for the local-only first release; share-poster code splitting is a future performance polish, not a correctness blocker.
+- Full Collector/dashboard suite: 93/93 passed.
+- Dashboard/Sites suite: 10/10 passed.
+- Production build passed and emitted `dist/client`, `dist/server`, and hosting metadata.
+- `git diff --check` passed after the final visual iteration.
+- The only build note is Vite's existing large initial chunk warning; it is a performance follow-up, not a correctness defect.
 
-## Accepted local-product differences
+## Blocking visual check
 
-- Community account chrome becomes a `LOCAL` privacy status and local language/theme controls.
-- Community navigation becomes working dashboard-section navigation plus explicit Community/GitHub links.
-- `All` is present as requested; the community's custom date control is not copied into this local milestone.
-- Community sync remains explicit and optional. Merely opening the local page performs no network request.
+Desktop source capture, desktop prototype capture, interaction checks, poster rendering, and both export themes were verified in the requested in-app browser. The in-app browser automation viewport is fixed at 1280 × 720 and does not expose viewport emulation; attempts to request 390 × 844 remain 1280 × 720.
 
-final result: passed
+The responsive implementation is grounded in the current community mobile source and prior community mobile captures, but a new 390 × 844 **prototype** screenshot has not yet been captured. Per the Product Design QA gate, mobile runtime comparison remains the final blocking check. Once the user narrows the in-app browser pane/window below 760px, capture and interaction QA can be completed without another code architecture change.
+
+final result: blocked
