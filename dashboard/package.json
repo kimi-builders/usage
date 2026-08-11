@@ -12,7 +12,6 @@
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.2.6",
     "@lobehub/icons-static-svg": "^1.94.0",
-    "@rc-component/qrcode": "^2.0.0",
     "@vitejs/plugin-react": "5.0.4",
     "html-to-image": "^1.11.13",
     "lucide-react": "^1.30.0",

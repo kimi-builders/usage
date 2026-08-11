@@ -349,6 +349,26 @@ function streaks(buckets, end) {
   return { current, longest };
 }
 
+function weeklyStreaks(buckets, end) {
+  const weeks = new Set(buckets.filter((bucket) => tokenTotal(bucket) > 0).map((bucket) => startOfLocalWeek(bucket.bucketStart).toISOString()));
+  let longest = 0;
+  let running = 0;
+  let previous = null;
+  for (const key of [...weeks].sort()) {
+    const current = new Date(key);
+    running = previous && current.getTime() - previous.getTime() === 604_800_000 ? running + 1 : 1;
+    longest = Math.max(longest, running);
+    previous = current;
+  }
+  let current = 0;
+  const cursor = startOfLocalWeek(end);
+  while (weeks.has(cursor.toISOString())) {
+    current += 1;
+    cursor.setDate(cursor.getDate() - 7);
+  }
+  return { current, longest };
+}
+
 function buildWeeklySeries(buckets, activityHours, end) {
   const endWeek = startOfLocalWeek(end);
   const start = addUnit(endWeek, 'week', -11);
@@ -493,6 +513,7 @@ export function analyze(data, inputFilters) {
     topReasoning: topReasoning(buckets),
     toolCount: sourceRows.length,
     streaks: streaks(allDimensionBuckets, selectedData.end),
+    weeklyStreaks: weeklyStreaks(allDimensionBuckets, selectedData.end),
     records: recordsByBucket,
     recordsByDay,
     recordsByBucket,

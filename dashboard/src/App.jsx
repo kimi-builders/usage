@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import {
   Activity, BarChart3, Cloud, Command, Database, Download, ExternalLink, FileText,
   Globe2, Home, Info, LayoutDashboard, Menu, Moon, RefreshCw, Share2, ShieldCheck,
@@ -32,21 +32,33 @@ function currencyMoney(micros, currency) {
   return `${currency === 'cny' ? '¥' : '$'}${value.toFixed(2)}`;
 }
 
-function Change({ value }) {
+function MetricHint({ children, text, className = '' }) {
+  const tooltipId = useId();
+  return <button type="button" className={`metric-hint ${className}`} aria-label={text} aria-describedby={tooltipId}>
+    {children}
+    <span className="metric-hint-popover" id={tooltipId} role="tooltip">{text}</span>
+  </button>;
+}
+
+function Change({ value, label, current, previous, zh }) {
   if (value == null || !Number.isFinite(value)) return null;
-  return <span className={`change ${value >= 0 ? 'up' : 'down'}`}>{value >= 0 ? '↗' : '↘'} {Math.abs(value * 100).toFixed(1)}%</span>;
+  const percentage = `${value >= 0 ? '+' : '-'}${Math.abs(value * 100).toFixed(1)}%`;
+  const text = zh
+    ? `${label}与紧邻的上一等长周期相比：当前 ${current}，上期 ${previous}。变化 =（当前 − 上期）÷ 上期 = ${percentage}。`
+    : `${label} versus the immediately preceding equal-length period: ${current} now, ${previous} before. Change = (current − previous) ÷ previous = ${percentage}.`;
+  return <MetricHint text={text} className="change-hint"><span className={`change ${value >= 0 ? 'up' : 'down'}`}>{value >= 0 ? '↗' : '↘'} {Math.abs(value * 100).toFixed(1)}%</span></MetricHint>;
 }
 
 function Button({ children, primary = false, className = '', ...props }) {
   return <button type="button" className={`${primary ? 'primary-btn' : 'ghost-btn'} ${className}`} {...props}>{children}</button>;
 }
 
-function HeroCard({ label, value, deltaValue, children, tone = '', onHelp }) {
-  return <article className={`hero-card ${tone}`}><div className="hero-label"><span>{label}</span>{onHelp ? <button type="button" onClick={onHelp} aria-label={`${label} info`}><Info size={12}/></button> : null}<Change value={deltaValue}/></div><strong>{value}</strong><p>{children}</p></article>;
+function HeroCard({ label, value, deltaValue, previousValue, children, tone = '', onHelp, zh }) {
+  return <article className={`hero-card ${tone}`}><div className="hero-label"><span>{label}</span>{onHelp ? <button type="button" onClick={onHelp} aria-label={`${label} info`}><Info size={12}/></button> : null}<Change value={deltaValue} label={label} current={value} previous={previousValue} zh={zh}/></div><strong>{value}</strong><p>{children}</p></article>;
 }
 
-function Stat({ label, value, change, sub, onHelp }) {
-  return <article className="stat-cell"><span>{label}{onHelp ? <button type="button" onClick={onHelp}><Info size={10}/></button> : null}</span><strong>{value}</strong><Change value={change}/>{sub ? <small>{sub}</small> : null}</article>;
+function Stat({ label, value, change, previousValue, sub, onHelp, zh }) {
+  return <article className="stat-cell"><span>{label}{onHelp ? <button type="button" onClick={onHelp}><Info size={10}/></button> : null}</span><strong>{value}</strong><Change value={change} label={label} current={value} previous={previousValue} zh={zh}/>{sub ? <small>{sub}</small> : null}</article>;
 }
 
 const LOCAL_LINKS = [
@@ -131,9 +143,16 @@ export function App() {
 
       {staleHours > 24 ? <section className="stale-banner"><Info size={19}/><div><b>{zh ? '这份看板可能已经过期' : 'This dashboard may be stale'}</b><p>{zh ? '点击重新扫描即可更新本机数据；页面不会自行读取日志。' : 'Rescan to refresh local logs; the page never reads them on its own.'}</p></div><code>kbu-usage dashboard</code></section> : null}
 
-      <section className="hero-grid"><HeroCard label={report.pricingCoverage < .9995 ? (zh ? '已定价部分' : 'Priced portion') : t.cost} value={currencyMoney(report.totals.costMicros, currency)} deltaValue={delta(report.totals.costMicros, previous?.totals.costMicros)} onHelp={() => setDialog('method')}>{zh ? `vs 上一周期 · 覆盖 ${percent(report.pricingCoverage)} Token · ${compact(report.totals.unpricedTokens)} 未定价` : `vs prior · ${percent(report.pricingCoverage)} coverage · ${compact(report.totals.unpricedTokens)} unpriced`}</HeroCard><HeroCard label={t.tokens} value={compact(report.totals.totalTokens)} deltaValue={delta(report.totals.totalTokens, previous?.totals.totalTokens)} onHelp={() => setDialog('method')}>{zh ? `输入 ${compact(inputSide)} · 输出 ${compact(report.totals.outputTokens)} · 缓存读 ${compact(report.totals.cacheReadInputTokens)}` : `Input ${compact(inputSide)} · Output ${compact(report.totals.outputTokens)} · Cache ${compact(report.totals.cacheReadInputTokens)}`}</HeroCard><HeroCard label={t.hit} value={report.cacheHitRate == null ? '—' : percent(report.cacheHitRate)} tone="hero-card--green"><span className="quality"><i/>{report.cacheHitRate != null && report.cacheHitRate > .8 ? t.good : (zh ? '可提升' : 'Improve')}</span>{zh ? `缓存写 ${compact(report.totals.cacheWriteInputTokens)} · 命中率越高，费用越低` : `Cache write ${compact(report.totals.cacheWriteInputTokens)} · higher is cheaper`}</HeroCard></section>
+      <section className="hero-grid">
+        <HeroCard zh={zh} label={report.pricingCoverage < .9995 ? (zh ? '已定价部分' : 'Priced portion') : t.cost} value={currencyMoney(report.totals.costMicros, currency)} previousValue={currencyMoney(previous?.totals.costMicros || 0, currency)} deltaValue={delta(report.totals.costMicros, previous?.totals.costMicros)} onHelp={() => setDialog('method')}>{zh ? `vs 上一周期 · 覆盖 ${percent(report.pricingCoverage)} Token · ${compact(report.totals.unpricedTokens)} 未定价` : `vs prior · ${percent(report.pricingCoverage)} coverage · ${compact(report.totals.unpricedTokens)} unpriced`}</HeroCard>
+        <HeroCard zh={zh} label={t.tokens} value={compact(report.totals.totalTokens)} previousValue={compact(previous?.totals.totalTokens || 0)} deltaValue={delta(report.totals.totalTokens, previous?.totals.totalTokens)} onHelp={() => setDialog('method')}>{zh ? `输入 ${compact(inputSide)} · 输出 ${compact(report.totals.outputTokens)} · 缓存读 ${compact(report.totals.cacheReadInputTokens)}` : `Input ${compact(inputSide)} · Output ${compact(report.totals.outputTokens)} · Cache ${compact(report.totals.cacheReadInputTokens)}`}</HeroCard>
+        <HeroCard zh={zh} label={t.hit} value={report.cacheHitRate == null ? '—' : percent(report.cacheHitRate)} tone="hero-card--green">
+          {report.cacheHitRate != null ? <MetricHint className="quality-hint" text={zh ? `缓存命中率 = 缓存读 ÷（输入 + 缓存写 + 缓存读）。当前 ${percent(report.cacheHitRate)}；85% 以上为“良好”，60%–85% 为“一般”，低于 60% 为“偏低”。命中率越高，通常意味着重复上下文的 API 等价成本越低。` : `Cache hit rate = cache read ÷ (input + cache write + cache read). Current: ${percent(report.cacheHitRate)}. Good is ≥85%, Fair is 60–85%, Low is <60%. A higher rate usually lowers API-equivalent cost for repeated context.`}><span className="quality"><i/>{report.cacheHitRate >= .85 ? t.good : report.cacheHitRate >= .6 ? (zh ? '一般' : 'Fair') : (zh ? '偏低' : 'Low')}</span></MetricHint> : null}
+          {zh ? `缓存写 ${compact(report.totals.cacheWriteInputTokens)} · 命中率越高，费用越低` : `Cache write ${compact(report.totals.cacheWriteInputTokens)} · higher is cheaper`}
+        </HeroCard>
+      </section>
 
-      <section className="stats-grid"><Stat label={t.peak} value={compact(report.peakTokens)} sub={lastSeries?.label}/><Stat label={t.active} value={duration(report.activeSeconds, zh)} change={delta(report.activeSeconds, previous?.activeSeconds)} onHelp={() => setDialog('method')}/><Stat label={t.engaged} value={duration(report.engagedSeconds, zh)} change={delta(report.engagedSeconds, previous?.engagedSeconds)} sub={zh ? '单次空闲最多计 30 分钟' : 'idle gaps capped at 30m'}/><Stat label={t.sessions} value={integer(report.sessions.length)} change={delta(report.sessions.length, previous?.sessions)}/><Stat label={t.messages} value={compact(report.messageCount)} change={delta(report.messageCount, previous?.messageCount)}/><Stat label={t.userMessages} value={compact(report.userMessageCount)} change={delta(report.userMessageCount, previous?.userMessageCount)}/><Stat label={t.avg} value={`${report.avgRequestSeconds.toFixed(1)}s`} sub={zh ? '≈ 活跃时长 ÷ 请求数' : '≈ active time ÷ requests'}/><Stat label={t.requests} value={compact(report.totals.requestCount)}/><Stat label={t.lifetime} value={compact(report.lifetimeTotals.totalTokens)} sub={zh ? '全部本地历史 · 保留维度筛选' : 'all local history · filters apply'}/><Stat label={t.reasoning} value={compact(report.totals.reasoningOutputTokens)} sub={report.topReasoning || (zh ? '未记录强度' : 'Effort not recorded')}/></section>
+      <section className="stats-grid"><Stat zh={zh} label={t.peak} value={compact(report.peakTokens)} sub={lastSeries?.label}/><Stat zh={zh} label={t.active} value={duration(report.activeSeconds, zh)} previousValue={duration(previous?.activeSeconds || 0, zh)} change={delta(report.activeSeconds, previous?.activeSeconds)} onHelp={() => setDialog('method')}/><Stat zh={zh} label={t.engaged} value={duration(report.engagedSeconds, zh)} previousValue={duration(previous?.engagedSeconds || 0, zh)} change={delta(report.engagedSeconds, previous?.engagedSeconds)} sub={zh ? '单次空闲最多计 30 分钟' : 'idle gaps capped at 30m'}/><Stat zh={zh} label={t.sessions} value={integer(report.sessions.length)} previousValue={integer(previous?.sessions || 0)} change={delta(report.sessions.length, previous?.sessions)}/><Stat zh={zh} label={t.messages} value={compact(report.messageCount)} previousValue={compact(previous?.messageCount || 0)} change={delta(report.messageCount, previous?.messageCount)}/><Stat zh={zh} label={t.userMessages} value={compact(report.userMessageCount)} previousValue={compact(previous?.userMessageCount || 0)} change={delta(report.userMessageCount, previous?.userMessageCount)}/><Stat zh={zh} label={t.avg} value={`${report.avgRequestSeconds.toFixed(1)}s`} sub={zh ? '≈ 活跃时长 ÷ 请求数' : '≈ active time ÷ requests'}/><Stat zh={zh} label={t.requests} value={compact(report.totals.requestCount)}/><Stat zh={zh} label={t.lifetime} value={compact(report.lifetimeTotals.totalTokens)} sub={zh ? '全部本地历史 · 保留维度筛选' : 'all local history · filters apply'}/><Stat zh={zh} label={t.reasoning} value={compact(report.totals.reasoningOutputTokens)} sub={report.topReasoning || (zh ? '未记录强度' : 'Effort not recorded')}/></section>
       {dimensionFiltersActive ? <p className="metric-scope-note">{zh ? '会话与时长指标无法按模型或推理强度拆分，仍显示当前 Agent 范围。' : 'Sessions and time cannot be split by model or effort; the current Agent scope is shown.'}</p> : null}
 
       <DailyTrend report={report} zh={zh} metric={trendMetric} onMetric={setTrendMetric} currency={currency}/><WeeklyTrend report={report} zh={zh} metric={trendMetric} currency={currency}/><ActivityHeatmap report={report} zh={zh} metric={heatMetric} onMetric={setHeatMetric} currency={currency}/>

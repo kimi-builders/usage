@@ -33,6 +33,14 @@
 - Same-viewport source/prototype comparisons:
   - `/private/tmp/kbu-trend-compare.png`
   - `/private/tmp/kbu-heat-compare.png`
+- Current community/local share-card baseline at the same 1280 × 720 dialog viewport:
+  - `/private/tmp/source-share-dialog-24h-final.png`
+  - `/private/tmp/local-polished-share-24h.png`
+- Range-specific local poster checks:
+  - `/private/tmp/local-polished-share-7d.png`
+  - `/private/tmp/local-polished-share-all.png`
+- Keyboard-focusable metric explanation state:
+  - `/private/tmp/local-metric-tooltip-final-after-reload.png`
 
 The source repository was inspected read-only for the current mobile shell, filter disclosure, stacked record cards, bottom navigation, and responsive breakpoints. No community-site file was modified.
 
@@ -48,6 +56,9 @@ The source repository was inspected read-only for the current mobile shell, filt
 - Export distinguishes current-filter CSV from all-history private JSON, shows exact counts and truncation state, applies CSV formula-injection protection, and renders correctly in dark and light themes.
 - Calculation notes include formulas, time semantics, comparison semantics, pricing coverage, and the current log-model-to-price match table.
 - Share poster generation succeeds locally at 1080 × 1440 and supports all six ranges, editable local identity, PNG download, and native share.
+- Local posters no longer emit a QR code or a localhost/community URL that a recipient cannot open. The shared footer is now a local/private provenance seal plus pricing and privacy notes.
+- Poster main views now specialize by range: hourly/four-part stacks for Today and 24H, a 7 × 24 activity matrix for 7D, a daily four-part stack with 7-day average for 30D, a 13-week footprint for 90D, and a 26-week footprint for All. Month/weekday labels, Y-axis values, heat legends, peak marks, colored Agent artwork, weekly streak, and zero-input leverage fallback are explicit.
+- Every equal-period change shown in the hero/stat cards is hover- and keyboard-focusable and explains the current value, previous value, comparison window, formula, and result. Cache quality explains the formula, current value, thresholds, and cost implication.
 - Agent identity uses the maintained LobeHub brand SVG set (color variants where available) across filters, distributions, records, source health, and poster output. Mono-only brands retain a colored frame and remain legible in both themes.
 - The poster Agent section now carries brand marks, rank, Token share, and per-Agent accent bars; the bottom insight row separates top model from recorded reasoning intensity and reasoning Token volume.
 - Device/source panels use actual terminal, OS, Collector, and Agent-version fields; local-only and community-sync boundaries are explicit.
@@ -61,10 +72,12 @@ The source repository was inspected read-only for the current mobile shell, filt
 - Production build passed and emitted `dist/client`, `dist/server`, and hosting metadata.
 - Runtime assertions passed on real local data: 24 hourly hit zones, zero Recharts nodes, non-empty React root, no desktop heatmap/trend overflow, and transparent/zero-width Agent and hit-rate framing.
 
-## Blocking visual check
+## Current request visual check
 
-Desktop source capture, desktop prototype capture, interaction checks, poster rendering, and both export themes were verified in the requested in-app browser. The in-app browser automation viewport is fixed at 1280 × 720 and does not expose viewport emulation; attempts to request 390 × 844 remain 1280 × 720.
+The current community 24H poster and the local 24H poster were captured in the same 1280 × 720 in-app-browser dialog viewport. The local version retains the site's hierarchy, proportions, flow/chart density, metric band, Agent/model section, and range controls, while deliberately replacing the public-site QR footer with truthful local-only provenance.
 
-The responsive implementation is grounded in the current community mobile source and prior community mobile captures, but a new 390 × 844 **prototype** screenshot has not yet been captured. Per the Product Design QA gate, mobile runtime comparison remains the final blocking check. Once the user narrows the in-app browser pane/window below 760px, capture and interaction QA can be completed without another code architecture change.
+24H, 7D, 30D, and All poster previews were rendered from real local data; Today and 90D share the already-verified hourly and footprint primitives. The metric explanation trigger was checked with keyboard focus as a real rendered tooltip. Community source files remained read-only.
 
-final result: blocked
+The earlier full-dashboard mobile runtime comparison remains tracked separately because the automation viewport cannot be reduced below 760px; it does not block this poster-and-tooltip scope.
+
+final result: passed
