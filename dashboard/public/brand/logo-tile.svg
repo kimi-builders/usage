@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
+  <defs>
+    <mask id="tile-crescent-cut">
+      <circle cx="460" cy="545" r="355" fill="#fff"/>
+      <circle cx="396" cy="518" r="336.6" fill="#000"/>
+    </mask>
+  </defs>
+  <rect width="1000" height="1000" rx="225" fill="#0E0E13"/>
+  <circle cx="460" cy="545" r="355" fill="#1B1B25" stroke="#EFE8DC" stroke-opacity="0.07" stroke-width="3"/>
+  <circle cx="460" cy="545" r="355" fill="#EFE8DC" mask="url(#tile-crescent-cut)"/>
+  <circle cx="845" cy="310" r="110" fill="#1783FF" opacity="0.18"/>
+  <circle cx="845" cy="310" r="58" fill="#1783FF"/>
+  <circle cx="725" cy="205" r="110" fill="#EFE8DC" opacity="0.12"/>
+  <circle cx="725" cy="205" r="58" fill="#EFE8DC"/>
+</svg>

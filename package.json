@@ -4,7 +4,10 @@
   "description": "Local-first usage analytics and optional sync for AI coding agents",
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "dashboard:dev": "npm --prefix dashboard run dev",
+    "dashboard:build": "npm --prefix dashboard run build",
+    "dashboard:test": "npm --prefix dashboard run test:sites"
   },
   "bin": {
     "kbu-usage": "bin/kbu-usage.js"
@@ -12,6 +15,7 @@
   "files": [
     "bin/",
     "src/",
+    "dashboard/dist/client/",
     "docs/",
     "PRIVACY.md",
     "NETWORK.md",

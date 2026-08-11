@@ -4,6 +4,8 @@ coverage/
 *.log
 
 .idea/
+dashboard/node_modules/
+dashboard/dist/
 
 docs/
 

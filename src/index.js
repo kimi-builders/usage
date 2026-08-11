@@ -37,6 +37,15 @@ export async function run(args) {
     const { runDoctor } = await import('./doctor.js');
     return runDoctor({ json: args.includes('--json') });
   }
+  if (command === 'dashboard') {
+    const rawPort = option(args, 'port');
+    const port = rawPort === undefined ? 0 : Number(rawPort);
+    if (!Number.isInteger(port) || port < 0 || port > 65_535) {
+      throw new Error('--port 必须是 0–65535 的整数。');
+    }
+    const { runDashboard } = await import('./local/dashboard-server.js');
+    return runDashboard({ port, launchBrowser: !args.includes('--no-open') });
+  }
   if (command === 'summary') {
     const raw = Number(option(args, 'days') || 7);
     if (!Number.isInteger(raw) || raw < 1 || raw > 90) throw new Error('--days 必须是 1–90。');
@@ -69,6 +78,7 @@ export async function run(args) {
   npx @kimi-builders/usage sync
   npx @kimi-builders/usage inspect --dry-run
   npx @kimi-builders/usage doctor [--json]
+  npx @kimi-builders/usage dashboard [--no-open] [--port 43120]
   npx @kimi-builders/usage summary [--days 7]
   npx @kimi-builders/usage status
   npx @kimi-builders/usage sources list

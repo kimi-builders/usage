@@ -1,0 +1,23 @@
+{
+  "name": "dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node scripts/prepare-sites-build.mjs",
+    "preview": "vite preview",
+    "test:sites": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.2.6",
+    "@rc-component/qrcode": "^2.0.0",
+    "@vitejs/plugin-react": "5.0.4",
+    "html-to-image": "^1.11.13",
+    "lucide-react": "^1.30.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "recharts": "3.1.2",
+    "vite": "6.4.2"
+  }
+}
