@@ -1,7 +1,7 @@
 import { loadConfig } from './config.js';
 import { fetchSettings, ingest } from './api.js';
 import { createSyncClient, forBatch } from './client-meta.js';
-import { enabledSources } from './parsers/index.js';
+import { collectAll } from './local/snapshot.js';
 import { validateUploadBucket, validateUploadSession } from './protocol.js';
 import {
   bucketKey,
@@ -14,6 +14,8 @@ import {
 
 const BUCKET_BATCH = 500;
 const SESSION_BATCH = 200;
+
+export { collectAll } from './local/snapshot.js';
 
 function bucketBaseKey(bucket) {
   return [bucket.source, bucket.model, bucket.project || '', bucket.bucketStart].join('|');
@@ -73,45 +75,6 @@ export function applyPrivacy(result, uploadProject) {
   return {
     buckets: result.buckets.map(hide),
     sessions: result.sessions.map(hide),
-  };
-}
-
-// Run every enabled source in its own try/catch: one source's failure never
-// blocks the others. No roots → skipped (未检测到); roots but nothing parsed
-// → ok with 0 items; throw → failed (its old state is kept, see pruneState).
-export async function collectAll({ sessionSalt, enabledSourceIds = [], sourceOptions = {} }) {
-  const results = [];
-  for (const source of enabledSources(enabledSourceIds)) {
-    try {
-      const roots = (await source.roots({ sourceOptions })) || [];
-      if (roots.length === 0) {
-        results.push({ source: source.id, tier: source.tier, status: 'skipped', buckets: [], sessions: [] });
-        continue;
-      }
-      const parsed = await source.parse({ sessionSalt, sourceOptions });
-      results.push({
-        source: source.id,
-        tier: source.tier,
-        status: parsed?.skipped ? 'partial' : 'ok',
-        buckets: parsed?.buckets ?? [],
-        sessions: parsed?.sessions ?? [],
-        ...(parsed?.warnings?.length ? { warnings: parsed.warnings } : {}),
-      });
-    } catch (error) {
-      results.push({
-        source: source.id,
-        tier: source.tier,
-        status: 'failed',
-        buckets: [],
-        sessions: [],
-        error: error?.message || String(error),
-      });
-    }
-  }
-  return {
-    results,
-    buckets: results.flatMap((result) => result.buckets),
-    sessions: results.flatMap((result) => result.sessions),
   };
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "@kimi-builders/usage",
   "version": "0.4.0",
-  "description": "Kimi-first local usage collector for kimi.builders",
+  "description": "Local-first usage analytics and optional sync for AI coding agents",
   "type": "module",
   "scripts": {
     "test": "node --test"
@@ -12,6 +12,11 @@
   "files": [
     "bin/",
     "src/",
+    "docs/",
+    "PRIVACY.md",
+    "NETWORK.md",
+    "THREAT_MODEL.md",
+    "SECURITY.md",
     "LICENSE",
     "NOTICE"
   ],

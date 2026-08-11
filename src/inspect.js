@@ -1,32 +1,21 @@
-import { createSessionSalt, loadConfig } from './config.js';
+import { loadConfig } from './config.js';
 import { createSyncClient } from './client-meta.js';
-import { enabledSources } from './parsers/index.js';
+import { collectLocalSnapshot } from './local/snapshot.js';
 
 export async function runInspect() {
   const config = loadConfig();
-  const sessionSalt = config?.sessionSalt || createSessionSalt();
+  const snapshot = await collectLocalSnapshot({ config });
   console.log('Kimi Builders Usage · dry run（未联网）\n');
   console.log('来源与读取目录:');
-  let bucketTotal = 0;
-  let sessionTotal = 0;
-  for (const source of enabledSources(config?.enabledSources)) {
-    const roots = (await source.roots({ sourceOptions: config?.sourceOptions })) || [];
-    if (roots.length === 0) {
-      console.log(`  ${source.id}: 未检测到`);
+  for (const source of snapshot.sources) {
+    if (source.roots.length === 0) {
+      console.log(`  ${source.source}: 未检测到`);
       continue;
     }
-    for (const root of roots) console.log(`  ${source.id}: ${root}`);
-    try {
-      const parsed = await source.parse({ sessionSalt, sourceOptions: config?.sourceOptions });
-      const buckets = parsed?.buckets ?? [];
-      const sessions = parsed?.sessions ?? [];
-      bucketTotal += buckets.length;
-      sessionTotal += sessions.length;
-      console.log(`    → ${buckets.length} buckets · ${sessions.length} sessions`);
-      for (const warning of (parsed?.warnings || []).slice(0, 2)) console.log(`      ⚠ ${warning}`);
-    } catch (error) {
-      console.log(`    → 解析失败：${error?.message || error}`);
-    }
+    for (const root of source.roots) console.log(`  ${source.source}: ${root}`);
+    if (source.status === 'failed') console.log(`    → 解析失败：${source.error}`);
+    else console.log(`    → ${source.bucketCount} buckets · ${source.sessionCount} sessions`);
+    for (const warning of (source.warnings || []).slice(0, 2)) console.log(`      ⚠ ${warning}`);
   }
   console.log('\n默认上传字段:');
   console.log('  bucket: source, 原始 model, 可证实的规范模型/供应方/推理强度/请求时 Agent 版本/上下文与处理档位, bucketStart, 5 类 token（缓存写可含 5 分钟/1 小时 TTL 分区）, requestCount, measurement');
@@ -43,5 +32,8 @@ export async function runInspect() {
   console.log('  说明: 当前设备/Agent 版本仅用于诊断；不会用来回填缺失的历史请求版本或推理强度');
   console.log('  project: 不上传（默认）');
   console.log('  prompt/response/tool result/full path/provider credential: 永不上传');
-  console.log(`\n检测结果: ${bucketTotal} buckets · ${sessionTotal} sessions`);
+  console.log(`\n检测结果: ${snapshot.summary.bucketCount} buckets · ${snapshot.summary.sessionCount} sessions`);
+  if (snapshot.diagnostics.rejected.length > 0) {
+    console.log(`协议校验: ${snapshot.diagnostics.rejected.length} 条异常记录已隔离`);
+  }
 }

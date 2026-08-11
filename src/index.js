@@ -33,6 +33,10 @@ export async function run(args) {
     const { runInspect } = await import('./inspect.js');
     return runInspect();
   }
+  if (command === 'doctor') {
+    const { runDoctor } = await import('./doctor.js');
+    return runDoctor({ json: args.includes('--json') });
+  }
   if (command === 'summary') {
     const raw = Number(option(args, 'days') || 7);
     if (!Number.isInteger(raw) || raw < 1 || raw > 90) throw new Error('--days 必须是 1–90。');
@@ -50,6 +54,7 @@ export async function run(args) {
     console.log(`配置: ${getConfigPath()}`);
     console.log(`状态: ${config?.apiKey ? `已连接 ${config.apiKey.slice(0, 12)}…` : '未连接'}`);
     console.log(`站点: ${config?.apiUrl || 'https://kimi.builders'}`);
+    console.log('本地分析: 可用（无需连接社区）');
     return;
   }
   if (command === 'sources') {
@@ -63,6 +68,7 @@ export async function run(args) {
   npx @kimi-builders/usage init [--api-url URL]
   npx @kimi-builders/usage sync
   npx @kimi-builders/usage inspect --dry-run
+  npx @kimi-builders/usage doctor [--json]
   npx @kimi-builders/usage summary [--days 7]
   npx @kimi-builders/usage status
   npx @kimi-builders/usage sources list
