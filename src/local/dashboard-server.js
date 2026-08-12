@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { spawn } from 'node:child_process';
 import { loadLocalDashboardData } from './dashboard-data.js';
+import {
+  getPublicLimitSettings, loadSubscriptionLimits, saveLimitSettings,
+} from '../limits/service.js';
 
 const DEFAULT_BUILD_ROOT = fileURLToPath(new URL('../../dashboard/dist/client/', import.meta.url));
 const COOKIE_NAME = 'kbu_local_session';
@@ -60,11 +63,11 @@ function send(response, status, body, headers = {}) {
   response.end(body);
 }
 
-function sendJson(request, response, data) {
+function sendJson(request, response, data, status = 200) {
   const raw = Buffer.from(JSON.stringify(data));
   if (String(request.headers['accept-encoding'] || '').includes('gzip')) {
     const compressed = gzipSync(raw);
-    send(response, 200, compressed, {
+    send(response, status, compressed, {
       ...securityHeaders('application/json; charset=utf-8'),
       'Content-Encoding': 'gzip',
       'Content-Length': compressed.length,
@@ -72,9 +75,33 @@ function sendJson(request, response, data) {
     });
     return;
   }
-  send(response, 200, raw, {
+  send(response, status, raw, {
     ...securityHeaders('application/json; charset=utf-8'),
     'Content-Length': raw.length,
+  });
+}
+
+function readJson(request, maxBytes = 32 * 1024) {
+  return new Promise((resolveBody, reject) => {
+    let bytes = 0;
+    const chunks = [];
+    request.on('data', (chunk) => {
+      bytes += chunk.length;
+      if (bytes > maxBytes) {
+        reject(Object.assign(new Error('Request body is too large.'), { statusCode: 413 }));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on('end', () => {
+      try {
+        resolveBody(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
+      } catch {
+        reject(Object.assign(new Error('Request body must be valid JSON.'), { statusCode: 400 }));
+      }
+    });
+    request.on('error', reject);
   });
 }
 
@@ -101,12 +128,17 @@ export async function startLocalDashboardServer({
   port = 0,
   launchBrowser = true,
   buildRoot = DEFAULT_BUILD_ROOT,
+  serveStatic = true,
+  authRedirectOrigin = null,
   dataLoader = loadLocalDashboardData,
+  limitsLoader = loadSubscriptionLimits,
+  limitSettingsLoader = getPublicLimitSettings,
+  limitSettingsSaver = saveLimitSettings,
 } = {}) {
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
     throw new Error('本地看板端口必须是 0–65535 的整数。');
   }
-  if (!existsSync(resolve(buildRoot, 'index.html'))) {
+  if (serveStatic && !existsSync(resolve(buildRoot, 'index.html'))) {
     throw new Error('本地看板尚未构建，请先运行 `npm run dashboard:build`。');
   }
 
@@ -132,17 +164,23 @@ export async function startLocalDashboardServer({
         send(response, 403, 'Unexpected Origin header.');
         return;
       }
-      if (!['GET', 'HEAD'].includes(request.method || '')) {
-        send(response, 405, 'Method not allowed.', { Allow: 'GET, HEAD' });
-        return;
-      }
-
       const url = new URL(request.url || '/', expectedOrigin);
       const queryToken = url.searchParams.get('token');
       if (url.pathname === '/' && queryToken === token) {
+        const configuredRedirect = typeof authRedirectOrigin === 'function'
+          ? authRedirectOrigin()
+          : authRedirectOrigin;
+        let redirect = '/';
+        if (configuredRedirect) {
+          const target = new URL('/', configuredRedirect);
+          if (target.protocol !== 'http:' || target.hostname !== '127.0.0.1' || target.username || target.password) {
+            throw new Error('开发看板跳转地址必须是无凭据的 127.0.0.1 HTTP 地址。');
+          }
+          redirect = target.toString();
+        }
         response.writeHead(303, {
           ...securityHeaders(),
-          Location: '/',
+          Location: redirect,
           'Set-Cookie': `${COOKIE_NAME}=${token}; HttpOnly; SameSite=Strict; Path=/`,
         });
         response.end();
@@ -150,6 +188,39 @@ export async function startLocalDashboardServer({
       }
       if (cookieValue(request.headers.cookie, COOKIE_NAME) !== token) {
         send(response, 401, 'This local dashboard session is not authorized.');
+        return;
+      }
+
+      if (url.pathname === '/api/limits/settings') {
+        if (request.method === 'GET' || request.method === 'HEAD') {
+          sendJson(request, response, limitSettingsLoader());
+          return;
+        }
+        if (request.method === 'POST') {
+          if (!String(request.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
+            send(response, 415, 'Content-Type must be application/json.');
+            return;
+          }
+          const payload = await readJson(request);
+          limitSettingsSaver(payload);
+          sendJson(request, response, limitSettingsLoader());
+          return;
+        }
+        send(response, 405, 'Method not allowed.', { Allow: 'GET, HEAD, POST' });
+        return;
+      }
+
+      if (url.pathname === '/api/limits') {
+        if (!['GET', 'HEAD'].includes(request.method || '')) {
+          send(response, 405, 'Method not allowed.', { Allow: 'GET, HEAD' });
+          return;
+        }
+        sendJson(request, response, await limitsLoader({ force: url.searchParams.get('refresh') === '1' }));
+        return;
+      }
+
+      if (!['GET', 'HEAD'].includes(request.method || '')) {
+        send(response, 405, 'Method not allowed.', { Allow: 'GET, HEAD' });
         return;
       }
 
@@ -169,6 +240,11 @@ export async function startLocalDashboardServer({
         return;
       }
 
+      if (!serveStatic) {
+        send(response, 404, 'Not found.');
+        return;
+      }
+
       const path = staticFile(buildRoot, url.pathname);
       if (!path) {
         send(response, 404, 'Not found.');
@@ -180,7 +256,7 @@ export async function startLocalDashboardServer({
         'Content-Length': body.length,
       });
     } catch (error) {
-      send(response, 500, `Local dashboard error: ${error?.message || error}`);
+      send(response, error?.statusCode || 500, `Local dashboard error: ${error?.message || error}`);
     }
   });
 
@@ -205,7 +281,7 @@ export async function startLocalDashboardServer({
 }
 
 export async function runDashboard(options = {}) {
-  console.log('正在读取本机 Agent 用量；不会连接网络…');
+  console.log('正在读取本机 Agent 用量；订阅额度仅在你启用供应商后查询…');
   const local = await startLocalDashboardServer(options);
   console.log(`本地看板: ${local.url}`);
   console.log('仅监听 127.0.0.1；关闭此终端或按 Ctrl+C 即停止。');
