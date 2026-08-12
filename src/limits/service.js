@@ -20,6 +20,7 @@ import { fetchOpenCodeLimits } from './providers/opencode.js';
 import { fetchQoderLimits } from './providers/qoder.js';
 import { fetchWarpLimits } from './providers/warp.js';
 import { detectWindsurfDatabase, fetchWindsurfLimits } from './providers/windsurf.js';
+import { loadLimitHistory, recordLimitSnapshot } from './history.js';
 
 const FETCHERS = {
   codex: fetchCodexLimits,
@@ -219,11 +220,17 @@ async function fetchEnabled(settings, options = {}) {
 
 export async function loadSubscriptionLimits({ force = false, config = loadConfig(), ...options } = {}) {
   const settings = getLimitSettings(config);
+  const historyLoader = options.historyLoader || loadLimitHistory;
+  const historyRecorder = options.historyRecorder || recordLimitSnapshot;
+  const history = () => {
+    try { return historyLoader(); } catch { return { schemaVersion: 1, observations: [] }; }
+  };
   if (!settings.enabled) {
     return {
       schemaVersion: 1, enabled: false, generatedAt: new Date().toISOString(),
       refreshMinutes: settings.refreshMinutes, providers: [],
       summary: { configured: 0, available: 0, needsAttention: 0, nextResetAt: null },
+      history: history(),
       privacy: {
         credentialsInBrowser: false, includedInExports: false,
         includedInCommunitySync: false, networkOnlyWhenEnabled: true,
@@ -235,10 +242,11 @@ export async function loadSubscriptionLimits({ force = false, config = loadConfi
   if (!force && inFlight) return inFlight;
   inFlight = fetchEnabled(settings, options)
     .then((result) => {
-      cachedResult = result;
+      try { historyRecorder(result); } catch { /* Quota display must survive history I/O failures. */ }
+      cachedResult = { ...result, history: history() };
       cacheKey = nextKey;
       cacheExpiresAt = Date.now() + settings.refreshMinutes * 60_000;
-      return result;
+      return cachedResult;
     })
     .finally(() => { inFlight = null; });
   return inFlight;

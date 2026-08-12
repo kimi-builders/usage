@@ -23,8 +23,8 @@ are separate capabilities: **opening the dashboard never uploads data.**
   facts when the source provides them.
 - Standard API price estimates with pricing coverage and unpriced-token
   disclosure. These estimates are not subscription bills.
-- Optional subscription-limit checks and optional manual or background
-  community sync.
+- An optional Subscription Center for quota history, burn pace, token capacity,
+  and value observations, plus optional manual or background community sync.
 
 **Project status:** `0.4.0` is currently a source-available beta. npm publication
 is intentionally deferred by the maintainer. Core product capabilities are in
@@ -185,9 +185,19 @@ Kimi Code appears first by default. Grab the handle to drag any enabled provider
 into place with a mouse or touch; the order is stored locally and reused for both
 quota tabs and provider requests.
 
+Every successful refresh stores one sanitized quota snapshot locally. The
+Subscription Center aligns changes in the same provider window with local Token
+usage to show burn pace, projected utilization at reset, 30-day actual cost per
+million Tokens, standard-API-equivalent value, and model concentration. Every
+observation identifies its evidence window. It never changes a plan automatically
+or presents observed utilization as a provider-published fixed Token cap.
+
 Quota credentials and responses never enter token snapshots, exports, or
 community sync. Manual secrets are not stored in the normal `config.json`.
-Provider endpoints and authentication boundaries are in [NETWORK.md](./NETWORK.md).
+Sanitized history is retained for at most 400 days and downsampled as it ages; it
+also stays out of exports, posters, and community sync. Provider endpoints and
+authentication boundaries are in [NETWORK.md](./NETWORK.md), and locally stored
+fields are documented in [PRIVACY.md](./PRIVACY.md).
 
 ## Connect and sync the community (optional)
 

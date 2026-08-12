@@ -19,6 +19,7 @@ const DAY_SECONDS = 86_400;
 const MONTH_SECONDS = DAY_SECONDS * 30;
 
 function finite(value) {
+  if (value == null || value === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -134,6 +135,102 @@ function providerSources(providerId) {
   return PROVIDER_SOURCES[providerId] || [providerId];
 }
 
+function totalsAtObservation(buckets, window, observedAt) {
+  const end = Date.parse(observedAt);
+  const seconds = inferredWindowSeconds(window);
+  if (!Number.isFinite(end) || !seconds) return sumBuckets([]);
+  const reset = Date.parse(window.resetsAt);
+  const start = Number.isFinite(reset) && reset >= end
+    ? reset - seconds * 1_000
+    : end - seconds * 1_000;
+  return sumBuckets(buckets.filter((bucket) => {
+    const time = Date.parse(bucket.bucketStart);
+    return Number.isFinite(time) && time >= start && time <= end;
+  }));
+}
+
+function historyWindows(history, providerId, buckets) {
+  const groups = new Map();
+  for (const observation of history?.observations || []) {
+    const provider = observation.providers?.find((item) => item.id === providerId);
+    for (const window of provider?.windows || []) {
+      if (!groups.has(window.id)) groups.set(window.id, []);
+      groups.get(window.id).push({
+        ...window,
+        observedAt: observation.observedAt,
+        localTotals: totalsAtObservation(buckets, window, observation.observedAt),
+      });
+    }
+  }
+  for (const points of groups.values()) {
+    points.sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt));
+  }
+  return groups;
+}
+
+function windowPace(window, now) {
+  const seconds = inferredWindowSeconds(window);
+  const reset = Date.parse(window.resetsAt);
+  const usedPercent = finite(window.usedPercent);
+  if (!seconds || !Number.isFinite(reset) || usedPercent == null) return null;
+  const start = reset - seconds * 1_000;
+  const elapsedFraction = Math.max(0, Math.min(1, (now - start) / (seconds * 1_000)));
+  if (elapsedFraction < 0.03) return {
+    elapsedFraction, projectedFinalPercent: null, burnPercentPerHour: null, projectedExhaustAt: null,
+  };
+  const currentCycle = (window.historyPoints || []).filter((point) => (
+    point.resetsAt === window.resetsAt && Date.parse(point.observedAt) <= now
+  ));
+  const first = currentCycle[0];
+  const last = currentCycle.at(-1);
+  const hours = first && last ? (Date.parse(last.observedAt) - Date.parse(first.observedAt)) / 3_600_000 : 0;
+  const delta = first && last ? finite(last.usedPercent) - finite(first.usedPercent) : 0;
+  const burnPercentPerHour = hours >= 0.25 && delta >= 0 ? delta / hours : null;
+  const remainingHours = Math.max(0, (reset - now) / 3_600_000);
+  const projectedFinalPercent = burnPercentPerHour != null
+    ? usedPercent + burnPercentPerHour * remainingHours
+    : usedPercent / elapsedFraction;
+  const projectedExhaustAt = burnPercentPerHour > 0 && usedPercent < 100
+    ? new Date(now + (100 - usedPercent) / burnPercentPerHour * 3_600_000).toISOString()
+    : null;
+  return {
+    elapsedFraction,
+    projectedFinalPercent,
+    burnPercentPerHour,
+    projectedExhaustAt,
+  };
+}
+
+function decisionSignals(provider) {
+  const signals = [];
+  const exhaustedWindow = [...provider.windows].filter((window) => !window.stale && finite(window.usedPercent) >= 99)
+    .sort((left, right) => (right.windowSeconds || 0) - (left.windowSeconds || 0))[0];
+  const paceWindow = [...provider.windows].filter((window) => !window.stale && window.pace?.projectedFinalPercent != null)
+    .sort((left, right) => (right.windowSeconds || 0) - (left.windowSeconds || 0))[0];
+  if (exhaustedWindow) {
+    signals.push({ code: 'exhausted', tone: 'warning', windowId: exhaustedWindow.id, windowLabel: exhaustedWindow.label,
+      usedPercent: finite(exhaustedWindow.usedPercent), ...(exhaustedWindow.pace || {}) });
+  } else if (paceWindow?.pace.elapsedFraction >= 0.1 && paceWindow.pace.projectedFinalPercent >= 110) {
+    signals.push({ code: 'pace-high', tone: 'warning', windowId: paceWindow.id, windowLabel: paceWindow.label,
+      usedPercent: finite(paceWindow.usedPercent), ...paceWindow.pace });
+  } else if (paceWindow?.pace.elapsedFraction >= 0.5 && paceWindow.pace.projectedFinalPercent <= 45) {
+    signals.push({ code: 'pace-low', tone: 'neutral', windowId: paceWindow.id, windowLabel: paceWindow.label,
+      usedPercent: finite(paceWindow.usedPercent), ...paceWindow.pace });
+  }
+  if (provider.economics.valueRatio != null && provider.economics.valueRatio >= 1.5) {
+    signals.push({ code: 'value-high', tone: 'positive', valueRatio: provider.economics.valueRatio,
+      apiEquivalentUsd: provider.economics.apiEquivalentUsd, monthlyPrice: provider.subscription.monthlyPrice });
+  } else if (provider.economics.valueRatio != null && provider.economics.valueRatio < 0.75) {
+    signals.push({ code: 'value-low', tone: 'neutral', valueRatio: provider.economics.valueRatio,
+      apiEquivalentUsd: provider.economics.apiEquivalentUsd, monthlyPrice: provider.subscription.monthlyPrice });
+  }
+  if (provider.modelRows.length > 1 && provider.modelRows[0].share >= 0.75) {
+    signals.push({ code: 'model-concentration', tone: 'info', model: provider.modelRows[0].label,
+      share: provider.modelRows[0].share });
+  }
+  return signals;
+}
+
 export function buildSubscriptionInsights(snapshot, limits, {
   now = Date.parse(snapshot?.generatedAt) || Date.now(), settings = null,
 } = {}) {
@@ -152,26 +249,51 @@ export function buildSubscriptionInsights(snapshot, limits, {
     }));
     const modelRows = groupModels(buckets);
     const modelRates = modelRows.filter((model) => model.effectiveCostMicrosPerToken);
-    const windows = (provider.windows || []).map((window) => enrichWindow(
+    const currentWindows = (provider.windows || []).map((window) => enrichWindow(
       window,
       buckets,
       Number.isFinite(sourceHistoryStart) ? sourceHistoryStart : null,
       modelRates,
       now,
     ));
-    const primaryWindow = [...windows]
-      .filter((window) => window.estimatedCapacityTokens != null && window.windowSeconds)
-      .sort((left, right) => right.windowSeconds - left.windowSeconds)[0] || null;
     const subscription = settings?.providers?.[provider.id] || {};
     const price = finite(subscription.subscriptionPrice);
     const monthlyPrice = price == null ? null : subscription.billingCycle === 'yearly' ? price / 12 : price;
-    return {
+    const history = historyWindows(limits?.history, provider.id, buckets);
+    const baseWindows = currentWindows.length ? currentWindows : [...history.values()].map((points) => {
+      const latest = points.at(-1);
+      return {
+        ...latest,
+        stale: true,
+        localTotals: latest?.localTotals || sumBuckets([]),
+        modelRows: [], modelScenarios: [], estimatedCapacityTokens: null,
+        estimatedRemainingTokens: null, monthlyEquivalentTokens: null,
+      };
+    });
+    const enrichedWindows = baseWindows.map((window) => {
+      const historyPoints = history.get(window.id) || [];
+      const value = { ...window, historyPoints };
+      return { ...value, pace: value.stale ? null : windowPace(value, now) };
+    });
+    const primaryWindow = [...enrichedWindows]
+      .filter((window) => window.estimatedCapacityTokens != null && window.windowSeconds)
+      .sort((left, right) => right.windowSeconds - left.windowSeconds)[0] || null;
+    const economics = {
+      apiEquivalentUsd: recentTotals.costMicros / 1_000_000,
+      costPerMillionTokens: monthlyPrice != null && recentTotals.totalTokens > 0
+        ? monthlyPrice / recentTotals.totalTokens * 1_000_000
+        : null,
+      valueRatio: monthlyPrice > 0 && (subscription.subscriptionCurrency || 'usd') === 'usd'
+        ? (recentTotals.costMicros / 1_000_000) / monthlyPrice
+        : null,
+    };
+    const value = {
       ...provider,
       sources: [...sources],
       lifetimeTotals,
       recentTotals,
       modelRows,
-      windows,
+      windows: enrichedWindows,
       primaryWindow,
       hasLocalUsage: lifetimeTotals.totalTokens > 0,
       subscription: {
@@ -181,7 +303,9 @@ export function buildSubscriptionInsights(snapshot, limits, {
         billingCycle: subscription.billingCycle === 'yearly' ? 'yearly' : 'monthly',
         renewsAt: subscription.renewsAt || null,
       },
+      economics,
     };
+    return { ...value, decisionSignals: decisionSignals(value) };
   });
   const spendByCurrency = providers.reduce((totals, provider) => {
     const price = provider.subscription.monthlyPrice;
@@ -197,6 +321,13 @@ export function buildSubscriptionInsights(snapshot, limits, {
         .filter((window) => window.estimatedCapacityTokens != null).length,
       spendByCurrency,
       pricedSubscriptions: providers.filter((provider) => provider.subscription.monthlyPrice != null).length,
+      recentTokens: providers.reduce((sum, provider) => sum + provider.recentTotals.totalTokens, 0),
+      apiEquivalentUsd: providers.reduce((sum, provider) => sum + provider.economics.apiEquivalentUsd, 0),
+      portfolioValueRatio: spendByCurrency.usd > 0
+        ? providers.filter((provider) => provider.subscription.currency === 'usd' && provider.subscription.monthlyPrice > 0)
+          .reduce((sum, provider) => sum + provider.economics.apiEquivalentUsd, 0) / spendByCurrency.usd
+        : null,
+      historyObservations: limits?.history?.observations?.length || 0,
     },
   };
 }

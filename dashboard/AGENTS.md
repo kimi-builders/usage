@@ -16,3 +16,7 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - ChatGPT Pro, Claude Max, and similar subscriptions must not be described as having an official fixed Token cap when the provider only exposes utilization. Capacity and model-only numbers are estimates, with their window, sample quality, assumptions, and uncertainty visible.
 - Actual subscription spend is user-entered. Never guess a user's plan price, discounts, tax, currency, or renewal date.
 - Future recommendations must answer “what did this cost, what capacity/value did it produce, and what should I change?” with traceable evidence; they must not mutate subscriptions or credentials automatically.
+- Quota history is backend-owned, sanitized, and separate from Agent usage logs. Persist only quota window facts needed for longitudinal analysis; never persist account identity, credential/source paths, raw responses, or provider errors in that history file.
+- Keep quota history bounded: recent points may be 15-minute resolution, medium-term points hourly, and older points daily. A cached page read must not append a duplicate observation.
+- Pace and value signals must identify their evidence window. Stale history may remain visible after a provider error, but must not produce a current-cycle forecast or prescriptive recommendation.
+- Never compare CNY and USD subscription value by silently inventing an exchange rate. Show currencies separately until the user supplies or the product versions an explicit rate source.

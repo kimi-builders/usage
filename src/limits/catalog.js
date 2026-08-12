@@ -134,7 +134,9 @@ export function normalizeLimitSettings(value) {
     const authMode = provider.authModes.includes(candidate?.authMode)
       ? candidate.authMode
       : provider.defaultAuthMode;
-    const subscriptionPrice = Number(candidate?.subscriptionPrice);
+    const subscriptionPrice = candidate?.subscriptionPrice == null || candidate.subscriptionPrice === ''
+      ? Number.NaN
+      : Number(candidate.subscriptionPrice);
     providers[provider.id] = {
       enabled: provider.quotaSupport !== 'unavailable' && candidate?.enabled === true,
       authMode,
@@ -142,7 +144,7 @@ export function normalizeLimitSettings(value) {
       customPath: safeText(candidate?.customPath, 1_024),
       workspaceId: safeText(candidate?.workspaceId, 240),
       site: candidate?.site === 'china' ? 'china' : 'international',
-      subscriptionPrice: Number.isFinite(subscriptionPrice) && subscriptionPrice >= 0 && subscriptionPrice <= 1_000_000
+      subscriptionPrice: Number.isFinite(subscriptionPrice) && subscriptionPrice > 0 && subscriptionPrice <= 1_000_000
         ? Math.round(subscriptionPrice * 100) / 100
         : null,
       subscriptionCurrency: candidate?.subscriptionCurrency === 'cny' ? 'cny' : 'usd',

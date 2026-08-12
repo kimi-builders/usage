@@ -12,6 +12,7 @@ not require a Kimi Builders account and does not require network access.
 | Sync payload | Protocol-v2 aggregates and diagnostic client metadata | Explicit `sync`, or an explicitly installed background schedule |
 | Public community | Period aggregates selected by the account owner | Off |
 | Provider quota check | Account limit/reset metadata for enabled providers | Off |
+| Local quota history | Sanitized quota percentages and reset windows | Only after an enabled provider is refreshed |
 
 The local snapshot may contain project basenames because they are useful for
 private analysis. A project basename is removed from the sync payload unless the
@@ -37,6 +38,17 @@ quota-store field required to report whether a supported app is signed in; it
 does not read conversation content. Windsurf detection and quota display read
 only the `windsurf.settings.cachedPlanInfo` record from its local state database.
 
+Successful subscription-limit refreshes keep a separate local history file at
+`~/.kimi-builders/usage/subscription-history.json` (or the configured Collector
+directory). It contains only observation time, provider ID/label/plan, quota
+window ID/label, used/remaining percentages, reset time, window duration, and
+provider-reported numeric limit/unit fields. It deliberately excludes account
+identity, credential/source paths, errors, raw provider responses, and local
+Token records. The file is written with owner-only permissions where supported.
+Observations are retained for at most 400 days and compacted to 15-minute,
+hourly, then daily resolution as they age. Deleting this file resets only quota
+history; it does not revoke provider logins or delete Agent usage logs.
+
 Session IDs are transformed with HMAC-SHA-256 and a random installation-local
 salt. Different installations cannot correlate the resulting hashes.
 
@@ -54,6 +66,10 @@ removing the scheduler is local; install/restart may immediately trigger its fir
 run. The local dashboard can separately contact a provider only
 after its subscription-limit integration is enabled. See [`NETWORK.md`](NETWORK.md)
 for the endpoint inventory.
+
+Quota history and the Token correlation/decision calculations derived from it
+stay local. They are not included in CSV/JSON usage exports, share posters, or
+community sync.
 
 ## Public visibility
 

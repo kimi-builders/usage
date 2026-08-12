@@ -73,3 +73,73 @@ test('keeps actual subscription spend separate from API-equivalent value', () =>
   assert.deepEqual(result.summary.spendByCurrency, { usd: 200, cny: 0 });
   assert.equal(result.summary.pricedSubscriptions, 1);
 });
+
+test('links sanitized quota history to local tokens and calculates current-cycle pace', () => {
+  const value = structuredClone(limits);
+  value.providers[0].windows[0].usedPercent = 30;
+  value.providers[0].windows[0].remainingPercent = 70;
+  value.history = { observations: [
+    { observedAt: '2026-08-11T10:00:00.000Z', providers: [{ id: 'codex', windows: [{
+      id: 'primary', label: '5 小时', usedPercent: 10, remainingPercent: 90,
+      resetsAt: '2026-08-11T14:00:00.000Z', windowSeconds: 18_000,
+    }] }] },
+    { observedAt: '2026-08-11T12:00:00.000Z', providers: [{ id: 'codex', windows: [{
+      id: 'primary', label: '5 小时', usedPercent: 30, remainingPercent: 70,
+      resetsAt: '2026-08-11T14:00:00.000Z', windowSeconds: 18_000,
+    }] }] },
+  ] };
+  const provider = buildSubscriptionInsights(snapshot, value).providers[0];
+  assert.equal(provider.windows[0].historyPoints.length, 2);
+  assert.equal(provider.windows[0].historyPoints[1].localTotals.totalTokens, 1_500);
+  assert.equal(provider.windows[0].pace.burnPercentPerHour, 10);
+  assert.equal(provider.windows[0].pace.projectedFinalPercent, 50);
+});
+
+test('builds traceable pace, value, and model-concentration signals', () => {
+  const value = structuredClone(limits);
+  value.providers[0].windows[0].usedPercent = 90;
+  value.providers[0].windows[0].remainingPercent = 10;
+  const settings = { providers: { codex: {
+    subscriptionPrice: 0.01, subscriptionCurrency: 'usd', billingCycle: 'monthly',
+  } } };
+  const result = buildSubscriptionInsights(snapshot, value, { settings });
+  const codes = result.providers[0].decisionSignals.map((signal) => signal.code);
+  assert.ok(codes.includes('pace-high'));
+  assert.ok(codes.includes('value-high'));
+  assert.ok(codes.includes('model-concentration'));
+  assert.equal(result.summary.historyObservations, 0);
+  assert.ok(result.providers[0].economics.costPerMillionTokens > 0);
+});
+
+test('does not turn an unset subscription price into a zero-dollar plan', () => {
+  const result = buildSubscriptionInsights(snapshot, limits, { settings: { providers: { codex: { subscriptionPrice: null } } } });
+  assert.equal(result.providers[0].subscription.monthlyPrice, null);
+  assert.equal(result.summary.pricedSubscriptions, 0);
+});
+
+test('reports an exhausted window as a fact instead of a future-risk prediction', () => {
+  const value = structuredClone(limits);
+  value.providers[0].windows[0].usedPercent = 100;
+  value.providers[0].windows[0].remainingPercent = 0;
+  const codes = buildSubscriptionInsights(snapshot, value).providers[0].decisionSignals.map((signal) => signal.code);
+  assert.ok(codes.includes('exhausted'));
+  assert.equal(codes.includes('pace-high'), false);
+});
+
+test('keeps historical quota charts available when the current provider request fails', () => {
+  const value = {
+    providers: [{ id: 'codex', label: 'Codex', status: 'error', windows: [] }],
+    history: { observations: [{
+      observedAt: '2026-08-11T11:00:00.000Z',
+      providers: [{ id: 'codex', windows: [{
+        id: 'primary', label: '5 小时', usedPercent: 20, remainingPercent: 80,
+        resetsAt: '2026-08-11T14:00:00.000Z', windowSeconds: 18_000,
+      }] }],
+    }] },
+  };
+  const provider = buildSubscriptionInsights(snapshot, value).providers[0];
+  assert.equal(provider.windows[0].stale, true);
+  assert.equal(provider.windows[0].historyPoints.length, 1);
+  assert.equal(provider.windows[0].pace, null);
+  assert.equal(provider.decisionSignals.some((signal) => signal.code === 'pace-high'), false);
+});

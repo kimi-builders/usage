@@ -45,6 +45,7 @@ test('normalizes quota settings without accepting unknown providers or auth mode
 });
 
 test('normalizes optional subscription spend without inventing prices', () => {
+  assert.equal(normalizeLimitSettings({}).providers.codex.subscriptionPrice, null);
   const value = normalizeLimitSettings({ providers: {
     codex: {
       enabled: true, subscriptionPrice: 200.129, subscriptionCurrency: 'usd',
@@ -259,6 +260,7 @@ test('parses JetBrains local XML without network access', () => {
 
 test('subscription limit service isolates provider failures and does not expose credentials', async () => {
   clearLimitCache();
+  let recorded = null;
   const config = { subscriptionLimits: {
     enabled: true, refreshMinutes: 10,
     providerOrder: ['warp', 'codex'],
@@ -267,6 +269,8 @@ test('subscription limit service isolates provider failures and does not expose 
   const result = await loadSubscriptionLimits({
     force: true,
     config,
+    historyLoader: () => ({ schemaVersion: 1, observations: [] }),
+    historyRecorder: (snapshot) => { recorded = snapshot; },
     environment: { SECRET_WARP: 'super-secret-value' },
     fetchers: {
       codex: async () => ({ id: 'codex', label: 'Codex', status: 'ok', windows: [], updatedAt: NOW.toISOString() }),
@@ -278,5 +282,7 @@ test('subscription limit service isolates provider failures and does not expose 
   assert.equal(result.providers[1].id, 'codex');
   assert.equal(result.providers[1].status, 'ok');
   assert.equal(result.summary.needsAttention, 1);
+  assert.equal(result.history.observations.length, 0);
+  assert.equal(recorded.providers[1].id, 'codex');
   assert.equal(JSON.stringify(result).includes('super-secret-value'), false);
 });

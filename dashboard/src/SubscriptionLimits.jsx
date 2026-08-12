@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight, BarChart3, Check, ChevronDown, ChevronRight, CircleAlert, Code2,
-  ExternalLink, GripVertical, Info, KeyRound, RefreshCw, Search, Settings2,
-  ShieldCheck, Sparkles, Terminal, X,
+  ExternalLink, Gauge, GripVertical, Info, KeyRound, RefreshCw, Search, Settings2,
+  ShieldCheck, Sparkles, Terminal, TrendingUp, X,
 } from 'lucide-react';
 import { compact } from './format.js';
 import { buildSubscriptionInsights } from './subscription-insights.js';
@@ -140,6 +140,111 @@ function ModelScenario({ provider, zh }) {
   </section>;
 }
 
+function percentNumber(value) {
+  return value == null || !Number.isFinite(value) ? '—' : `${value.toFixed(value % 1 ? 1 : 0)}%`;
+}
+
+function ratioText(value) {
+  return value == null || !Number.isFinite(value) ? '—' : `${value.toFixed(value >= 10 ? 1 : 2)}×`;
+}
+
+function shortObservationTime(value, zh) {
+  return new Date(value).toLocaleString(zh ? 'zh-CN' : 'en-US', {
+    month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+}
+
+function QuotaHistory({ provider, zh }) {
+  const available = useMemo(
+    () => provider.windows.filter((window) => window.historyPoints.length),
+    [provider.windows],
+  );
+  const availableKey = available.map((window) => window.id).join('\u0000');
+  const [windowId, setWindowId] = useState(available[0]?.id || '');
+  useEffect(() => {
+    if (!available.some((window) => window.id === windowId)) setWindowId(available[0]?.id || '');
+  }, [available, availableKey, windowId]);
+  const selected = available.find((window) => window.id === windowId) || available[0];
+  const points = selected?.historyPoints || [];
+  const stride = Math.max(1, Math.ceil(points.length / 180));
+  const plotted = points.filter((_, index) => index % stride === 0 || index === points.length - 1);
+  const firstTime = Date.parse(plotted[0]?.observedAt);
+  const lastTime = Date.parse(plotted.at(-1)?.observedAt);
+  const span = Math.max(1, lastTime - firstTime);
+  const coords = plotted.map((point) => ({
+    ...point,
+    x: 34 + (Date.parse(point.observedAt) - firstTime) / span * 572,
+    y: 148 - Math.max(0, Math.min(100, Number(point.usedPercent) || 0)) * 1.14,
+  }));
+  const path = coords.map((point, index) => `${index ? 'L' : 'M'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
+  return <section className="quota-history-card">
+    <header><div><span>{zh ? '额度历史' : 'QUOTA HISTORY'}</span><b>{provider.label} · {selected?.label || (zh ? '等待首个样本' : 'Waiting for first sample')}</b></div>{available.length > 1 ? <label><span className="visually-hidden">{zh ? '选择额度窗口' : 'Choose quota window'}</span><select value={selected?.id || ''} onChange={(event) => setWindowId(event.target.value)}>{available.map((window) => <option value={window.id} key={window.id}>{window.label}</option>)}</select></label> : null}</header>
+    {points.length ? <>
+      <div className="quota-history-chart">
+        <svg viewBox="0 0 640 176" role="img" aria-label={zh ? `${selected.label}额度消耗历史` : `${selected.label} quota usage history`}>
+          {[0, 25, 50, 75, 100].map((value) => <g key={value}><line x1="34" x2="606" y1={148 - value * 1.14} y2={148 - value * 1.14}/><text x="4" y={152 - value * 1.14}>{value}%</text></g>)}
+          {coords.length > 1 ? <path d={path}/> : null}
+          {coords.map((point) => <circle cx={point.x} cy={point.y} r={coords.length === 1 ? 5 : 3.5} key={point.observedAt}><title>{shortObservationTime(point.observedAt, zh)} · {percentNumber(point.usedPercent)} {zh ? '已用' : 'used'} · {compact(point.localTotals.totalTokens)} local tokens</title></circle>)}
+        </svg>
+      </div>
+      <footer><span>{shortObservationTime(points[0].observedAt, zh)}</span><strong>{points.length} {zh ? '个本机快照' : 'local snapshots'}</strong><span>{shortObservationTime(points.at(-1).observedAt, zh)}</span></footer>
+    </> : <div className="quota-history-empty"><TrendingUp size={22}/><div><b>{zh ? '历史从这次刷新开始积累' : 'History starts with this refresh'}</b><p>{zh ? '以后每次额度刷新都会在本机留下脱敏快照；有两个以上样本后即可显示消耗速度。' : 'Each quota refresh stores a sanitized local point. Burn rate appears after at least two samples.'}</p></div></div>}
+  </section>;
+}
+
+function signalCopy(signal, zh) {
+  if (signal.code === 'exhausted') return {
+    title: zh ? '本周期额度已经用尽' : 'Quota is exhausted this cycle',
+    body: zh
+      ? `${signal.windowLabel}已消耗 ${percentNumber(signal.usedPercent)}，需等待重置或使用其他可用订阅；这是供应商返回的当前额度事实。`
+      : `${signal.windowLabel} is ${percentNumber(signal.usedPercent)} used. Wait for reset or use another available subscription; this is the provider-reported quota fact.`,
+  };
+  if (signal.code === 'pace-high') return {
+    title: zh ? '按当前节奏可能提前触顶' : 'May hit the limit early',
+    body: zh
+      ? `${signal.windowLabel}已用 ${percentNumber(signal.usedPercent)}，时间已走过 ${percentNumber(signal.elapsedFraction * 100)}，照此节奏重置前约为 ${percentNumber(signal.projectedFinalPercent)}。`
+      : `${signal.windowLabel} is ${percentNumber(signal.usedPercent)} used after ${percentNumber(signal.elapsedFraction * 100)} of its window; current pace reaches ~${percentNumber(signal.projectedFinalPercent)}.`,
+  };
+  if (signal.code === 'pace-low') return {
+    title: zh ? '本周期额度较为充裕' : 'Quota is underused this cycle',
+    body: zh
+      ? `${signal.windowLabel}时间已走过 ${percentNumber(signal.elapsedFraction * 100)}，按当前节奏最终约用 ${percentNumber(signal.projectedFinalPercent)}。可继续观察到续费日前再决定。`
+      : `${percentNumber(signal.elapsedFraction * 100)} of ${signal.windowLabel} has elapsed; current pace ends near ${percentNumber(signal.projectedFinalPercent)}. Recheck near renewal.`,
+  };
+  if (signal.code === 'value-high') return {
+    title: zh ? '本机 API 等价价值高于月费' : 'Local API-equivalent value exceeds price',
+    body: zh ? `近 30 天标准 API 等价价值约 $${signal.apiEquivalentUsd.toFixed(2)}，是所填月均订阅支出的 ${ratioText(signal.valueRatio)}。这不是实际节省金额。` : `30-day standard API-equivalent value is $${signal.apiEquivalentUsd.toFixed(2)}, ${ratioText(signal.valueRatio)} the entered monthly price. This is not realized savings.`,
+  };
+  if (signal.code === 'value-low') return {
+    title: zh ? '当前本机使用价值偏低' : 'Current local value is below price',
+    body: zh ? `近 30 天本机 API 等价价值约为月费的 ${ratioText(signal.valueRatio)}；网页端和其他设备用量不在本结论中。` : `Local 30-day API-equivalent value is ${ratioText(signal.valueRatio)} the monthly price; web and other-device usage is excluded.`,
+  };
+  return {
+    title: zh ? `Token 高度集中在 ${signal.model}` : `Tokens concentrate on ${signal.model}`,
+    body: zh ? `${signal.model} 占该订阅本机累计 Token 的 ${(signal.share * 100).toFixed(1)}%。可用上方单模型情景判断套餐是否与主力模型匹配。` : `${signal.model} represents ${(signal.share * 100).toFixed(1)}% of this subscription's local tokens. Use the model-only scenario to assess fit.`,
+  };
+}
+
+function SubscriptionDecisionPanel({ provider, zh }) {
+  const exhausted = [...provider.windows].filter((window) => !window.stale && window.usedPercent != null && Number(window.usedPercent) >= 99)
+    .sort((left, right) => (right.windowSeconds || 0) - (left.windowSeconds || 0))[0];
+  const pace = [...provider.windows].filter((window) => window.pace?.projectedFinalPercent != null)
+    .sort((left, right) => (right.windowSeconds || 0) - (left.windowSeconds || 0))[0];
+  return <section className="subscription-decision-panel">
+    <header><div><span>{zh ? '订阅决策' : 'SUBSCRIPTION DECISIONS'}</span><h2>{zh ? `${provider.label} 的用量与价值观察` : `${provider.label} usage and value`}</h2><p>{zh ? '只基于本机日志、官方额度窗口和你填写的实际价格；每条观察都显示依据。' : 'Based only on local logs, provider quota windows, and your entered price; every observation shows its evidence.'}</p></div><small><ShieldCheck size={12}/>{zh ? '只读建议' : 'Read-only advice'}</small></header>
+    <div className="subscription-economics-strip">
+      <article><span>{zh ? '近 30 天 TOKEN' : '30D TOKENS'}</span><strong>{compact(provider.recentTotals.totalTokens)}</strong><small>{provider.recentTotals.requestCount.toLocaleString()} {zh ? '次请求' : 'requests'}</small></article>
+      <article><span>{zh ? '实际成本 / 百万 TOKEN' : 'ACTUAL COST / 1M'}</span><strong>{provider.economics.costPerMillionTokens == null ? '—' : subscriptionMoney(provider.economics.costPerMillionTokens, provider.subscription.currency)}</strong><small>{zh ? '按所填月均订阅支出' : 'from entered monthly spend'}</small></article>
+      <article><span>{zh ? 'API 等价价值比' : 'API-EQUIVALENT RATIO'}</span><strong>{ratioText(provider.economics.valueRatio)}</strong><small>{provider.subscription.currency === 'cny' ? (zh ? '人民币未自动换汇' : 'no automatic FX') : (zh ? '等价价值 ÷ 月均支出' : 'equivalent value ÷ spend')}</small></article>
+      <article><span>{zh ? '当前周期预测' : 'CURRENT PACE'}</span><strong>{exhausted ? (zh ? '已触顶' : 'EXHAUSTED') : pace ? percentNumber(pace.pace.projectedFinalPercent) : '—'}</strong><small>{exhausted ? `${exhausted.label} · ${zh ? '供应商额度事实' : 'provider quota fact'}` : pace ? `${pace.label} · ${zh ? '重置时预计' : 'at reset'}` : (zh ? '等待可比较窗口' : 'awaiting comparable window')}</small></article>
+    </div>
+    <div className="subscription-decision-grid">
+      <QuotaHistory provider={provider} zh={zh}/>
+      <section className="subscription-signals"><header><Gauge size={15}/><div><b>{zh ? '本机观察' : 'LOCAL OBSERVATIONS'}</b><span>{zh ? '提示不是账单结论，也不会自动改套餐' : 'Evidence, not billing conclusions or automatic changes'}</span></div></header><div>{provider.decisionSignals.length ? provider.decisionSignals.map((signal) => { const copy = signalCopy(signal, zh); return <article data-tone={signal.tone} key={signal.code}><i/><div><b>{copy.title}</b><p>{copy.body}</p></div></article>; }) : <article data-tone="positive"><i/><div><b>{zh ? '暂未发现明显异常' : 'No obvious issue yet'}</b><p>{zh ? '当前样本中没有明显的触顶、闲置、价值偏低或模型过度集中信号；继续积累历史后判断会更稳定。' : 'No clear limit, underuse, low-value, or concentration signal yet. More history will improve confidence.'}</p></div></article>}</div></section>
+    </div>
+  </section>;
+}
+
 function ProviderCard({ provider, now, zh, onSettings }) {
   const tone = PROVIDER_TONES[provider.id] || 'blue';
   if (provider.status === 'error') return <article className="limit-card limit-card--error">
@@ -202,6 +307,7 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
     <div className="limit-card-stage" id="subscription-limit-panel" role="tabpanel">{active ? <ProviderCard provider={active} now={now} zh={zh} onSettings={onSettings}/> : <div className="limit-card-empty">{zh ? '没有已启用的供应商' : 'No providers enabled'}</div>}</div>
     <footer className="limits-privacy"><ShieldCheck size={13}/><span>{zh ? '凭据只在本地服务进程使用；Token 估算只读取本机统计，不进入导出文件或社区同步。' : 'Credentials stay in the local server process; token estimates use local statistics only and never enter exports or community sync.'}</span>{settings?.refreshMinutes ? <small>{zh ? `额度缓存 ${settings.refreshMinutes} 分钟` : `${settings.refreshMinutes}m quota cache`}</small> : null}</footer>
     </section>
+    {active ? <SubscriptionDecisionPanel provider={active} zh={zh}/> : null}
     <section className="subscription-method-note"><Info size={16}/><div><b>{zh ? '为什么是“推算容量”，不是“官方 Token 上限”？' : 'Why “estimated capacity” instead of an official token cap?'}</b><p>{zh ? 'ChatGPT Pro、Claude Max 等订阅通常只返回额度消耗百分比，并不公开一个固定 Token 上限。本工具把同一额度时间窗内的本机 Token 与官方消耗比例对应，反推当前工作方式下的大致容量；“只用某模型”再按版本化的标准 API 等价价格换算。账号在其他设备或网页端的用量、供应商内部权重和样本不足都会影响结果。' : 'Subscriptions such as ChatGPT Pro and Claude Max usually expose utilization, not a fixed token cap. We correlate local tokens in the same window with official utilization, then use versioned standard API-equivalent pricing for model-only scenarios. Other devices, web usage, provider weights, and limited samples can change the result.'}</p></div></section>
   </section>;
 }

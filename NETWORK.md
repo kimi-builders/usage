@@ -44,6 +44,11 @@ responses. Its Token analysis stays offline. Subscription-limit checks are
 separate, disabled by default, and contact only the provider explicitly enabled
 in local settings:
 
+Quota-history recording, Token-to-quota correlation, pace forecasts, and
+subscription-value observations are local computations and add no network
+destinations. Cached dashboard reads do not manufacture duplicate history
+points; only a fresh provider refresh can append a sanitized observation.
+
 - Codex: `https://chatgpt.com/backend-api/wham/usage` and the optional
   `wham/rate-limit-reset-credits` companion endpoint;
 - Claude Code: `https://api.anthropic.com/api/oauth/usage`;
