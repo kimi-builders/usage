@@ -43,7 +43,7 @@ function numeric(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function usageWindow({ id, label, used, remaining, total }) {
+function usageWindow({ id, label, used, remaining, total, unit }) {
   const limit = numeric(total);
   let usedValue = numeric(used);
   const remainingValue = numeric(remaining);
@@ -53,7 +53,7 @@ function usageWindow({ id, label, used, remaining, total }) {
   const usedPercent = asPercent(safeUsed / limit * 100, 0);
   return {
     id, label, usedPercent, remainingPercent: 100 - usedPercent,
-    resetsAt: null, value: safeUsed, limit,
+    resetsAt: null, value: safeUsed, limit, unit,
   };
 }
 
@@ -90,11 +90,12 @@ export function parseWindsurfPlan(value, { now = new Date(), source = 'Windsurf 
     windows.push(usageWindow({
       id: 'messages', label: '消息额度', used: usage.usedMessages ?? usage.used_messages,
       remaining: usage.remainingMessages ?? usage.remaining_messages, total: usage.messages,
+      unit: 'messages',
     }));
     windows.push(usageWindow({
       id: 'flow-actions', label: 'Flow Actions', used: usage.usedFlowActions ?? usage.used_flow_actions,
       remaining: usage.remainingFlowActions ?? usage.remaining_flow_actions,
-      total: usage.flowActions ?? usage.flow_actions,
+      total: usage.flowActions ?? usage.flow_actions, unit: 'actions',
     }));
   }
   const available = windows.filter(Boolean);

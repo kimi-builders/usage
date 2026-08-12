@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  collector:
+    name: Collector · ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, node: 20, label: Linux · Node 20 compatibility }
+          - { os: ubuntu-latest, node: 22, label: Linux · Node 22 LTS }
+          - { os: ubuntu-latest, node: 24, label: Linux · Node 24 LTS }
+          - { os: macos-latest, node: 22, label: macOS · Node 22 LTS }
+          - { os: macos-latest, node: 24, label: macOS · Node 24 LTS }
+          - { os: windows-latest, node: 22, label: Windows · Node 22 LTS }
+          - { os: windows-latest, node: 24, label: Windows · Node 24 LTS }
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Node.js
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - name: Install Collector package
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Prepare sanitized test report
+        run: node -e "require('node:fs').mkdirSync('reports',{recursive:true})"
+      - name: Run Collector and Provider contracts
+        run: npm test -- --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/collector.xml
+      - name: Retain failed test report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: collector-${{ matrix.os }}-node-${{ matrix.node }}
+          path: reports/collector.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  dashboard-and-package:
+    name: Dashboard and package audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Node.js 24 LTS
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Install Collector package
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install Dashboard dependencies
+        run: npm ci --prefix dashboard --ignore-scripts --no-audit --no-fund
+      - name: Test Dashboard
+        run: npm run dashboard:test
+      - name: Build Dashboard
+        run: npm run dashboard:build
+      - name: Check Markdown links
+        run: npm run check:markdown
+      - name: Audit npm package contents
+        run: npm run audit:package
+

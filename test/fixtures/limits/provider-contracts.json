@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "sanitized": true,
+  "lastReviewedAt": "2026-08-12",
+  "providers": [
+    {
+      "id": "codex",
+      "upstreamShape": "wham usage",
+      "input": {
+        "plan_type": "pro",
+        "rate_limit": {
+          "primary_window": { "used_percent": 27, "reset_at": 1786500000, "limit_window_seconds": 18000 },
+          "secondary_window": { "used_percent": 5, "reset_at": 1787000000, "limit_window_seconds": 604800 }
+        },
+        "individual_limit": { "limit": 100, "used": 18, "reset_at": 1789000000 },
+        "additional_rate_limits": [{
+          "limit_name": "Codex Spark Weekly",
+          "rate_limit": { "secondary_window": { "used_percent": 0, "reset_at": 1787001000, "limit_window_seconds": 604800 } }
+        }],
+        "credits": { "balance": "12.5" }
+      },
+      "invalidInput": {},
+      "invalidBehavior": "empty",
+      "expected": { "status": "ok", "windowIds": ["primary", "secondary", "spend-control", "additional-0-secondary"], "remainingPercents": [73, 95, 82, 100] }
+    },
+    {
+      "id": "claude-code",
+      "upstreamShape": "OAuth usage",
+      "input": {
+        "five_hour": { "utilization": 27.5, "resets_at": "2026-08-12T16:00:00Z" },
+        "seven_day": { "utilization": 8, "resets_at": "2026-08-18T00:00:00Z" },
+        "limits": [{ "percent": 12, "resets_at": "2026-08-18T00:00:00Z", "scope": { "model": { "display_name": "Fable" } } }]
+      },
+      "invalidInput": {},
+      "invalidBehavior": "empty",
+      "expected": { "status": "ok", "windowIds": ["five_hour", "seven_day", "limit-0"], "remainingPercents": [72.5, 92, 88] }
+    },
+    {
+      "id": "kimi-code",
+      "upstreamShape": "coding usages",
+      "input": {
+        "usage": { "limit": "1000", "used": "300", "resetTime": "2026-08-18T12:00:00Z" },
+        "limits": [{ "window": { "duration": 5, "timeUnit": "TIME_UNIT_HOUR" }, "detail": { "limit": "100", "remaining": "80", "reset_at": "2026-08-12T15:00:00Z" } }]
+      },
+      "invalidInput": {},
+      "invalidBehavior": "empty",
+      "expected": { "status": "ok", "windowIds": ["session", "weekly"], "remainingPercents": [80, 70] }
+    },
+    {
+      "id": "cursor",
+      "upstreamShape": "usage summary",
+      "input": {
+        "billingCycleEnd": "2026-09-01T00:00:00Z",
+        "membershipType": "free",
+        "individualUsage": {
+          "plan": { "enabled": true, "used": 7384, "limit": 10000, "totalPercentUsed": 73.84 },
+          "onDemand": { "enabled": true, "used": 250, "limit": 2000 }
+        }
+      },
+      "invalidInput": {},
+      "invalidBehavior": "empty",
+      "expected": { "status": "ok", "windowIds": ["plan", "on-demand"], "remainingPercents": [26.16, 87.5] }
+    },
+    {
+      "id": "copilot",
+      "upstreamShape": "copilot internal user quota",
+      "input": {
+        "copilot_plan": "free",
+        "quota_reset_date": "2026-09-01T00:00:00Z",
+        "quota_snapshots": {
+          "premium_interactions": { "entitlement": 300, "remaining": 120, "percent_remaining": 40 },
+          "chat": { "unlimited": true, "entitlement": 0, "remaining": 0 }
+        }
+      },
+      "invalidInput": {},
+      "invalidBehavior": "empty",
+      "expected": { "status": "ok", "windowIds": ["premium"], "remainingPercents": [40] }
+    },
+    {
+      "id": "gemini-cli",
+      "upstreamShape": "Cloud Code user quota buckets",
+      "input": {
+        "buckets": [
+          { "modelId": "gemini-2.5-pro", "remainingFraction": 0.8, "resetTime": "2026-08-12T20:00:00Z" },
+          { "modelId": "gemini-2.5-pro", "remainingFraction": 0.45, "resetTime": "2026-08-12T18:00:00Z" },
+          { "modelId": "gemini-2.5-flash", "remainingFraction": 1 }
+        ]
+      },
+      "invalidInput": {},
+      "invalidBehavior": "throws",
+      "expected": { "status": "ok", "windowIds": ["gemini-2.5-flash", "gemini-2.5-pro"], "remainingPercents": [100, 45] }
+    },
+    {
+      "id": "antigravity",
+      "upstreamShape": "available models quota buckets",
+      "input": {
+        "buckets": [
+          { "modelId": "gemini-3-pro", "remainingFraction": 0.9, "resetTime": "2026-08-12T20:00:00Z" },
+          { "modelId": "gemini-3-flash", "remainingFraction": 0.62, "resetTime": "2026-08-12T18:00:00Z" },
+          { "modelId": "claude-sonnet-4-5", "remainingFraction": 0.74, "resetTime": "2026-08-12T20:00:00Z" },
+          { "modelId": "gpt-oss-120b", "remainingFraction": 0.41, "resetTime": "2026-08-12T17:00:00Z" }
+        ]
+      },
+      "invalidInput": {},
+      "invalidBehavior": "empty",
+      "expected": { "status": "ok", "windowIds": ["gemini", "claude-gpt"], "remainingPercents": [62, 41] }
+    },
+    {
+      "id": "opencode",
+      "upstreamShape": "workspace subscription server function",
+      "input": {
+        "data": {
+          "rollingUsage": { "usagePercent": 22, "resetInSec": 1800 },
+          "weeklyUsage": { "usagePercent": 41, "resetInSec": 7200 }
+        }
+      },
+      "invalidInput": {},
+      "invalidBehavior": "throws",
+      "expected": { "status": "ok", "windowIds": ["rolling", "weekly"], "remainingPercents": [78, 59] }
+    },
+    {
+      "id": "qoder",
+      "upstreamShape": "big model credits",
+      "input": {
+        "totalQuota": { "quotaSummary": { "usedValue": 20, "limitValue": 100, "remainingValue": 80, "unit": "credits" } },
+        "sharedQuota": { "quotaSummary": { "usedValue": 10, "limitValue": 50, "remainingValue": 40, "unit": "credits" } },
+        "nextResetAt": "2026-09-01T00:00:00Z"
+      },
+      "invalidInput": {},
+      "invalidBehavior": "throws",
+      "expected": { "status": "ok", "windowIds": ["credits"], "remainingPercents": [80] }
+    },
+    {
+      "id": "warp",
+      "upstreamShape": "GetRequestLimitInfo GraphQL",
+      "input": {
+        "data": { "user": { "user": {
+          "requestLimitInfo": { "isUnlimited": false, "nextRefreshTime": "2026-08-14T00:00:00Z", "requestLimit": 1500, "requestsUsedSinceLastRefresh": 684 },
+          "bonusGrants": [{ "requestCreditsGranted": 200, "requestCreditsRemaining": 50, "expiration": "2026-08-20T00:00:00Z" }],
+          "workspaces": []
+        } } }
+      },
+      "invalidInput": {},
+      "invalidBehavior": "throws",
+      "expected": { "status": "ok", "windowIds": ["credits", "bonus"], "remainingPercents": [54.4, 25] }
+    },
+    {
+      "id": "jetbrains-ai",
+      "upstreamShape": "AIAssistantQuotaManager2 XML",
+      "input": "<application><component name=\"AIAssistantQuotaManager2\"><option name=\"quotaInfo\" value=\"{&quot;type&quot;:&quot;FREE&quot;,&quot;current&quot;:&quot;12&quot;,&quot;maximum&quot;:&quot;100&quot;,&quot;tariffQuota&quot;:{&quot;available&quot;:&quot;88&quot;}}\"/><option name=\"nextRefill\" value=\"{&quot;next&quot;:&quot;2026-09-01T00:00:00Z&quot;}\"/></component></application>",
+      "invalidInput": "<application/>",
+      "invalidBehavior": "throws",
+      "expected": { "status": "ok", "windowIds": ["credits"], "remainingPercents": [88] }
+    },
+    {
+      "id": "windsurf",
+      "upstreamShape": "cachedPlanInfo local cache",
+      "input": {
+        "planName": "Free",
+        "quotaUsage": {
+          "dailyRemainingPercent": 72,
+          "weeklyRemainingPercent": 41,
+          "dailyResetAtUnix": 1786500000,
+          "weeklyResetAtUnix": 1787000000
+        }
+      },
+      "invalidInput": {},
+      "invalidBehavior": "throws",
+      "expected": { "status": "ok", "windowIds": ["daily", "weekly"], "remainingPercents": [72, 41] }
+    },
+    {
+      "id": "trae",
+      "upstreamShape": "unavailable",
+      "invalidBehavior": "unsupported",
+      "expected": { "status": "unavailable", "windowIds": [], "remainingPercents": [] }
+    }
+  ]
+}

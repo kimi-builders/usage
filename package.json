@@ -7,11 +7,14 @@
     "setup": "npm --prefix dashboard install --no-audit --no-fund",
     "dev": "node dashboard/scripts/dev.mjs",
     "test": "node --test",
+    "test:providers": "node --test test/provider-contract.test.js test/limits-http.test.js",
     "dashboard": "node bin/kbu-usage.js dashboard",
     "dashboard:dev": "node dashboard/scripts/dev.mjs",
     "dashboard:build": "npm --prefix dashboard run build",
     "dashboard:test": "npm --prefix dashboard run test:sites",
-    "release:check": "npm test && npm run dashboard:build && npm run dashboard:test && npm pack --dry-run",
+    "check:markdown": "node scripts/check-markdown-links.mjs",
+    "audit:package": "node scripts/audit-package.mjs",
+    "release:check": "npm test && npm run dashboard:build && npm run dashboard:test && npm run check:markdown && npm run audit:package",
     "prepublishOnly": "npm run release:check"
   },
   "bin": {

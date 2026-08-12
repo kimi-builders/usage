@@ -23,7 +23,11 @@ function quotaValues(value) {
 export function parseQoderUsage(payload, identity = {}, { now = new Date() } = {}) {
   const primary = quotaValues(summary(payload?.totalQuota || payload?.total_quota));
   const shared = quotaValues(summary(payload?.sharedQuota || payload?.shared_quota));
-  if (!primary) throw new Error('Qoder 返回数据缺少 totalQuota.quotaSummary。');
+  if (!primary) {
+    const error = new Error('Qoder 返回数据缺少 totalQuota.quotaSummary。');
+    error.code = 'invalid_response';
+    throw error;
+  }
   const used = primary.used + (shared?.used || 0);
   const limit = primary.limit + (shared?.limit || 0);
   const remaining = primary.remaining + (shared?.remaining || 0);

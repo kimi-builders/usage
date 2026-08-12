@@ -52,8 +52,10 @@ points; only a fresh provider refresh can append a sanitized observation.
 - Codex: `https://chatgpt.com/backend-api/wham/usage` and the optional
   `wham/rate-limit-reset-credits` companion endpoint;
 - Claude Code: `https://api.anthropic.com/api/oauth/usage`;
-- Kimi Code: `https://api.kimi.com/coding/v1/usages`, or the Kimi Web billing
-  endpoints when the user explicitly selects a Web token source;
+- Kimi Code: `https://api.kimi.com/coding/v1/usages`, or
+  `https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages`
+  and `https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats`
+  when the user explicitly selects a Web token source;
 - Cursor: `https://cursor.com/api/usage-summary` and the optional
   `https://cursor.com/api/auth/me` identity endpoint;
 - GitHub Copilot: `https://api.github.com/copilot_internal/user`;

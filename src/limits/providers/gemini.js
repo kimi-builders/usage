@@ -13,7 +13,9 @@ function modelLabel(modelId) {
 
 export function parseGeminiQuota(payload, credentials, { now = new Date() } = {}) {
   if (!Array.isArray(payload?.buckets) || payload.buckets.length === 0) {
-    throw new Error('Gemini 返回数据中没有 quota buckets。');
+    const error = new Error('Gemini 返回数据中没有 quota buckets。');
+    error.code = 'invalid_response';
+    throw error;
   }
   const constrained = new Map();
   for (const bucket of payload.buckets) {

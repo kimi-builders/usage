@@ -27,7 +27,11 @@ export function parseWarpUsage(payload, { now = new Date() } = {}) {
   }
   const user = payload?.data?.user?.user;
   const info = user?.requestLimitInfo;
-  if (!info) throw new Error('Warp 返回数据中没有 requestLimitInfo。');
+  if (!info) {
+    const error = new Error('Warp 返回数据中没有 requestLimitInfo。');
+    error.code = 'invalid_response';
+    throw error;
+  }
   const limit = number(info.requestLimit);
   const used = number(info.requestsUsedSinceLastRefresh);
   const unlimited = info.isUnlimited === true;

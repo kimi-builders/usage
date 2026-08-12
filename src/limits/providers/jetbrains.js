@@ -67,9 +67,17 @@ export function detectJetBrainsQuotaFile(customPath = '') {
 
 export function parseJetBrainsQuota(xml, ide = null, { now = new Date() } = {}) {
   const rawQuota = optionValue(xml, 'quotaInfo');
-  if (!rawQuota) throw new Error('JetBrains 配置中没有 AI quotaInfo。');
+  if (!rawQuota) {
+    const error = new Error('JetBrains 配置中没有 AI quotaInfo。');
+    error.code = 'invalid_response';
+    throw error;
+  }
   let quota;
-  try { quota = JSON.parse(htmlDecode(rawQuota)); } catch { throw new Error('JetBrains AI quotaInfo 无法解析。'); }
+  try { quota = JSON.parse(htmlDecode(rawQuota)); } catch {
+    const error = new Error('JetBrains AI quotaInfo 无法解析。');
+    error.code = 'invalid_response';
+    throw error;
+  }
   const rawRefill = optionValue(xml, 'nextRefill');
   let refill = null;
   try { refill = rawRefill ? JSON.parse(htmlDecode(rawRefill)) : null; } catch { /* optional */ }

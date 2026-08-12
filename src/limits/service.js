@@ -21,6 +21,7 @@ import { fetchQoderLimits } from './providers/qoder.js';
 import { fetchWarpLimits } from './providers/warp.js';
 import { detectWindsurfDatabase, fetchWindsurfLimits } from './providers/windsurf.js';
 import { loadLimitHistory, recordLimitSnapshot } from './history.js';
+import { assertProviderContract } from './contract.js';
 
 const FETCHERS = {
   codex: fetchCodexLimits,
@@ -192,7 +193,10 @@ async function fetchEnabled(settings, options = {}) {
         environment: options.environment || process.env,
         fetcher: options.fetcher || fetch,
       });
-      return { ...result, quotaCoverage: provider.quotaCoverage || 'supported' };
+      return {
+        ...assertProviderContract(provider.id, result),
+        quotaCoverage: provider.quotaCoverage || 'supported',
+      };
     } catch (error) {
       return providerError(provider, error);
     }

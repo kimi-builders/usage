@@ -1,4 +1,4 @@
-const ALLOWED_HOSTS = new Set([
+export const LIMIT_ALLOWED_HOSTS = new Set([
   'chatgpt.com',
   'chat.openai.com',
   'api.kimi.com',
@@ -27,7 +27,7 @@ export async function requestJson(url, {
   method = 'GET', headers = {}, body, timeoutMs = 12_000, fetcher = fetch,
 } = {}) {
   const endpoint = new URL(url);
-  if (endpoint.protocol !== 'https:' || !ALLOWED_HOSTS.has(endpoint.hostname)) {
+  if (endpoint.protocol !== 'https:' || !LIMIT_ALLOWED_HOSTS.has(endpoint.hostname)) {
     throw new LimitHTTPError('额度接口地址不在允许列表中。', { code: 'blocked_endpoint' });
   }
   const controller = new AbortController();
@@ -73,7 +73,7 @@ export async function requestText(url, {
   method = 'GET', headers = {}, body, timeoutMs = 12_000, fetcher = fetch,
 } = {}) {
   const endpoint = new URL(url);
-  if (endpoint.protocol !== 'https:' || !ALLOWED_HOSTS.has(endpoint.hostname)) {
+  if (endpoint.protocol !== 'https:' || !LIMIT_ALLOWED_HOSTS.has(endpoint.hostname)) {
     throw new LimitHTTPError('额度接口地址不在允许列表中。', { code: 'blocked_endpoint' });
   }
   const controller = new AbortController();
