@@ -93,7 +93,7 @@ function readJson(request, maxBytes = 32 * 1024) {
     request.on('data', (chunk) => {
       bytes += chunk.length;
       if (bytes > maxBytes) {
-        reject(Object.assign(new Error('Request body is too large.'), { statusCode: 413 }));
+        reject(Object.assign(new Error('Request body is too large.'), { statusCode: 413, code: 'request_too_large' }));
         request.destroy();
         return;
       }
@@ -103,11 +103,27 @@ function readJson(request, maxBytes = 32 * 1024) {
       try {
         resolveBody(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
       } catch {
-        reject(Object.assign(new Error('Request body must be valid JSON.'), { statusCode: 400 }));
+        reject(Object.assign(new Error('Request body must be valid JSON.'), { statusCode: 400, code: 'invalid_json' }));
       }
     });
     request.on('error', reject);
   });
+}
+
+function browserError(error) {
+  const declared = {
+    invalid_json: [400, 'Request body must be valid JSON.'],
+    request_too_large: [413, 'Request body is too large.'],
+    not_connected: [409, 'This device is not connected to community sync.'],
+    sync_busy: [409, 'A synchronization is already running.'],
+    invalid_action: [400, 'Unsupported sync action.'],
+  }[error?.code];
+  if (declared) return { status: declared[0], code: error.code, message: declared[1] };
+  return {
+    status: 500,
+    code: 'internal_error',
+    message: 'The local dashboard could not complete this request.',
+  };
 }
 
 function openBrowser(url) {
@@ -142,7 +158,9 @@ export async function runLocalSyncAction(payload = {}) {
   const action = String(payload.action || '');
   const config = loadConfig();
   if (!config?.apiKey || !config?.sessionSalt) {
-    throw Object.assign(new Error('尚未连接社区，请先运行 `npx @kimi-builders/usage init`。'), { statusCode: 409 });
+    throw Object.assign(new Error('尚未连接社区，请先运行 `npx @kimi-builders/usage init`。'), {
+      statusCode: 409, code: 'not_connected',
+    });
   }
   let result = null;
   if (action === 'sync') {
@@ -153,7 +171,10 @@ export async function runLocalSyncAction(payload = {}) {
         protectedBuckets: Number(synced?.protectedBuckets || 0), rejected: Number(synced?.rejected || 0),
       };
     } catch (error) {
-      if (error?.code === 'SYNC_BUSY') error.statusCode = 409;
+      if (error?.code === 'SYNC_BUSY') {
+        error.statusCode = 409;
+        error.code = 'sync_busy';
+      }
       throw error;
     }
   } else if (action === 'install') {
@@ -163,7 +184,7 @@ export async function runLocalSyncAction(payload = {}) {
   } else if (action === 'uninstall') {
     result = uninstallDaemon();
   } else {
-    throw Object.assign(new Error('不支持的同步操作。'), { statusCode: 400 });
+    throw Object.assign(new Error('不支持的同步操作。'), { statusCode: 400, code: 'invalid_action' });
   }
   return { ...getLocalSyncStatus(), action, result };
 }
@@ -320,7 +341,8 @@ export async function startLocalDashboardServer({
         'Content-Length': body.length,
       });
     } catch (error) {
-      send(response, error?.statusCode || 500, `Local dashboard error: ${error?.message || error}`);
+      const safe = browserError(error);
+      sendJson(request, response, { error: { code: safe.code, message: safe.message } }, safe.status);
     }
   });
 

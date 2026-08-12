@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -66,6 +66,56 @@ test('managed sync records private status and prevents overlapping runs', async 
     assert.equal(status.result.sessions, 2);
     assert.ok(status.lastSuccessAt);
     assert.equal(getDaemonStatus({ platform: 'darwin', home: join(root, 'home'), configDir: root, runner: () => ({ status: 1 }) }).installed, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('daemon status exposes safe log hints instead of absolute local paths', () => {
+  const root = '/Users/sentinel/private/kbu-config';
+  const status = getDaemonStatus({
+    platform: 'darwin', home: '/Users/sentinel', configDir: root,
+    runner: () => ({ status: 1 }),
+  });
+  assert.equal(status.logPath, '~/private/kbu-config/sync.log');
+  assert.equal(status.schedulerLogPath, '~/private/kbu-config/daemon-scheduler.log');
+  assert.equal(status.logAvailable, false);
+  assert.equal(JSON.stringify(status).includes('/Users/sentinel'), false);
+});
+
+test('sync status persists a generic error while its private log retains diagnostic detail', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'kbu-sync-error-'));
+  const sentinel = '/Users/sentinel/private/session.json';
+  try {
+    await assert.rejects(() => runManagedSync({
+      configDir: root, trigger: 'test', quiet: true,
+      sync: async () => { throw new Error(`could not read ${sentinel}`); },
+    }), /could not read/);
+    const status = loadSyncStatus({ configDir: root });
+    assert.equal(status.lastErrorCode, 'sync_failed');
+    assert.equal(status.lastError, 'Synchronization failed. See the private local log for details.');
+    assert.equal(JSON.stringify(status).includes(sentinel), false);
+    assert.equal(readFileSync(join(root, 'sync-status.json'), 'utf8').includes(sentinel), false);
+    assert.equal(readFileSync(join(root, 'sync.log'), 'utf8').includes(sentinel), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('daemon status sanitizes legacy persisted raw errors before exposing them', () => {
+  const root = mkdtempSync(join(tmpdir(), 'kbu-daemon-legacy-error-'));
+  const sentinel = '/Users/sentinel/private/legacy.json';
+  try {
+    writeFileSync(join(root, 'sync-status.json'), JSON.stringify({
+      state: 'error', lastError: `could not read ${sentinel}`,
+    }));
+    const status = getDaemonStatus({
+      platform: 'darwin', home: join(root, 'home'), configDir: root,
+      runner: () => ({ status: 1 }),
+    });
+    assert.equal(status.lastSync.lastErrorCode, 'sync_failed');
+    assert.equal(status.lastSync.lastError, 'Synchronization failed. See the private local log for details.');
+    assert.equal(JSON.stringify(status).includes(sentinel), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -120,8 +120,8 @@ export function SyncDialog({ open, onClose, zh }) {
       </section>
 
       <section className="sync-boundary"><ShieldCheck size={18}/><div><b>{zh ? '“重新扫描”不等于“同步数据”' : '“Rescan” is not “Sync”'}</b><p>{zh ? '重新扫描只刷新当前本地页面，零上传；立即同步或后台同步才会把增量发送到已连接的社区账户。云端没有命令可以主动拉取本机日志。' : 'Rescan only refreshes this local page with zero upload. Sync now or background sync sends increments to the connected community account. The cloud cannot pull local logs.'}</p><small>{zh ? '运行日志' : 'Run log'} · {daemon?.logPath || (zh ? '首次同步后生成' : 'created after first sync')}</small></div></section>
-      {notice ? <p className="sync-notice"><CircleCheck size={15}/>{notice}</p> : null}
-      {error ? <p className="sync-error"><AlertTriangle size={15}/>{error}</p> : null}
+      {notice ? <p className="sync-notice" role="status" aria-live="polite"><CircleCheck size={15}/>{notice}</p> : null}
+      {error ? <p className="sync-error" role="alert"><AlertTriangle size={15}/>{error}</p> : null}
     </div>
   </Dialog>;
 }

@@ -31,6 +31,7 @@ test('records only sanitized provider quota facts in a separate private history 
     const history = recordLimitSnapshot(result('2026-08-12T11:00:00.000Z'), { path, now: NOW });
     assert.equal(history.observations.length, 1);
     assert.deepEqual(history.observations[0].providers.map((provider) => provider.id), ['codex']);
+    assert.deepEqual(Object.keys(history.observations[0].providers[0]), ['id', 'windows']);
     const raw = readFileSync(path, 'utf8');
     assert.equal(raw.includes('private@example.com'), false);
     assert.equal(raw.includes('/private/path'), false);
@@ -63,6 +64,37 @@ test('compacts recent snapshots to 15-minute buckets and older snapshots to dail
   ].map((snapshot) => ({ observedAt: snapshot.generatedAt, providers: snapshot.providers }));
   const compacted = compactLimitHistory(observations, { now: NOW });
   assert.deepEqual(compacted.map((item) => item.providers[0].windows[0].usedPercent), [60, 12, 14]);
+});
+
+test('merges alternating provider successes but replaces a re-observed provider window set', () => {
+  const observations = [{
+    observedAt: '2026-08-12T11:01:00.000Z',
+    providers: [{ id: 'codex', status: 'ok', plan: 'must-not-persist', windows: [
+      { id: 'primary', label: '5 hours', usedPercent: 10, remainingPercent: 90 },
+      { id: 'weekly', label: 'Weekly', usedPercent: 20, remainingPercent: 80 },
+    ] }],
+  }, {
+    observedAt: '2026-08-12T11:05:00.000Z',
+    providers: [{ id: 'warp', status: 'ok', account: 'private@example.com', windows: [
+      { id: 'monthly', label: 'Monthly', usedPercent: 30, remainingPercent: 70 },
+    ] }],
+  }, {
+    observedAt: '2026-08-12T11:10:00.000Z',
+    providers: [{ id: 'codex', status: 'ok', source: '/private/path', windows: [
+      { id: 'primary', label: '5 hours', usedPercent: 40, remainingPercent: 60 },
+    ] }],
+  }];
+  const [bucket] = compactLimitHistory(observations, { now: NOW });
+  assert.equal(bucket.observedAt, '2026-08-12T11:10:00.000Z');
+  assert.deepEqual(bucket.providers.map((provider) => provider.id), ['codex', 'warp']);
+  assert.deepEqual(
+    bucket.providers.find((provider) => provider.id === 'codex').windows.map((window) => [window.id, window.usedPercent]),
+    [['primary', 40]],
+  );
+  assert.equal(bucket.providers.find((provider) => provider.id === 'warp').windows[0].usedPercent, 30);
+  assert.equal(JSON.stringify(bucket).includes('must-not-persist'), false);
+  assert.equal(JSON.stringify(bucket).includes('private@example.com'), false);
+  assert.equal(JSON.stringify(bucket).includes('/private/path'), false);
 });
 
 test('malformed history fails closed to an empty schema', () => {

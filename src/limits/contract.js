@@ -1,3 +1,5 @@
+import { redactLocalPathsInText, safeLocalPathDisplay } from '../safe-display.js';
+
 const RESULT_STATUSES = new Set(['ok', 'empty']);
 
 function invalid(message) {
@@ -29,6 +31,25 @@ function text(value, field) {
   if (typeof value !== 'string' || !value.trim()) throw invalid(`${field} 不能为空`);
 }
 
+function safeText(value, maxLength) {
+  if (value == null) return null;
+  if (typeof value !== 'string') return null;
+  return value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, maxLength) || null;
+}
+
+function safeAccount(value) {
+  const account = safeText(value, 160);
+  if (!account) return null;
+  const email = account.match(/^([^@]+)@([^@]+)$/);
+  if (email) return `${email[1].slice(0, 1) || '•'}•••@${email[2]}`;
+  return account.length <= 4 ? '••••' : `${account.slice(0, 2)}•••${account.slice(-2)}`;
+}
+
+function safeDisplayText(value, maxLength) {
+  const content = safeText(value, maxLength);
+  return content == null ? null : redactLocalPathsInText(safeLocalPathDisplay(content));
+}
+
 function validateWindow(window, index, ids) {
   if (!window || typeof window !== 'object' || Array.isArray(window)) throw invalid(`windows[${index}] 必须是对象`);
   text(window.id, `windows[${index}].id`);
@@ -58,6 +79,35 @@ function validateWindow(window, index, ids) {
   }
 }
 
+function browserWindow(window) {
+  return {
+    id: safeText(window.id, 160),
+    label: safeText(window.label, 160),
+    usedPercent: window.usedPercent ?? null,
+    remainingPercent: window.remainingPercent ?? null,
+    resetsAt: window.resetsAt ?? null,
+    windowSeconds: window.windowSeconds ?? null,
+    value: window.value ?? null,
+    limit: window.limit ?? null,
+    unit: safeText(window.unit, 40),
+    detail: safeDisplayText(window.detail, 240),
+  };
+}
+
+function browserResetCredits(resetCredits) {
+  if (!resetCredits || typeof resetCredits !== 'object' || Array.isArray(resetCredits)) return null;
+  const count = Number(resetCredits.availableCount);
+  const expiry = resetCredits.nextExpiry;
+  return {
+    availableCount: Number.isFinite(count) && count >= 0
+      ? Math.min(1_000_000, Math.floor(count))
+      : 0,
+    nextExpiry: typeof expiry === 'string' && !Number.isNaN(Date.parse(expiry))
+      ? new Date(expiry).toISOString()
+      : null,
+  };
+}
+
 /**
  * Enforce the browser-safe shape shared by every subscription quota provider.
  * Provider-specific parsers remain free to add fields, but the stable fields
@@ -73,5 +123,16 @@ export function assertProviderContract(expectedId, result) {
   if (result.status === 'empty' && result.windows.length) throw invalid('empty 结果不能包含额度窗口');
   const ids = new Set();
   result.windows.forEach((window, index) => validateWindow(window, index, ids));
-  return result;
+  return {
+    id: expectedId,
+    label: safeText(result.label, 100),
+    status: result.status,
+    account: safeAccount(result.account),
+    plan: safeText(result.plan, 160),
+    source: safeDisplayText(result.source, 240),
+    notice: safeDisplayText(result.notice, 300),
+    resetCredits: browserResetCredits(result.resetCredits),
+    updatedAt: new Date(result.updatedAt).toISOString(),
+    windows: result.windows.map(browserWindow),
+  };
 }

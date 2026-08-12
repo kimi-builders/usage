@@ -22,8 +22,8 @@ const snapshot = {
   ],
 };
 
-const limits = { providers: [{
-  id: 'codex', label: 'Codex', status: 'ok', windows: [{
+const limits = { generatedAt, providers: [{
+  id: 'codex', label: 'Codex', status: 'ok', updatedAt: generatedAt, windows: [{
     id: 'primary', label: '5 小时', usedPercent: 25, remainingPercent: 75,
     resetsAt: '2026-08-11T14:00:00.000Z', windowSeconds: 18_000,
   }],
@@ -191,4 +191,113 @@ test('builds provider-scoped trend, rhythm, distribution, and local record evide
   assert.equal(provider.effortRows[0].id, 'not-recorded');
   assert.equal(provider.usageRecords.length, 3);
   assert.equal(provider.usageRecords[0].model, 'gpt-5.6-terra');
+});
+
+test('keeps token-type facts in provider rhythm cells for consistent hover detail', () => {
+  const value = structuredClone(snapshot);
+  Object.assign(value.buckets[0], {
+    inputTokens: 100,
+    cacheWriteInputTokens: 200,
+    cacheReadInputTokens: 300,
+    outputTokens: 250,
+    reasoningOutputTokens: 150,
+    totalTokens: 1_000,
+  });
+  const provider = buildSubscriptionInsights(value, limits).providers[0];
+  const date = new Date(value.buckets[0].bucketStart);
+  const cell = provider.activity[(date.getDay() + 6) % 7][date.getHours()];
+  assert.deepEqual({
+    input: cell.inputTokens,
+    cacheWrite: cell.cacheWriteInputTokens,
+    cacheRead: cell.cacheReadInputTokens,
+    output: cell.outputTokens,
+    reasoning: cell.reasoningOutputTokens,
+  }, { input: 100, cacheWrite: 200, cacheRead: 300, output: 250, reasoning: 150 });
+});
+
+test('uses the provider observation clock for quota pace and suppresses stale cross-source estimates', () => {
+  const value = structuredClone(limits);
+  value.generatedAt = '2026-08-11T13:00:00.000Z';
+  value.providers[0].updatedAt = '2026-08-11T13:00:00.000Z';
+  const provider = buildSubscriptionInsights(snapshot, value).providers[0];
+  const window = provider.windows[0];
+
+  assert.equal(provider.evidenceClock.usageObservedAt, generatedAt);
+  assert.equal(provider.evidenceClock.quotaObservedAt, '2026-08-11T13:00:00.000Z');
+  assert.equal(provider.evidenceClock.state, 'local-stale');
+  assert.equal(window.evidenceClock.joinEligible, false);
+  assert.equal(window.estimatedCapacityTokens, null);
+  assert.equal(window.modelScenarios.every((scenario) => scenario.capacityTokens == null), true);
+  assert.equal(window.pace.elapsedFraction, 0.8);
+  assert.equal(window.pace.projectedFinalPercent, 31.25);
+  assert.equal(provider.decisionSignals.find((signal) => signal.code === 'pace-low').evidenceObservedAt, '2026-08-11T13:00:00.000Z');
+});
+
+test('derives quota complements without turning missing percentages into zero', () => {
+  const value = structuredClone(limits);
+  delete value.providers[0].windows[0].remainingPercent;
+  value.providers[0].windows.push({
+    id: 'unknown-ratio', label: 'Unknown ratio', usedPercent: null, remainingPercent: null,
+    resetsAt: '2026-08-11T14:00:00.000Z', windowSeconds: 18_000,
+  });
+  value.history = { observations: [
+    { observedAt: '2026-08-11T11:00:00.000Z', providers: [{ id: 'codex', windows: [{
+      id: 'primary', label: '5 小时', remainingPercent: 80,
+      resetsAt: '2026-08-11T14:00:00.000Z', windowSeconds: 18_000,
+    }] }] },
+  ] };
+  const provider = buildSubscriptionInsights(snapshot, value).providers[0];
+  const window = provider.windows.find((item) => item.id === 'primary');
+  const unknown = provider.windows.find((item) => item.id === 'unknown-ratio');
+
+  assert.equal(window.usedPercent, 25);
+  assert.equal(window.remainingPercent, 75);
+  assert.equal(window.historyPoints[0].usedPercent, 20);
+  assert.equal(window.historyPoints[0].remainingPercent, 80);
+  assert.equal(unknown.usedPercent, null);
+  assert.equal(unknown.remainingPercent, null);
+});
+
+test('marks quota history newer than the local snapshot ineligible for cross-cycle joining', () => {
+  const value = structuredClone(limits);
+  value.history = { observations: [{
+    observedAt: '2026-08-11T13:00:00.000Z', providers: [{ id: 'codex', windows: [{
+      id: 'primary', label: '5 小时', usedPercent: 30,
+      resetsAt: '2026-08-11T14:00:00.000Z', windowSeconds: 18_000,
+    }] }],
+  }] };
+  const point = buildSubscriptionInsights(snapshot, value).providers[0].windows[0].historyPoints[0];
+
+  assert.equal(point.localEvidenceState, 'local-stale');
+  assert.ok(point.localObservedCoverage > 0);
+  assert.equal(point.localCoverage, 0);
+});
+
+test('keeps an expired quota cycle historical without emitting current pace advice', () => {
+  const value = structuredClone(limits);
+  value.providers[0].windows[0].usedPercent = 20;
+  value.providers[0].windows[0].remainingPercent = 80;
+  value.providers[0].windows[0].resetsAt = generatedAt;
+  value.history = { observations: [{
+    observedAt: '2026-08-11T11:50:00.000Z', providers: [{ id: 'codex', windows: [{
+      id: 'primary', label: '5 小时', usedPercent: 18, remainingPercent: 82,
+      resetsAt: generatedAt, windowSeconds: 18_000,
+    }] }],
+  }] };
+
+  const provider = buildSubscriptionInsights(snapshot, value).providers[0];
+  const window = provider.windows[0];
+  const codes = provider.decisionSignals.map((signal) => signal.code);
+
+  assert.equal(window.resetsAt, generatedAt);
+  assert.equal(window.expired, true);
+  assert.equal(window.stale, true);
+  assert.equal(window.pace, null);
+  assert.equal(window.estimatedCapacityTokens, null);
+  assert.equal(window.historyPoints.length, 1);
+  assert.equal(provider.quotaObservation.state, 'historical');
+  assert.equal(provider.quotaObservation.currentWindows, 0);
+  assert.equal(provider.quotaObservation.historicalWindows, 1);
+  assert.ok(codes.includes('quota-historical'));
+  assert.equal(codes.some((code) => ['pace-low', 'pace-high', 'exhausted'].includes(code)), false);
 });

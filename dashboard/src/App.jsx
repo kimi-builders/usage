@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Activity, BarChart3, Cloud, CloudUpload, Command, Database, Download, ExternalLink, FileText,
   Gauge, Globe2, Home, Info, LayoutDashboard, Menu, Moon, RefreshCw, Settings2,
@@ -6,32 +6,33 @@ import {
 } from 'lucide-react';
 import { analyze, EMPTY_FILTERS, filterOptions } from './analytics.js';
 import { ActivityHeatmap, DailyTrend, DistributionCard, WeeklyTrend } from './UsageCharts.jsx';
-import { ExportDialog, MethodDialog, ShareDialog } from './UsageDialogs.jsx';
+import { Dialog, ExportDialog, MethodDialog, ShareDialog } from './UsageDialogs.jsx';
 import { UsageFilterBar } from './UsageFilters.jsx';
 import { UsageManagement } from './UsageManagement.jsx';
 import { RecordsSection } from './UsageRecords.jsx';
 import { LimitSettingsDialog, SubscriptionCenter, SubscriptionPulse } from './SubscriptionLimits.jsx';
 import { SyncDialog } from './SyncDialog.jsx';
 import { compact, delta, duration, integer, percent } from './format.js';
+import { isBenefitSection, isStandaloneSection, sectionFromHash, USAGE_SECTION_IDS } from './navigation.js';
+import { Button, PageState } from './ui.jsx';
 
 const COPY = {
   zh: {
     title: '用量中心', subtitle: 'Kimi-first，多 Agent 兼容。这里只读取 Token、时间与计数，不读取对话内容、完整路径或供应商凭据。',
     method: '计算说明', export: '导出', share: '分享用量', refresh: '重新扫描', sync: '同步数据', local: '本地私有', lastSync: '最近扫描',
-    cost: '预估费用', tokens: '总 Token', hit: '缓存命中率', peak: '峰值 TOKEN', active: '活跃时长', engaged: '投入时长', sessions: '会话数',
+    cost: 'API 等价价值（USD）', tokens: '总 Token', hit: '缓存命中率', peak: '峰值 TOKEN', active: '活跃时长', engaged: '投入时长', sessions: '会话数',
     messages: '总消息数', userMessages: '用户消息', avg: '平均耗时', requests: '请求数', lifetime: '累计 TOKEN', reasoning: '推理', good: '良好',
   },
   en: {
     title: 'Usage Center', subtitle: 'Kimi-first, multi-agent ready. Only token, timing, and count metrics are read—never conversations, full paths, or provider credentials.',
     method: 'Calculation notes', export: 'Export', share: 'Share usage', refresh: 'Rescan', sync: 'Sync data', local: 'Local private', lastSync: 'Last scanned',
-    cost: 'Estimated cost', tokens: 'Total tokens', hit: 'Cache hit rate', peak: 'Peak tokens', active: 'Active time', engaged: 'Engaged time', sessions: 'Sessions',
+    cost: 'API-equivalent value (USD)', tokens: 'Total tokens', hit: 'Cache hit rate', peak: 'Peak tokens', active: 'Active time', engaged: 'Engaged time', sessions: 'Sessions',
     messages: 'Messages', userMessages: 'User messages', avg: 'Avg active', requests: 'Requests', lifetime: 'Lifetime tokens', reasoning: 'Reasoning', good: 'Good',
   },
 };
 
-function currencyMoney(micros, currency) {
-  const value = (micros / 1e6) * (currency === 'cny' ? 7.2 : 1);
-  return `${currency === 'cny' ? '¥' : '$'}${value.toFixed(2)}`;
+function currencyMoney(micros) {
+  return `$${(micros / 1e6).toFixed(2)}`;
 }
 
 function MetricHint({ children, text, className = '' }) {
@@ -51,16 +52,12 @@ function Change({ value, label, current, previous, zh }) {
   return <MetricHint text={text} className="change-hint"><span className={`change ${value >= 0 ? 'up' : 'down'}`}>{value >= 0 ? '↗' : '↘'} {Math.abs(value * 100).toFixed(1)}%</span></MetricHint>;
 }
 
-function Button({ children, primary = false, className = '', ...props }) {
-  return <button type="button" className={`${primary ? 'primary-btn' : 'ghost-btn'} ${className}`} {...props}>{children}</button>;
-}
-
 function HeroCard({ label, value, deltaValue, previousValue, children, tone = '', onHelp, zh }) {
-  return <article className={`hero-card ${tone}`}><div className="hero-label"><span>{label}</span>{onHelp ? <button type="button" onClick={onHelp} aria-label={`${label} info`}><Info size={12}/></button> : null}<Change value={deltaValue} label={label} current={value} previous={previousValue} zh={zh}/></div><strong>{value}</strong><p>{children}</p></article>;
+  return <article className={`hero-card ${tone}`}><div className="hero-label"><span>{label}</span>{onHelp ? <button type="button" onClick={onHelp} aria-label={zh ? `查看${label}计算说明` : `View ${label} calculation notes`}><Info size={12}/></button> : null}<Change value={deltaValue} label={label} current={value} previous={previousValue} zh={zh}/></div><strong>{value}</strong><p>{children}</p></article>;
 }
 
 function Stat({ label, value, change, previousValue, sub, onHelp, zh }) {
-  return <article className="stat-cell"><span>{label}{onHelp ? <button type="button" onClick={onHelp}><Info size={10}/></button> : null}</span><strong>{value}</strong><Change value={change} label={label} current={value} previous={previousValue} zh={zh}/>{sub ? <small>{sub}</small> : null}</article>;
+  return <article className="stat-cell"><span>{label}{onHelp ? <button type="button" onClick={onHelp} aria-label={zh ? `查看${label}计算说明` : `View ${label} calculation notes`}><Info size={10}/></button> : null}</span><strong>{value}</strong><Change value={change} label={label} current={value} previous={previousValue} zh={zh}/>{sub ? <small>{sub}</small> : null}</article>;
 }
 
 const LOCAL_LINKS = [
@@ -75,31 +72,41 @@ const BENEFIT_LINKS = [
   ['#subscription-records', FileText, '观测明细', 'Observation log'],
 ];
 const DEVICE_LINK = ['#sources', Database, '本机', 'Device'];
-const USAGE_SECTION_IDS = [...LOCAL_LINKS.map(([href]) => href.slice(1)), 'sources'];
-const BENEFIT_SECTION_IDS = BENEFIT_LINKS.map(([href]) => href.slice(1));
-const LOCAL_SECTION_IDS = [...USAGE_SECTION_IDS, ...BENEFIT_SECTION_IDS];
-
-function isBenefitSection(id) {
-  return BENEFIT_SECTION_IDS.includes(id);
-}
-
-function sectionFromHash(hash = '') {
-  const raw = hash.replace(/^#/, '');
-  const id = raw === 'limits' ? 'subscriptions' : raw;
-  return LOCAL_SECTION_IDS.includes(id) ? id : 'top';
-}
-
 function DesktopNav({ zh, communityUrl, activeSection, onNavigate, onSettings }) {
   const benefitCenter = isBenefitSection(activeSection);
+  const usageCenter = !benefitCenter && activeSection !== 'sources';
   const links = benefitCenter ? BENEFIT_LINKS : LOCAL_LINKS;
-  return <aside className="left-nav"><a className="community-cta primary-btn" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={14}/>{zh ? '打开社区看板' : 'Open community'}</a><div className="center-switch" role="navigation" aria-label={zh ? '分析中心' : 'Analytics centers'}><a href="#top" className={!benefitCenter ? 'active' : ''} onClick={(event) => onNavigate(event, '#top')}><BarChart3 size={15}/><span>{zh ? '用量中心' : 'Usage Center'}</span></a><a href="#subscriptions" className={benefitCenter ? 'active' : ''} onClick={(event) => onNavigate(event, '#subscriptions')}><Gauge size={15}/><span>{zh ? '权益中心' : 'Benefit Center'}</span></a></div><nav className="center-sections" aria-label={benefitCenter ? (zh ? '权益中心页面' : 'Benefit Center pages') : (zh ? '用量中心页面' : 'Usage Center pages')}>{links.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a className={active ? 'active' : ''} href={href} key={href} aria-current={active ? 'location' : undefined} onClick={(event) => onNavigate(event, href)}><Icon size={15}/>{zh ? cn : en}</a>; })}<a className={activeSection === 'sources' ? 'active' : ''} href={DEVICE_LINK[0]} aria-current={activeSection === 'sources' ? 'location' : undefined} onClick={(event) => onNavigate(event, DEVICE_LINK[0])}><Database size={15}/>{zh ? DEVICE_LINK[2] : DEVICE_LINK[3]}</a></nav><nav className="nav-bottom"><button type="button" onClick={onSettings}><Settings2 size={15}/>{zh ? '权益设置' : 'Benefit settings'}</button><a href="https://kimi.builders" target="_blank" rel="noreferrer"><Globe2 size={15}/>{zh ? '社区首页' : 'Community'}</a><a href="https://github.com/kimi-builders/usage" target="_blank" rel="noreferrer"><Command size={15}/>GitHub</a><a href="#sources" onClick={(event) => onNavigate(event, '#sources')}><Info size={15}/>{zh ? '隐私与数据源' : 'Privacy & sources'}</a></nav></aside>;
+  return <aside className="left-nav"><a className="community-cta primary-btn" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={14}/>{zh ? '打开社区看板' : 'Open community'}</a><div className="center-switch" role="navigation" aria-label={zh ? '分析中心' : 'Analytics centers'}><a href="#top" className={usageCenter ? 'active' : ''} aria-current={usageCenter ? 'page' : undefined} onClick={(event) => onNavigate(event, '#top')}><BarChart3 size={15}/><span>{zh ? '用量中心' : 'Usage Center'}</span></a><a href="#subscriptions" className={benefitCenter ? 'active' : ''} aria-current={benefitCenter ? 'page' : undefined} onClick={(event) => onNavigate(event, '#subscriptions')}><Gauge size={15}/><span>{zh ? '权益中心' : 'Benefit Center'}</span></a></div><nav className="center-sections" aria-label={benefitCenter ? (zh ? '权益中心页面' : 'Benefit Center pages') : (zh ? '用量中心页面' : 'Usage Center pages')}>{links.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a className={active ? 'active' : ''} href={href} key={href} aria-current={active ? 'location' : undefined} onClick={(event) => onNavigate(event, href)}><Icon size={15}/>{zh ? cn : en}</a>; })}<a className={activeSection === 'sources' ? 'active' : ''} href={DEVICE_LINK[0]} aria-current={activeSection === 'sources' ? 'location' : undefined} onClick={(event) => onNavigate(event, DEVICE_LINK[0])}><Database size={15}/>{zh ? '本机与数据源' : 'Device & sources'}</a></nav><nav className="nav-bottom"><button type="button" onClick={onSettings}><Settings2 size={15}/>{zh ? '权益设置' : 'Benefit settings'}</button><a href="https://kimi.builders" target="_blank" rel="noreferrer"><Globe2 size={15}/>{zh ? '社区首页' : 'Community'}</a><a href="https://github.com/kimi-builders/usage" target="_blank" rel="noreferrer"><Command size={15}/>GitHub</a><a href="#sources" onClick={(event) => onNavigate(event, '#sources')}><Info size={15}/>{zh ? '隐私与数据源' : 'Privacy & sources'}</a></nav></aside>;
 }
 
 function MobileDrawer({ open, onClose, zh, communityUrl, theme, setTheme, setLocale, activeSection, onNavigate, onSettings, onSync }) {
+  const drawerRef = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const previousFocus = document.activeElement;
+    const focusables = () => [...(drawerRef.current?.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])') || [])];
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
+      if (event.key !== 'Tab') return;
+      const items = focusables(); const first = items[0]; const last = items.at(-1);
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.body.classList.add('drawer-open');
+    document.addEventListener('keydown', onKeyDown);
+    window.requestAnimationFrame(() => focusables()[0]?.focus());
+    return () => {
+      document.body.classList.remove('drawer-open');
+      document.removeEventListener('keydown', onKeyDown);
+      previousFocus?.focus?.();
+    };
+  }, [open, onClose]);
   if (!open) return null;
   const benefitCenter = isBenefitSection(activeSection);
+  const usageCenter = !benefitCenter && activeSection !== 'sources';
   const links = benefitCenter ? BENEFIT_LINKS : LOCAL_LINKS;
-  return <div className="mobile-drawer-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside className="mobile-drawer"><header><a className="brand" href="#top" onClick={(event) => { onNavigate(event, '#top'); onClose(); }}><img src="/brand/logo-tile.svg" alt=""/><span>kimi.builders</span><small>LOCAL</small></a><button className="icon-btn" type="button" onClick={onClose}><X size={19}/></button></header><div className="drawer-account"><ShieldCheck size={18}/><div><b>{zh ? '本地私有看板' : 'Private local dashboard'}</b><span>127.0.0.1 · {zh ? '零上传' : 'zero upload'}</span></div></div><div className="drawer-center-switch"><button type="button" className={!benefitCenter ? 'active' : ''} onClick={(event) => onNavigate(event, '#top')}><BarChart3 size={16}/>{zh ? '用量中心' : 'Usage Center'}</button><button type="button" className={benefitCenter ? 'active' : ''} onClick={(event) => onNavigate(event, '#subscriptions')}><Gauge size={16}/>{zh ? '权益中心' : 'Benefit Center'}</button></div><nav>{links.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a className={active ? 'active' : ''} href={href} key={href} aria-current={active ? 'location' : undefined} onClick={(event) => { onNavigate(event, href); onClose(); }}><Icon size={17}/>{zh ? cn : en}</a>; })}<a className={activeSection === 'sources' ? 'active' : ''} href="#sources" onClick={(event) => { onNavigate(event, '#sources'); onClose(); }}><Database size={17}/>{zh ? '本机' : 'Device'}</a></nav><div className="drawer-actions"><button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>} {zh ? '切换主题' : 'Switch theme'}</button><button type="button" onClick={() => setLocale(zh ? 'en' : 'zh')}><Globe2 size={16}/>{zh ? 'English' : '中文'}</button><button type="button" onClick={() => { onSettings(); onClose(); }}><Settings2 size={16}/>{zh ? '权益设置' : 'Benefit settings'}</button><button type="button" onClick={() => { onSync(); onClose(); }}><CloudUpload size={16}/>{zh ? '同步数据' : 'Sync data'}</button></div><a className="drawer-community" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={16}/>{zh ? '打开社区用量中心' : 'Open community usage'}<ExternalLink size={13}/></a></aside></div>;
+  return <div className="mobile-drawer-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside ref={drawerRef} id="mobile-dashboard-drawer" className="mobile-drawer" role="dialog" aria-modal="true" aria-labelledby="mobile-drawer-title"><header><a className="brand" href="#top" onClick={(event) => { onNavigate(event, '#top'); onClose(); }}><img src="/brand/logo-tile.svg" alt=""/><span id="mobile-drawer-title">kimi.builders</span><small>LOCAL</small></a><button className="icon-btn" type="button" onClick={onClose} aria-label={zh ? '关闭导航菜单' : 'Close navigation menu'}><X size={19}/></button></header><div className="drawer-account"><ShieldCheck size={18}/><div><b>{zh ? '本地私有看板' : 'Private local dashboard'}</b><span>127.0.0.1 · {zh ? '零上传' : 'zero upload'}</span></div></div><div className="drawer-center-switch" role="navigation" aria-label={zh ? '分析中心' : 'Analytics centers'}><button type="button" className={usageCenter ? 'active' : ''} aria-current={usageCenter ? 'page' : undefined} onClick={(event) => { onNavigate(event, '#top'); onClose(); }}><BarChart3 size={16}/>{zh ? '用量中心' : 'Usage Center'}</button><button type="button" className={benefitCenter ? 'active' : ''} aria-current={benefitCenter ? 'page' : undefined} onClick={(event) => { onNavigate(event, '#subscriptions'); onClose(); }}><Gauge size={16}/>{zh ? '权益中心' : 'Benefit Center'}</button></div><nav>{links.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a className={active ? 'active' : ''} href={href} key={href} aria-current={active ? 'location' : undefined} onClick={(event) => { onNavigate(event, href); onClose(); }}><Icon size={17}/>{zh ? cn : en}</a>; })}<a className={activeSection === 'sources' ? 'active' : ''} aria-current={activeSection === 'sources' ? 'location' : undefined} href="#sources" onClick={(event) => { onNavigate(event, '#sources'); onClose(); }}><Database size={17}/>{zh ? '本机与数据源' : 'Device & sources'}</a></nav><div className="drawer-actions"><button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>} {zh ? '切换主题' : 'Switch theme'}</button><button type="button" onClick={() => setLocale(zh ? 'en' : 'zh')}><Globe2 size={16}/>{zh ? 'English' : '中文'}</button><button type="button" onClick={() => { onSettings(); onClose(); }}><Settings2 size={16}/>{zh ? '权益设置' : 'Benefit settings'}</button><button type="button" onClick={() => { onSync(); onClose(); }}><CloudUpload size={16}/>{zh ? '同步数据' : 'Sync data'}</button></div><a className="drawer-community" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={16}/>{zh ? '打开社区用量中心' : 'Open community usage'}<ExternalLink size={13}/></a></aside></div>;
 }
 
 function MobileNav({ zh, activeSection, onNavigate }) {
@@ -109,11 +116,11 @@ function MobileNav({ zh, activeSection, onNavigate }) {
 }
 
 function Loading({ zh }) {
-  return <main className="state-page"><img src="/brand/logo-tile.svg" alt=""/><RefreshCw className="spin"/><h1>{zh ? '正在扫描本地用量' : 'Scanning local usage'}</h1><p>{zh ? '只读取本机 Agent 日志，没有数据离开这台设备。' : 'Reading local agent logs; no data leaves this device.'}</p></main>;
+  return <main className="state-page"><img src="/brand/logo-tile.svg" alt=""/><PageState kind="loading" title={zh ? '正在扫描本地用量' : 'Scanning local usage'} body={zh ? '只读取本机 Agent 日志，没有数据离开这台设备。' : 'Reading local agent logs; no data leaves this device.'}/></main>;
 }
 
 function ErrorState({ error, retry, zh }) {
-  return <main className="state-page"><Info size={38}/><h1>{zh ? '本地扫描失败' : 'Local scan failed'}</h1><p>{error}</p><Button primary onClick={retry}>{zh ? '重试' : 'Retry'}</Button></main>;
+  return <main className="state-page"><PageState kind="error" title={zh ? '本地扫描失败' : 'Local scan failed'} body={error} action={<Button variant="primary" onClick={retry}>{zh ? '重试' : 'Retry'}</Button>}/></main>;
 }
 
 export function App() {
@@ -121,25 +128,32 @@ export function App() {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [theme, setTheme] = useState(() => localStorage.getItem('kbu.theme') || 'dark');
+  const [theme, setTheme] = useState(() => localStorage.getItem('kbu.theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
   const [locale, setLocale] = useState(() => localStorage.getItem('kbu.locale') || 'zh');
-  const [currency, setCurrency] = useState(() => localStorage.getItem('kbu.currency') || 'usd');
+  const currency = 'usd';
   const [trendMetric, setTrendMetric] = useState('tokens');
   const [heatMetric, setHeatMetric] = useState('tokens');
   const [dialog, setDialog] = useState(null);
   const [drawer, setDrawer] = useState(false);
   const [limitData, setLimitData] = useState(null);
   const [limitSettings, setLimitSettings] = useState(null);
+  const [limitSettingsLoading, setLimitSettingsLoading] = useState(true);
+  const [limitSettingsError, setLimitSettingsError] = useState('');
   const [limitLoading, setLimitLoading] = useState(true);
   const [limitSaving, setLimitSaving] = useState(false);
   const [limitError, setLimitError] = useState('');
   const [activeSection, setActiveSection] = useState(() => typeof window === 'undefined' ? 'top' : sectionFromHash(window.location.hash));
+  const menuButtonRef = useRef(null);
   const initialAnchorHandled = useRef(false);
   const navigationTarget = useRef(null);
   const navigationSettleTimer = useRef(0);
   const scheduleScrollSpy = useRef(null);
   const zh = locale === 'zh';
   const t = COPY[locale];
+  const closeDrawer = useCallback(() => setDrawer(false), []);
+  const closeDialog = useCallback(() => setDialog(null), []);
+  const openLimitSettings = useCallback(() => setDialog('limit-settings'), []);
+  const openSync = useCallback(() => setDialog('sync'), []);
 
   const load = async (refresh = false) => {
     setRefreshing(refresh); setError('');
@@ -162,9 +176,17 @@ export function App() {
   };
 
   const loadLimitSettings = async () => {
-    const response = await fetch('/api/limits/settings', { credentials: 'same-origin', cache: 'no-store' });
-    if (!response.ok) throw new Error(`Limit settings request failed (${response.status})`);
-    const next = await response.json(); setLimitSettings(next); return next;
+    setLimitSettingsLoading(true); setLimitSettingsError('');
+    try {
+      const response = await fetch('/api/limits/settings', { credentials: 'same-origin', cache: 'no-store' });
+      if (!response.ok) throw new Error(`Limit settings request failed (${response.status})`);
+      const next = await response.json(); setLimitSettings(next); return next;
+    } catch (reason) {
+      setLimitSettingsError(reason?.message || String(reason));
+      return null;
+    } finally {
+      setLimitSettingsLoading(false);
+    }
   };
 
   const saveLimitPreferences = async (payload) => {
@@ -176,27 +198,26 @@ export function App() {
       });
       if (!response.ok) throw new Error(await response.text() || `Settings save failed (${response.status})`);
       setLimitSettings(await response.json());
+      setLimitSettingsError('');
       return await loadLimits(true);
     } finally { setLimitSaving(false); }
   };
 
   useEffect(() => { load(); }, []);
   useEffect(() => {
-    Promise.all([loadLimitSettings(), loadLimits()]).catch((reason) => {
-      setLimitError(reason?.message || String(reason)); setLimitLoading(false);
-    });
+    loadLimitSettings();
+    loadLimits();
   }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('kbu.theme', theme); }, [theme]);
   useEffect(() => { document.documentElement.lang = zh ? 'zh-CN' : 'en'; localStorage.setItem('kbu.locale', locale); }, [locale, zh]);
-  useEffect(() => { localStorage.setItem('kbu.currency', currency); }, [currency]);
   useEffect(() => {
     if (!data) return undefined;
     let frame = 0;
     const updateActiveSection = () => {
       frame = 0;
-      if (isBenefitSection(sectionFromHash(window.location.hash))) {
-        const benefitSection = sectionFromHash(window.location.hash);
-        setActiveSection((current) => current === benefitSection ? current : benefitSection);
+      if (isStandaloneSection(sectionFromHash(window.location.hash))) {
+        const standaloneSection = sectionFromHash(window.location.hash);
+        setActiveSection((current) => current === standaloneSection ? current : standaloneSection);
         return;
       }
       const lockedTarget = navigationTarget.current;
@@ -235,7 +256,7 @@ export function App() {
       navigationTarget.current = id;
       setActiveSection(id);
       window.requestAnimationFrame(() => {
-        if (isBenefitSection(id)) window.scrollTo({ top: 0, behavior: 'auto' });
+        if (isStandaloneSection(id) || isBenefitSection(id)) window.scrollTo({ top: 0, behavior: 'auto' });
         else document.getElementById(id)?.scrollIntoView({ behavior: 'auto', block: 'start' });
         navigationTarget.current = null;
         scheduleUpdate();
@@ -246,7 +267,7 @@ export function App() {
       initialAnchorHandled.current = true;
       const initialId = sectionFromHash(window.location.hash);
       window.requestAnimationFrame(() => {
-        if (isBenefitSection(initialId)) window.scrollTo({ top: 0, behavior: 'auto' });
+        if (isStandaloneSection(initialId) || isBenefitSection(initialId)) window.scrollTo({ top: 0, behavior: 'auto' });
         else document.getElementById(initialId)?.scrollIntoView({ behavior: 'instant', block: 'start' });
         setActiveSection(initialId);
         window.requestAnimationFrame(updateActiveSection);
@@ -275,13 +296,13 @@ export function App() {
     event.preventDefault();
     const id = sectionFromHash(href);
     if (window.location.hash !== href) window.history.pushState(null, '', href);
-    if (isBenefitSection(id)) {
+    if (isStandaloneSection(id) || isBenefitSection(id)) {
       navigationTarget.current = null;
       setActiveSection(id);
       window.scrollTo({ top: 0, behavior: 'auto' });
       return;
     }
-    const fromSubscriptionCenter = isBenefitSection(activeSection);
+    const fromStandalonePage = isStandaloneSection(activeSection);
     navigationTarget.current = id;
     if (navigationSettleTimer.current) window.clearTimeout(navigationSettleTimer.current);
     navigationSettleTimer.current = window.setTimeout(() => {
@@ -291,10 +312,10 @@ export function App() {
     }, 180);
     setActiveSection(id);
     const scrollToSection = () => document.getElementById(id)?.scrollIntoView({
-      behavior: fromSubscriptionCenter || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      behavior: fromStandalonePage || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       block: 'start',
     });
-    if (fromSubscriptionCenter) window.requestAnimationFrame(scrollToSection);
+    if (fromStandalonePage) window.requestAnimationFrame(scrollToSection);
     else scrollToSection();
   };
 
@@ -313,24 +334,29 @@ export function App() {
   const dimensionFiltersActive = ['models', 'efforts'].some((key) => filters[key].length);
   const lastSeries = report.series.reduce((best, item) => item.totalTokens > (best?.totalTokens || 0) ? item : best, null);
   const subscriptionPage = isBenefitSection(activeSection);
+  const sourcesPage = activeSection === 'sources';
   const subscriptionView = activeSection === 'subscriptions' ? 'overview' : activeSection.replace('subscription-', '');
 
   return <div className="app-shell" id="top">
-    <header className="global-topbar"><div className="mobile-brand-wrap"><button className="mobile-menu-button" type="button" onClick={() => setDrawer(true)}><Menu size={20}/></button><a className="brand" href="#top" onClick={(event) => navigateSection(event, '#top')}><img src="/brand/logo-tile.svg" alt=""/><span>kimi<span>.</span>builders</span><small>LOCAL</small></a></div><div className="global-actions"><span className="local-pill"><ShieldCheck size={12}/>{t.local}</span><button className="icon-btn" type="button" onClick={() => setDialog('limit-settings')} title={zh ? '权益设置' : 'Benefit settings'}><Settings2 size={16}/></button><button className="icon-btn" type="button" onClick={() => setLocale(zh ? 'en' : 'zh')} title="Language">{zh ? '文' : 'En'}</button><button className="icon-btn" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title="Theme">{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}</button></div></header>
-    <DesktopNav zh={zh} communityUrl={data.community.url} activeSection={activeSection} onNavigate={navigateSection} onSettings={() => setDialog('limit-settings')}/><MobileDrawer open={drawer} onClose={() => setDrawer(false)} zh={zh} communityUrl={data.community.url} theme={theme} setTheme={setTheme} setLocale={setLocale} activeSection={activeSection} onNavigate={navigateSection} onSettings={() => setDialog('limit-settings')} onSync={() => setDialog('sync')}/><MobileNav zh={zh} activeSection={activeSection} onNavigate={navigateSection}/>
+    <header className="global-topbar"><div className="mobile-brand-wrap"><button ref={menuButtonRef} className="mobile-menu-button" type="button" aria-label={zh ? '打开导航菜单' : 'Open navigation menu'} aria-expanded={drawer} aria-controls="mobile-dashboard-drawer" onClick={() => setDrawer(true)}><Menu size={20}/></button><a className="brand" href="#top" onClick={(event) => navigateSection(event, '#top')}><img src="/brand/logo-tile.svg" alt=""/><span>kimi<span>.</span>builders</span><small>LOCAL</small></a></div><div className="global-actions"><span className="local-pill"><ShieldCheck size={12}/>{t.local}</span><button className="icon-btn" type="button" onClick={openLimitSettings} aria-label={zh ? '权益设置' : 'Benefit settings'} title={zh ? '权益设置' : 'Benefit settings'}><Settings2 size={16}/></button><button className="icon-btn" type="button" onClick={() => setLocale(zh ? 'en' : 'zh')} aria-label={zh ? '切换为英文' : 'Switch to Chinese'} title="Language">{zh ? '文' : 'En'}</button><button className="icon-btn" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={zh ? '切换主题' : 'Switch theme'} title="Theme">{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}</button></div></header>
+    <DesktopNav zh={zh} communityUrl={data.community.url} activeSection={activeSection} onNavigate={navigateSection} onSettings={openLimitSettings}/><MobileDrawer open={drawer} onClose={closeDrawer} zh={zh} communityUrl={data.community.url} theme={theme} setTheme={setTheme} setLocale={setLocale} activeSection={activeSection} onNavigate={navigateSection} onSettings={openLimitSettings} onSync={openSync}/><MobileNav zh={zh} activeSection={activeSection} onNavigate={navigateSection}/>
     <main className="page-content">
+      {error ? <PageState className="snapshot-error-banner" compact kind="error" title={zh ? '重新扫描失败，仍显示上一次快照' : 'Rescan failed; showing the previous snapshot'} body={zh ? `${error}。当前页面保留 ${new Date(data.generatedAt).toLocaleString('zh-CN')} 生成的数据，重试成功前请按过期快照理解。` : `${error}. This page still shows data generated ${new Date(data.generatedAt).toLocaleString('en-US')}; treat it as stale until a retry succeeds.`} action={<Button variant="primary" onClick={() => load(true)} disabled={refreshing}><RefreshCw className={refreshing ? 'spin' : ''} size={14}/>{zh ? '重试扫描' : 'Retry scan'}</Button>}/>: null}
       {subscriptionPage ? <>
-      <section className="page-heading subscription-page-heading"><div><h1><Gauge size={22}/>{zh ? '订阅与权益中心' : 'Subscriptions & Benefits'}</h1><p>{zh ? '看清少数付费核心和多项免费/活动权益分别承载了多少工作；官方额度不可读时仍保留本机 Token 与价值分析。' : 'See how paid core subscriptions and free or promotional benefits each carry your workload. Local Token and value analysis remain available when official quota is hidden.'}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{zh ? '凭据只留本机' : 'Credentials stay local'}</span><i/><span>{zh ? '不读取对话内容' : 'No conversation content'}</span></div></div><div className="page-actions"><Button onClick={(event) => navigateSection(event, '#top')}><BarChart3 size={14}/>{zh ? '用量中心' : 'Usage Center'}</Button><Button onClick={() => setDialog('limit-settings')}><Settings2 size={14}/>{zh ? '权益设置' : 'Benefit settings'}</Button><Button primary onClick={() => loadLimits(true)} disabled={limitLoading}><RefreshCw className={limitLoading ? 'spin' : ''} size={14}/>{zh ? '刷新额度' : 'Refresh quotas'}</Button></div></section>
-      <SubscriptionCenter view={subscriptionView} onViewChange={(view) => navigateSection({ preventDefault() {} }, view === 'overview' ? '#subscriptions' : `#subscription-${view}`)} data={limitData} usageData={data} settings={limitSettings} loading={limitLoading} error={limitError} onRefresh={loadLimits} onSettings={() => setDialog('limit-settings')} zh={zh}/>
+      <section className="page-heading subscription-page-heading"><div><h1><Gauge size={22}/>{zh ? '权益中心' : 'Benefit Center'}</h1><p>{zh ? '看清少数付费核心和多项免费/活动权益分别承载了多少工作；官方额度不可读时仍保留本机 Token 与价值分析。' : 'See how paid core subscriptions and free or promotional benefits each carry your workload. Local Token and value analysis remain available when official quota is hidden.'}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{zh ? '凭据只留本机' : 'Credentials stay local'}</span><i/><span>{zh ? '不读取对话内容' : 'No conversation content'}</span></div></div><div className="page-actions"><Button onClick={(event) => navigateSection(event, '#top')}><BarChart3 size={14}/>{zh ? '用量中心' : 'Usage Center'}</Button><Button onClick={openLimitSettings}><Settings2 size={14}/>{zh ? '权益设置' : 'Benefit settings'}</Button><Button variant="primary" onClick={() => loadLimits(true)} disabled={limitLoading}><RefreshCw className={limitLoading ? 'spin' : ''} size={14}/>{zh ? '刷新额度' : 'Refresh quotas'}</Button></div></section>
+      <SubscriptionCenter view={subscriptionView} onViewChange={(view) => navigateSection({ preventDefault() {} }, view === 'overview' ? '#subscriptions' : `#subscription-${view}`)} data={limitData} usageData={data} settings={limitSettings} loading={limitLoading} error={limitError} onRefresh={loadLimits} onSettings={openLimitSettings} zh={zh}/>
+      </> : sourcesPage ? <>
+      <section className="page-heading sources-page-heading"><div><h1><Database size={22}/>{zh ? '本机与数据源' : 'Device & data sources'}</h1><p>{zh ? '集中查看 Collector、Agent、终端、系统、解析健康度与本地隐私边界；诊断信息不会暴露完整路径。' : 'Review collector, agent, terminal, OS, parse health, and local privacy boundaries without exposing full paths.'}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{zh ? '仅本机读取' : 'Local reads only'}</span><i/><span>{zh ? '诊断信息已脱敏' : 'Diagnostics are redacted'}</span></div></div><div className="page-actions"><Button onClick={() => setDialog('method')}><Info size={14}/>{t.method}</Button><Button onClick={() => load(true)} disabled={refreshing}><RefreshCw className={refreshing ? 'spin' : ''} size={14}/>{t.refresh}</Button><Button variant="primary" onClick={() => setDialog('sync')}><CloudUpload size={14}/>{t.sync}</Button></div></section>
+      <UsageManagement data={data} zh={zh}/>
       </> : <>
-      <section className="page-heading"><div><h1><BarChart3 size={22}/>{t.title}</h1><p>{t.subtitle}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{t.local}</span><i/><span>{t.lastSync} {new Date(data.generatedAt).toLocaleString(zh ? 'zh-CN' : 'en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>{staleHours > 24 ? <b>{zh ? `超过 ${Math.floor(staleHours)} 小时未扫描` : `${Math.floor(staleHours)}h stale`}</b> : null}</div></div><div className="page-actions"><Button onClick={() => setDialog('method')}><Info size={14}/>{t.method}</Button><Button onClick={() => setDialog('export')}><Download size={14}/>{t.export}</Button><Button onClick={() => setDialog('share')}><Share2 size={14}/>{t.share}</Button><Button onClick={() => load(true)} disabled={refreshing}><RefreshCw className={refreshing ? 'spin' : ''} size={14}/>{t.refresh}</Button><Button primary onClick={() => setDialog('sync')}><CloudUpload size={14}/>{t.sync}</Button></div></section>
+      <section className="page-heading"><div><h1><BarChart3 size={22}/>{t.title}</h1><p>{t.subtitle}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{t.local}</span><i/><span>{t.lastSync} {new Date(data.generatedAt).toLocaleString(zh ? 'zh-CN' : 'en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>{staleHours > 24 ? <b>{zh ? `超过 ${Math.floor(staleHours)} 小时未扫描` : `${Math.floor(staleHours)}h stale`}</b> : null}</div></div><div className="page-actions"><Button onClick={() => setDialog('method')}><Info size={14}/>{t.method}</Button><Button onClick={() => setDialog('export')}><Download size={14}/>{t.export}</Button><Button onClick={() => setDialog('share')}><Share2 size={14}/>{t.share}</Button><Button onClick={() => load(true)} disabled={refreshing}><RefreshCw className={refreshing ? 'spin' : ''} size={14}/>{t.refresh}</Button><Button variant="primary" onClick={() => setDialog('sync')}><CloudUpload size={14}/>{t.sync}</Button></div></section>
 
-      <UsageFilterBar filters={filters} options={options} onChange={setFilters} currency={currency} onCurrency={setCurrency} zh={zh}/>
+      <UsageFilterBar filters={filters} options={options} onChange={setFilters} currency={currency} zh={zh}/>
 
       {staleHours > 24 ? <section className="stale-banner"><Info size={19}/><div><b>{zh ? '这份看板可能已经过期' : 'This dashboard may be stale'}</b><p>{zh ? '点击重新扫描即可更新本机数据；页面不会自行读取日志。' : 'Rescan to refresh local logs; the page never reads them on its own.'}</p></div><code>kbu-usage dashboard</code></section> : null}
 
       <section className="hero-grid">
-        <HeroCard zh={zh} label={report.pricingCoverage < .9995 ? (zh ? '已定价部分' : 'Priced portion') : t.cost} value={currencyMoney(report.totals.costMicros, currency)} previousValue={currencyMoney(previous?.totals.costMicros || 0, currency)} deltaValue={delta(report.totals.costMicros, previous?.totals.costMicros)} onHelp={() => setDialog('method')}>{zh ? `vs 上一周期 · 覆盖 ${percent(report.pricingCoverage)} Token · ${compact(report.totals.unpricedTokens)} 未定价` : `vs prior · ${percent(report.pricingCoverage)} coverage · ${compact(report.totals.unpricedTokens)} unpriced`}</HeroCard>
+        <HeroCard zh={zh} label={report.pricingCoverage < .9995 ? (zh ? '已定价 API 等价价值（USD）' : 'Priced API-equivalent value (USD)') : t.cost} value={currencyMoney(report.totals.costMicros)} previousValue={currencyMoney(previous?.totals.costMicros || 0)} deltaValue={delta(report.totals.costMicros, previous?.totals.costMicros)} onHelp={() => setDialog('method')}>{zh ? `标准 API 价格，不是账单 · 覆盖 ${percent(report.pricingCoverage)} Token · ${compact(report.totals.unpricedTokens)} 未定价` : `Standard API pricing, not a bill · ${percent(report.pricingCoverage)} coverage · ${compact(report.totals.unpricedTokens)} unpriced`}</HeroCard>
         <HeroCard zh={zh} label={t.tokens} value={compact(report.totals.totalTokens)} previousValue={compact(previous?.totals.totalTokens || 0)} deltaValue={delta(report.totals.totalTokens, previous?.totals.totalTokens)} onHelp={() => setDialog('method')}>{zh ? `输入 ${compact(inputSide)} · 输出 ${compact(report.totals.outputTokens)} · 缓存读 ${compact(report.totals.cacheReadInputTokens)}` : `Input ${compact(inputSide)} · Output ${compact(report.totals.outputTokens)} · Cache ${compact(report.totals.cacheReadInputTokens)}`}</HeroCard>
         <HeroCard zh={zh} label={t.hit} value={report.cacheHitRate == null ? '—' : percent(report.cacheHitRate)} tone="hero-card--green">
           {report.cacheHitRate != null ? <MetricHint className="quality-hint" text={zh ? `缓存命中率 = 缓存读 ÷（输入 + 缓存写 + 缓存读）。当前 ${percent(report.cacheHitRate)}；85% 以上为“良好”，60%–85% 为“一般”，低于 60% 为“偏低”。命中率越高，通常意味着重复上下文的 API 等价成本越低。` : `Cache hit rate = cache read ÷ (input + cache write + cache read). Current: ${percent(report.cacheHitRate)}. Good is ≥85%, Fair is 60–85%, Low is <60%. A higher rate usually lowers API-equivalent cost for repeated context.`}><span className="quality"><i/>{report.cacheHitRate >= .85 ? t.good : report.cacheHitRate >= .6 ? (zh ? '一般' : 'Fair') : (zh ? '偏低' : 'Low')}</span></MetricHint> : null}
@@ -339,16 +365,16 @@ export function App() {
       </section>
 
       <section className="stats-grid"><Stat zh={zh} label={t.peak} value={compact(report.peakTokens)} sub={lastSeries?.label}/><Stat zh={zh} label={t.active} value={duration(report.activeSeconds, zh)} previousValue={duration(previous?.activeSeconds || 0, zh)} change={delta(report.activeSeconds, previous?.activeSeconds)} onHelp={() => setDialog('method')}/><Stat zh={zh} label={t.engaged} value={duration(report.engagedSeconds, zh)} previousValue={duration(previous?.engagedSeconds || 0, zh)} change={delta(report.engagedSeconds, previous?.engagedSeconds)} sub={zh ? '单次空闲最多计 30 分钟' : 'idle gaps capped at 30m'}/><Stat zh={zh} label={t.sessions} value={integer(report.sessions.length)} previousValue={integer(previous?.sessions || 0)} change={delta(report.sessions.length, previous?.sessions)}/><Stat zh={zh} label={t.messages} value={compact(report.messageCount)} previousValue={compact(previous?.messageCount || 0)} change={delta(report.messageCount, previous?.messageCount)}/><Stat zh={zh} label={t.userMessages} value={compact(report.userMessageCount)} previousValue={compact(previous?.userMessageCount || 0)} change={delta(report.userMessageCount, previous?.userMessageCount)}/><Stat zh={zh} label={t.avg} value={`${report.avgRequestSeconds.toFixed(1)}s`} sub={zh ? '≈ 活跃时长 ÷ 请求数' : '≈ active time ÷ requests'}/><Stat zh={zh} label={t.requests} value={compact(report.totals.requestCount)}/><Stat zh={zh} label={t.lifetime} value={compact(report.lifetimeTotals.totalTokens)} sub={zh ? '全部本地历史 · 保留维度筛选' : 'all local history · filters apply'}/><Stat zh={zh} label={t.reasoning} value={compact(report.totals.reasoningOutputTokens)} sub={report.topReasoning || (zh ? '未记录强度' : 'Effort not recorded')}/></section>
-      <SubscriptionPulse data={limitData} usageData={data} settings={limitSettings} loading={limitLoading} onOpen={(event) => navigateSection(event, '#subscriptions')} onSettings={() => setDialog('limit-settings')} zh={zh}/>
+      <SubscriptionPulse data={limitData} usageData={data} settings={limitSettings} loading={limitLoading} error={limitError} onRetry={() => loadLimits(true)} onOpen={(event) => navigateSection(event, '#subscriptions')} onSettings={openLimitSettings} zh={zh}/>
       {dimensionFiltersActive ? <p className="metric-scope-note">{zh ? '会话与时长指标无法按模型或推理强度拆分，仍显示当前 Agent 范围。' : 'Sessions and time cannot be split by model or effort; the current Agent scope is shown.'}</p> : null}
 
       <DailyTrend report={report} zh={zh} metric={trendMetric} onMetric={setTrendMetric} currency={currency}/><WeeklyTrend report={report} zh={zh} metric={trendMetric} currency={currency}/><ActivityHeatmap report={report} zh={zh} metric={heatMetric} onMetric={setHeatMetric} currency={currency}/>
       <p className="section-eyebrow">{zh ? '分布 · 独立切换 TOKEN / 费用' : 'BREAKDOWN · SWITCH TOKENS / COST'}</p><section className="distribution-grid" id="distribution"><DistributionCard type="source" rows={report.sourceRows} zh={zh} currency={currency}/><DistributionCard type="model" rows={report.modelRows} zh={zh} currency={currency}/><DistributionCard type="project" rows={report.projectRows} zh={zh} currency={currency}/><DistributionCard type="device" rows={report.deviceRows} zh={zh} currency={currency}/></section>
-      <RecordsSection report={report} zh={zh} currency={currency} device={device}/><UsageManagement data={data} zh={zh}/>
+      <RecordsSection report={report} zh={zh} currency={currency} device={device}/>
       </>}
 
       <footer className="page-footer"><span>kimi.builders / usage · LOCAL</span><p>{zh ? '数据属于你。分析在本机，社区同步永远可选。' : 'Your data. Local analysis. Community sync is always optional.'}</p><a href={data.community.url} target="_blank" rel="noreferrer">{zh ? '社区版' : 'Community'}<ExternalLink size={12}/></a></footer>
     </main>
-    <MethodDialog open={dialog === 'method'} onClose={() => setDialog(null)} zh={zh} data={data} report={report} currency={currency}/><ExportDialog open={dialog === 'export'} onClose={() => setDialog(null)} report={report} data={data} filters={filters} zh={zh}/><ShareDialog open={dialog === 'share'} onClose={() => setDialog(null)} data={data} filters={filters} initialRange={filters.range} zh={zh}/><LimitSettingsDialog open={dialog === 'limit-settings'} settings={limitSettings} saving={limitSaving} onSave={saveLimitPreferences} onClose={() => setDialog(null)} zh={zh}/><SyncDialog open={dialog === 'sync'} onClose={() => setDialog(null)} zh={zh}/>
+    <MethodDialog open={dialog === 'method'} onClose={closeDialog} zh={zh} data={data} report={report} currency={currency}/><ExportDialog open={dialog === 'export'} onClose={closeDialog} report={report} data={data} filters={filters} zh={zh}/><ShareDialog open={dialog === 'share'} onClose={closeDialog} data={data} filters={filters} initialRange={filters.range} zh={zh}/>{limitSettings ? <LimitSettingsDialog open={dialog === 'limit-settings'} settings={limitSettings} saving={limitSaving} onSave={saveLimitPreferences} onClose={closeDialog} zh={zh}/> : <Dialog open={dialog === 'limit-settings'} onClose={closeDialog} title={zh ? '账户权益与额度设置' : 'Account benefit and quota settings'} subtitle={zh ? '设置单独从本地服务读取；额度页面仍可独立工作。' : 'Settings load independently from the local service; quota views remain separate.'}><PageState kind={limitSettingsLoading ? 'loading' : 'error'} title={limitSettingsLoading ? (zh ? '正在读取权益设置' : 'Loading benefit settings') : (zh ? '权益设置读取失败' : 'Could not load benefit settings')} body={limitSettingsLoading ? (zh ? '正在读取本机配置，不会发起供应商请求。' : 'Reading local configuration without contacting providers.') : limitSettingsError || (zh ? '本地服务没有返回设置。' : 'The local service did not return settings.')} action={!limitSettingsLoading ? <Button variant="primary" onClick={loadLimitSettings}><RefreshCw size={14}/>{zh ? '重试读取' : 'Retry'}</Button> : null}/></Dialog>}<SyncDialog open={dialog === 'sync'} onClose={closeDialog} zh={zh}/>
   </div>;
 }

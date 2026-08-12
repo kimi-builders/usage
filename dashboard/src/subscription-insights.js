@@ -1,4 +1,4 @@
-import { sumBuckets, tokenTotal } from './analytics.js';
+import { TOKEN_FIELDS, sumBuckets, tokenTotal } from './analytics.js';
 import {
   buildCycleCapacityStats, buildPortfolioReview, buildRenewalReview,
 } from './subscription-review.js';
@@ -20,6 +20,7 @@ const PROVIDER_SOURCES = {
 
 const DAY_SECONDS = 86_400;
 const MONTH_SECONDS = DAY_SECONDS * 30;
+const EVIDENCE_SKEW_TOLERANCE_MS = 5 * 60 * 1_000;
 
 function finite(value) {
   if (value == null || value === '') return null;
@@ -41,6 +42,47 @@ function hasQuotaFact(window) {
     || (finite(window?.limit) > 0 && finite(window?.value) != null);
 }
 
+function timestamp(value) {
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : null;
+}
+
+function normalizeQuotaWindow(window) {
+  const suppliedUsed = finite(window?.usedPercent);
+  const suppliedRemaining = finite(window?.remainingPercent);
+  const value = finite(window?.value);
+  const limit = finite(window?.limit);
+  const ratioUsed = suppliedUsed == null && suppliedRemaining == null && limit > 0 && value != null
+    ? Math.max(0, Math.min(100, value / limit * 100))
+    : null;
+  const usedPercent = suppliedUsed
+    ?? (suppliedRemaining == null ? ratioUsed : 100 - suppliedRemaining);
+  const remainingPercent = suppliedRemaining
+    ?? (usedPercent == null ? null : 100 - usedPercent);
+  return {
+    ...window,
+    usedPercent: usedPercent == null ? null : Math.max(0, Math.min(100, usedPercent)),
+    remainingPercent: remainingPercent == null ? null : Math.max(0, Math.min(100, remainingPercent)),
+  };
+}
+
+function evidenceClock(usageObservedAt, quotaObservedAt) {
+  if (usageObservedAt == null) return {
+    state: 'local-timestamp-missing', lagMs: null, joinEligible: false,
+  };
+  if (quotaObservedAt == null) return {
+    state: 'quota-timestamp-missing', lagMs: null, joinEligible: false,
+  };
+  const lagMs = quotaObservedAt - usageObservedAt;
+  const localStale = lagMs > EVIDENCE_SKEW_TOLERANCE_MS;
+  const quotaOlder = lagMs < -EVIDENCE_SKEW_TOLERANCE_MS;
+  return {
+    state: localStale ? 'local-stale' : quotaOlder ? 'quota-older' : 'aligned',
+    lagMs,
+    joinEligible: !localStale,
+  };
+}
+
 function inferredWindowSeconds(window) {
   const provided = finite(window.windowSeconds);
   if (provided > 0) return provided;
@@ -56,8 +98,11 @@ function windowBounds(window, now) {
   const seconds = inferredWindowSeconds(window);
   if (!seconds) return { start: null, end: now, seconds: null };
   const reset = Date.parse(window.resetsAt);
-  const end = Number.isFinite(reset) && reset > now ? reset : now;
-  return { start: end - seconds * 1_000, end: now, seconds };
+  // A reported reset is the cycle boundary even when the observation arrived
+  // after it. Moving an expired boundary to `now` would fabricate a new cycle.
+  const start = Number.isFinite(reset) ? reset - seconds * 1_000 : now - seconds * 1_000;
+  const end = Number.isFinite(reset) && reset <= now ? reset : now;
+  return { start, end, seconds };
 }
 
 function groupModels(buckets) {
@@ -116,6 +161,7 @@ function providerTimeline(buckets) {
 
 function providerActivity(buckets) {
   const cells = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({
+    ...Object.fromEntries(TOKEN_FIELDS.map((field) => [field, 0])),
     totalTokens: 0, requestCount: 0, costMicros: 0, observed: false,
   })));
   for (const bucket of buckets) {
@@ -123,6 +169,7 @@ function providerActivity(buckets) {
     if (!Number.isFinite(date.getTime())) continue;
     const cell = cells[(date.getDay() + 6) % 7][date.getHours()];
     cell.observed = true;
+    for (const field of TOKEN_FIELDS) cell[field] += bucket[field] || 0;
     cell.totalTokens += tokenTotal(bucket);
     cell.requestCount += bucket.requestCount || 0;
     cell.costMicros += bucket.costMicros || 0;
@@ -148,32 +195,41 @@ function confidence({ coverage, usedPercent, requestCount }) {
   return 'low';
 }
 
-function enrichWindow(window, buckets, sourceHistoryStart, modelRates, now) {
-  const bounds = windowBounds(window, now);
+function enrichWindow(window, buckets, sourceHistoryStart, modelRates, quotaObservedAt, usageObservedAt) {
+  const normalized = normalizeQuotaWindow(window);
+  const reset = timestamp(normalized.resetsAt);
+  const expired = reset != null && quotaObservedAt != null && reset <= quotaObservedAt;
+  const bounds = quotaObservedAt == null
+    ? { start: null, end: null, seconds: inferredWindowSeconds(normalized) }
+    : windowBounds(normalized, quotaObservedAt);
+  const clock = evidenceClock(usageObservedAt, quotaObservedAt);
+  const cycleEligible = clock.joinEligible && !expired;
+  const localEnd = bounds.end == null || usageObservedAt == null
+    ? null
+    : Math.min(bounds.end, usageObservedAt);
   const observed = bounds.start == null
     ? []
     : buckets.filter((bucket) => {
       const time = Date.parse(bucket.bucketStart);
-      return Number.isFinite(time) && time >= bounds.start && time <= bounds.end;
+      return Number.isFinite(time) && localEnd != null && time >= bounds.start && time <= localEnd;
     });
   const totals = sumBuckets(observed);
-  const suppliedUsed = finite(window.usedPercent);
-  const suppliedRemaining = finite(window.remainingPercent);
-  const usedPercent = suppliedUsed ?? (suppliedRemaining == null ? null : 100 - suppliedRemaining);
-  const remainingPercent = suppliedRemaining ?? (usedPercent == null ? null : 100 - usedPercent);
+  const usedPercent = finite(normalized.usedPercent);
+  const remainingPercent = finite(normalized.remainingPercent);
   const fractionUsed = usedPercent != null ? Math.max(0, Math.min(1, usedPercent / 100)) : 0;
-  const coverage = bounds.start == null || sourceHistoryStart == null
+  const observedCoverage = bounds.start == null || bounds.end == null || sourceHistoryStart == null || localEnd == null
     ? 0
-    : sourceHistoryStart <= bounds.start
-      ? 1
-      : Math.max(0, Math.min(1, (now - sourceHistoryStart) / Math.max(1, now - bounds.start)));
-  const estimatedCapacityTokens = fractionUsed >= 0.01 && totals.totalTokens > 0
+    : Math.max(0, Math.min(1,
+      (localEnd - Math.max(bounds.start, sourceHistoryStart)) / Math.max(1, bounds.end - bounds.start),
+    ));
+  const coverage = cycleEligible ? observedCoverage : 0;
+  const estimatedCapacityTokens = cycleEligible && fractionUsed >= 0.01 && totals.totalTokens > 0
     ? Math.round(totals.totalTokens / fractionUsed)
     : null;
   const estimatedRemainingTokens = estimatedCapacityTokens != null && remainingPercent != null
     ? Math.round(estimatedCapacityTokens * Math.max(0, Math.min(100, remainingPercent)) / 100)
     : null;
-  const equivalentBudgetMicros = fractionUsed >= 0.01 && totals.costMicros > 0
+  const equivalentBudgetMicros = cycleEligible && fractionUsed >= 0.01 && totals.costMicros > 0
     ? totals.costMicros / fractionUsed
     : null;
   const modelScenarios = modelRates.map((model) => {
@@ -192,18 +248,24 @@ function enrichWindow(window, buckets, sourceHistoryStart, modelRates, now) {
     };
   });
   return {
-    ...window,
+    ...normalized,
+    stale: Boolean(normalized.stale) || expired,
+    expired,
     windowSeconds: bounds.seconds,
     observedFrom: bounds.start == null ? null : new Date(bounds.start).toISOString(),
+    evidenceObservedAt: quotaObservedAt == null ? null : new Date(quotaObservedAt).toISOString(),
+    evidenceClock: clock,
     localTotals: totals,
     modelRows: groupModels(observed),
     historyCoverage: coverage,
+    localObservedCoverage: observedCoverage,
+    localObserved: observed.length > 0 || observedCoverage > 0,
     estimatedCapacityTokens,
     estimatedRemainingTokens,
     monthlyEquivalentTokens: estimatedCapacityTokens != null && bounds.seconds
       ? Math.round(estimatedCapacityTokens * MONTH_SECONDS / bounds.seconds)
       : null,
-    estimationConfidence: confidence({ coverage, usedPercent: usedPercent || 0, requestCount: totals.requestCount }),
+    estimationConfidence: confidence({ coverage, usedPercent, requestCount: totals.requestCount }),
     modelScenarios,
   };
 }
@@ -212,36 +274,55 @@ function providerSources(providerId) {
   return PROVIDER_SOURCES[providerId] || [providerId];
 }
 
-function totalsAtObservation(buckets, window, observedAt, sourceHistoryStart) {
+function totalsAtObservation(buckets, window, observedAt, sourceHistoryStart, usageObservedAt) {
   const end = Date.parse(observedAt);
   const seconds = inferredWindowSeconds(window);
-  if (!Number.isFinite(end) || !seconds) return { totals: sumBuckets([]), coverage: 0 };
+  const clock = evidenceClock(usageObservedAt, Number.isFinite(end) ? end : null);
+  if (!Number.isFinite(end) || !seconds) return {
+    totals: sumBuckets([]), coverage: 0, observedCoverage: 0, evidenceClock: clock,
+  };
   const reset = Date.parse(window.resetsAt);
   const start = Number.isFinite(reset) && reset >= end
     ? reset - seconds * 1_000
     : end - seconds * 1_000;
-  const totals = sumBuckets(buckets.filter((bucket) => {
+  const localEnd = usageObservedAt == null ? null : Math.min(end, usageObservedAt);
+  const localBuckets = buckets.filter((bucket) => {
     const time = Date.parse(bucket.bucketStart);
-    return Number.isFinite(time) && time >= start && time <= end;
-  }));
-  const coverage = sourceHistoryStart == null
+    return Number.isFinite(time) && localEnd != null && time >= start && time <= localEnd;
+  });
+  const totals = sumBuckets(localBuckets);
+  const observedCoverage = sourceHistoryStart == null || localEnd == null
     ? 0
-    : sourceHistoryStart <= start ? 1 : Math.max(0, Math.min(1, (end - sourceHistoryStart) / Math.max(1, end - start)));
-  return { totals, coverage };
+    : Math.max(0, Math.min(1,
+      (localEnd - Math.max(start, sourceHistoryStart)) / Math.max(1, end - start),
+    ));
+  return {
+    totals,
+    coverage: clock.joinEligible ? observedCoverage : 0,
+    observedCoverage,
+    observed: localBuckets.length > 0 || observedCoverage > 0,
+    evidenceClock: clock,
+  };
 }
 
-function historyWindows(history, providerId, buckets, sourceHistoryStart) {
+function historyWindows(history, providerId, buckets, sourceHistoryStart, usageObservedAt) {
   const groups = new Map();
   for (const observation of history?.observations || []) {
     const provider = observation.providers?.find((item) => item.id === providerId);
     for (const window of provider?.windows || []) {
-      if (!groups.has(window.id)) groups.set(window.id, []);
-      const local = totalsAtObservation(buckets, window, observation.observedAt, sourceHistoryStart);
-      groups.get(window.id).push({
-        ...window,
+      const normalized = normalizeQuotaWindow(window);
+      if (!hasQuotaFact(normalized)) continue;
+      if (!groups.has(normalized.id)) groups.set(normalized.id, []);
+      const local = totalsAtObservation(buckets, normalized, observation.observedAt, sourceHistoryStart, usageObservedAt);
+      groups.get(normalized.id).push({
+        ...normalized,
         observedAt: observation.observedAt,
         localTotals: local.totals,
         localCoverage: local.coverage,
+        localObservedCoverage: local.observedCoverage,
+        localObserved: local.observed,
+        localEvidenceState: local.evidenceClock.state,
+        evidenceClock: local.evidenceClock,
       });
     }
   }
@@ -255,7 +336,7 @@ function windowPace(window, now) {
   const seconds = inferredWindowSeconds(window);
   const reset = Date.parse(window.resetsAt);
   const usedPercent = finite(window.usedPercent);
-  if (!seconds || !Number.isFinite(reset) || usedPercent == null) return null;
+  if (!seconds || !Number.isFinite(reset) || reset <= now || usedPercent == null) return null;
   const start = reset - seconds * 1_000;
   const elapsedFraction = Math.max(0, Math.min(1, (now - start) / (seconds * 1_000)));
   if (elapsedFraction < 0.03) return {
@@ -263,6 +344,7 @@ function windowPace(window, now) {
   };
   const currentCycle = (window.historyPoints || []).filter((point) => (
     point.resetsAt === window.resetsAt && Date.parse(point.observedAt) <= now
+      && finite(point.usedPercent) != null
   ));
   const first = currentCycle[0];
   const last = currentCycle.at(-1);
@@ -304,13 +386,16 @@ function decisionSignals(provider) {
     .sort((left, right) => (right.windowSeconds || 0) - (left.windowSeconds || 0))[0];
   if (exhaustedWindow) {
     signals.push({ code: 'exhausted', tone: 'warning', windowId: exhaustedWindow.id, windowLabel: exhaustedWindow.label,
-      usedPercent: finite(exhaustedWindow.usedPercent), ...(exhaustedWindow.pace || {}) });
+      usedPercent: finite(exhaustedWindow.usedPercent), evidenceObservedAt: exhaustedWindow.evidenceObservedAt,
+      evidenceTimestampSource: provider.evidenceClock?.quotaTimestampSource || null, ...(exhaustedWindow.pace || {}) });
   } else if (paceWindow?.pace.elapsedFraction >= 0.1 && paceWindow.pace.projectedFinalPercent >= 110) {
     signals.push({ code: 'pace-high', tone: 'warning', windowId: paceWindow.id, windowLabel: paceWindow.label,
-      usedPercent: finite(paceWindow.usedPercent), ...paceWindow.pace });
+      usedPercent: finite(paceWindow.usedPercent), evidenceObservedAt: paceWindow.evidenceObservedAt,
+      evidenceTimestampSource: provider.evidenceClock?.quotaTimestampSource || null, ...paceWindow.pace });
   } else if (paceWindow?.pace.elapsedFraction >= 0.5 && paceWindow.pace.projectedFinalPercent <= 45) {
     signals.push({ code: 'pace-low', tone: 'neutral', windowId: paceWindow.id, windowLabel: paceWindow.label,
-      usedPercent: finite(paceWindow.usedPercent), ...paceWindow.pace });
+      usedPercent: finite(paceWindow.usedPercent), evidenceObservedAt: paceWindow.evidenceObservedAt,
+      evidenceTimestampSource: provider.evidenceClock?.quotaTimestampSource || null, ...paceWindow.pace });
   }
   if (provider.economics.valueRatio != null && provider.economics.valueRatio >= 1.5) {
     signals.push({ code: 'value-high', tone: 'positive', valueRatio: provider.economics.valueRatio,
@@ -327,10 +412,23 @@ function decisionSignals(provider) {
 }
 
 export function buildSubscriptionInsights(snapshot, limits, {
-  now = Date.parse(snapshot?.generatedAt) || Date.now(), settings = null,
+  now = null, settings = null,
 } = {}) {
+  const explicitNow = Number.isFinite(now) ? now : null;
+  const usageGeneratedAt = timestamp(snapshot?.generatedAt);
+  const usageObservedAt = usageGeneratedAt ?? explicitNow;
+  const usageReferenceAt = usageObservedAt ?? Date.now();
+  const limitsGeneratedAt = timestamp(limits?.generatedAt);
+  const limitsObservedAt = limitsGeneratedAt ?? explicitNow;
   const allBuckets = Array.isArray(snapshot?.buckets) ? snapshot.buckets : [];
   const providers = (limits?.providers || []).map((provider) => {
+    const providerObservedAt = timestamp(provider.updatedAt);
+    const quotaObservedAt = providerObservedAt ?? limitsObservedAt;
+    const quotaTimestampSource = providerObservedAt != null
+      ? 'provider.updatedAt'
+      : limitsGeneratedAt != null ? 'limits.generatedAt'
+        : explicitNow != null ? 'options.now' : null;
+    const providerEvidenceClock = evidenceClock(usageObservedAt, quotaObservedAt);
     const sources = new Set(providerSources(provider.id));
     const buckets = allBuckets.filter((bucket) => sources.has(bucket.source));
     const sourceHistoryStart = buckets.reduce((earliest, bucket) => {
@@ -340,7 +438,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
     const lifetimeTotals = sumBuckets(buckets);
     const recentBuckets = buckets.filter((bucket) => {
       const time = Date.parse(bucket.bucketStart);
-      return Number.isFinite(time) && time >= now - MONTH_SECONDS * 1_000 && time <= now;
+      return Number.isFinite(time) && time >= usageReferenceAt - MONTH_SECONDS * 1_000 && time <= usageReferenceAt;
     });
     const recentTotals = sumBuckets(recentBuckets);
     const modelRows = groupModels(buckets);
@@ -354,7 +452,8 @@ export function buildSubscriptionInsights(snapshot, limits, {
       buckets,
       Number.isFinite(sourceHistoryStart) ? sourceHistoryStart : null,
       modelRates,
-      now,
+      quotaObservedAt,
+      usageObservedAt,
     ));
     const subscription = settings?.providers?.[provider.id] || {};
     const entitlementType = normalizedEntitlementType(subscription);
@@ -363,7 +462,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
     const price = isPaid && enteredPrice > 0 ? enteredPrice : null;
     const monthlyPrice = price == null ? null : subscription.billingCycle === 'yearly' ? price / 12 : price;
     const normalizedHistoryStart = Number.isFinite(sourceHistoryStart) ? sourceHistoryStart : null;
-    const history = historyWindows(limits?.history, provider.id, buckets, normalizedHistoryStart);
+    const history = historyWindows(limits?.history, provider.id, buckets, normalizedHistoryStart, usageObservedAt);
     const baseWindows = currentWindows.length ? currentWindows : [...history.values()].map((points) => {
       const latest = points.at(-1);
       return {
@@ -379,13 +478,13 @@ export function buildSubscriptionInsights(snapshot, limits, {
       const value = {
         ...window,
         historyPoints,
-        cycleStats: buildCycleCapacityStats(historyPoints, modelRows, now),
+        cycleStats: buildCycleCapacityStats(historyPoints, modelRows, quotaObservedAt ?? usageReferenceAt),
       };
-      return { ...value, pace: value.stale ? null : windowPace(value, now) };
+      return { ...value, pace: value.stale || quotaObservedAt == null ? null : windowPace(value, quotaObservedAt) };
     });
     const currentQuotaWindows = enrichedWindows.filter((window) => !window.stale && hasQuotaFact(window));
     const historicalQuotaWindows = enrichedWindows.filter((window) => (
-      window.stale && (window.historyPoints || []).some(hasQuotaFact)
+      window.stale && (hasQuotaFact(window) || (window.historyPoints || []).some(hasQuotaFact))
     ));
     const quotaObservation = {
       state: currentQuotaWindows.length
@@ -396,6 +495,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
       historicalWindows: historicalQuotaWindows.length,
       errorCode: provider.status === 'error' ? provider.error?.code || 'provider_error' : null,
       bestEffort: provider.quotaCoverage === 'best-effort',
+      observedAt: quotaObservedAt == null ? null : new Date(quotaObservedAt).toISOString(),
     };
     const primaryWindow = [...enrichedWindows]
       .filter((window) => window.estimatedCapacityTokens != null && window.windowSeconds)
@@ -437,12 +537,19 @@ export function buildSubscriptionInsights(snapshot, limits, {
       },
       economics,
       quotaObservation,
+      evidenceClock: {
+        ...providerEvidenceClock,
+        usageObservedAt: usageObservedAt == null ? null : new Date(usageObservedAt).toISOString(),
+        quotaObservedAt: quotaObservedAt == null ? null : new Date(quotaObservedAt).toISOString(),
+        quotaTimestampSource,
+        toleranceMs: EVIDENCE_SKEW_TOLERANCE_MS,
+      },
     };
     const withReview = { ...value, renewalReview: buildRenewalReview({
       buckets,
       subscription: value.subscription,
       sourceHistoryStart: normalizedHistoryStart,
-      now,
+      now: usageReferenceAt,
     }) };
     return { ...withReview, decisionSignals: decisionSignals(withReview) };
   });
@@ -451,7 +558,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
     if (provider.subscription.isPaid && price != null) totals[provider.subscription.currency] += price;
     return totals;
   }, { usd: 0, cny: 0 });
-  const portfolio = buildPortfolioReview(providers, now);
+  const portfolio = buildPortfolioReview(providers, usageReferenceAt);
   const entitlementCounts = Object.fromEntries(
     ['paid', 'free', 'promotion', 'organization', 'unknown'].map((type) => [
       type, providers.filter((provider) => provider.subscription.entitlementType === type).length,

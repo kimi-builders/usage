@@ -23,6 +23,21 @@ export function money(micros, digits = 2) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: digits }).format((micros || 0) / 1_000_000);
 }
 
+export function usdMoney(micros, digits) {
+  const value = (micros || 0) / 1_000_000;
+  const precision = digits ?? (Math.abs(value) >= 0.01 ? 2 : 4);
+  return `USD ${value.toLocaleString('en-US', {
+    minimumFractionDigits: precision,
+    maximumFractionDigits: precision,
+  })}`;
+}
+
+export function distributionShare(rows, row, metric = 'tokens') {
+  const field = metric === 'cost' ? 'costMicros' : 'totalTokens';
+  const total = rows.reduce((sum, item) => sum + (item[field] || 0), 0);
+  return total > 0 ? (row[field] || 0) / total : 0;
+}
+
 export function percent(value, digits = 1) {
   const effectiveDigits = value > .999 && value < 1 ? Math.max(2, digits) : digits;
   return `${((value || 0) * 100).toFixed(effectiveDigits)}%`;

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { getConfigDir } from './config.js';
 import { COLLECTOR_VERSION } from './client-meta.js';
 import { loadSyncStatus, runManagedSync } from './sync-runtime.js';
+import { safeLocalPathDisplay } from './safe-display.js';
 
 const LABEL = 'builders.kimi.usage.sync';
 const SYSTEMD_NAME = 'kimi-builders-usage-sync';
@@ -216,7 +217,11 @@ export function getDaemonStatus({
     updateRequired: Boolean(
       (metadata?.collectorVersion && metadata.collectorVersion !== COLLECTOR_VERSION) || !runtimeAvailable,
     ),
-    runtimeAvailable, logPath: paths.log, schedulerLogPath: paths.schedulerLog,
+    runtimeAvailable,
+    logPath: safeLocalPathDisplay(paths.log, { home }),
+    schedulerLogPath: safeLocalPathDisplay(paths.schedulerLog, { home }),
+    logAvailable: existsSync(paths.log),
+    schedulerLogAvailable: existsSync(paths.schedulerLog),
     lastSync: loadSyncStatus({ configDir }),
   };
 }
@@ -248,7 +253,8 @@ export function installDaemon({
     ]);
     runChecked(runner, 'schtasks.exe', ['/Run', '/TN', WINDOWS_TASK], { allowFailure: true });
   }
-  return { ...metadata, status: getDaemonStatus({ platform, home, configDir, runner }) };
+  const { entry: _entry, node: _node, ...publicMetadata } = metadata;
+  return { ...publicMetadata, status: getDaemonStatus({ platform, home, configDir, runner }) };
 }
 
 export function uninstallDaemon({

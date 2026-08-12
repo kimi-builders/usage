@@ -14,7 +14,7 @@ import { fetchOpenCodeLimits, parseOpenCodeUsage } from '../src/limits/providers
 import { parseQoderUsage } from '../src/limits/providers/qoder.js';
 import { parseWarpUsage } from '../src/limits/providers/warp.js';
 import { parseWindsurfPlan } from '../src/limits/providers/windsurf.js';
-import { clearLimitCache, loadSubscriptionLimits } from '../src/limits/service.js';
+import { clearLimitCache, loadSubscriptionLimits, saveLimitSettings } from '../src/limits/service.js';
 
 const NOW = new Date('2026-08-11T12:00:00.000Z');
 
@@ -42,6 +42,27 @@ test('normalizes quota settings without accepting unknown providers or auth mode
   assert.deepEqual(exposed.catalog.slice(0, 3).map((item) => item.id), ['codex', 'kimi-code', 'claude-code']);
   assert.equal(exposed.catalog.find((item) => item.id === 'warp').hasSecret, true);
   assert.equal(JSON.stringify(exposed).includes('raw-token'), false);
+});
+
+test('public settings redact local paths and preserve the private value on an unchanged round trip', () => {
+  const privatePath = '/Users/sentinel/private/JetBrains2026.2';
+  const config = { subscriptionLimits: normalizeLimitSettings({
+    providers: { 'jetbrains-ai': { enabled: true, customPath: privatePath } },
+  }) };
+  const exposed = publicLimitSettings(config.subscriptionLimits, {
+    keychainAvailable: false, hasSecret: () => false,
+  });
+  assert.equal(exposed.providers['jetbrains-ai'].customPathConfigured, true);
+  assert.equal(exposed.providers['jetbrains-ai'].customPath.startsWith('/'), false);
+  assert.equal(JSON.stringify(exposed).includes(privatePath), false);
+
+  let saved = null;
+  const response = saveLimitSettings({ settings: { ...exposed, enabled: true } }, {
+    config, save: (value) => { saved = value; }, writeSecret: () => {}, deleteSecret: () => {},
+  });
+  assert.equal(saved.subscriptionLimits.providers['jetbrains-ai'].customPath, privatePath);
+  assert.equal(JSON.stringify(response).includes(privatePath), false);
+  assert.equal(response.providers['jetbrains-ai'].customPath.startsWith('/'), false);
 });
 
 test('normalizes optional subscription spend without inventing prices', () => {
@@ -293,7 +314,11 @@ test('subscription limit service isolates provider failures and does not expose 
     historyRecorder: (snapshot) => { recorded = snapshot; },
     environment: { SECRET_WARP: 'super-secret-value' },
     fetchers: {
-      codex: async () => ({ id: 'codex', label: 'Codex', status: 'ok', windows: [], updatedAt: NOW.toISOString() }),
+      codex: async () => ({
+        id: 'codex', label: 'Codex', status: 'ok', windows: [], updatedAt: NOW.toISOString(),
+        account: 'builder@example.com', source: '/Users/private/.codex/auth.json',
+        credential: 'sentinel-provider-secret', rawResponse: { token: 'sentinel-provider-secret' },
+      }),
       warp: async () => { const error = new Error('Warp needs attention'); error.code = 'unauthorized'; throw error; },
     },
   });
@@ -306,4 +331,11 @@ test('subscription limit service isolates provider failures and does not expose 
   assert.equal(result.history.observations.length, 0);
   assert.equal(recorded.providers[1].id, 'codex');
   assert.equal(JSON.stringify(result).includes('super-secret-value'), false);
+  assert.equal(JSON.stringify(result).includes('sentinel-provider-secret'), false);
+  assert.equal(JSON.stringify(result).includes('/Users/private'), false);
+  assert.equal(result.providers[1].account, 'b•••@example.com');
+  assert.deepEqual(Object.keys(result.providers[1]), [
+    'id', 'label', 'status', 'account', 'plan', 'source', 'notice', 'resetCredits',
+    'updatedAt', 'windows', 'quotaCoverage',
+  ]);
 });

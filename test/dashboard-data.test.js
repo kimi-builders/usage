@@ -42,7 +42,7 @@ const snapshot = {
 
 test('dashboard payload keeps useful local dimensions but removes secrets and roots', () => {
   const data = createDashboardData(snapshot, {
-    config: { apiUrl: 'https://kimi.builders', apiKey: 'kbu_super-secret' },
+    config: { apiUrl: 'https://kimi.builders', apiKey: 'kbu_super-secret', sessionSalt: 'safe-session-salt' },
     device: { terminal: { name: 'Warp' }, os: { name: 'macOS' } },
     agentVersions: { 'kimi-code': '1.2.3' },
   });
@@ -57,3 +57,17 @@ test('dashboard payload keeps useful local dimensions but removes secrets and ro
   assert.equal(data.activityHours[0].engagedSeconds, 60);
 });
 
+test('dashboard community status uses the same connection predicate as sync', () => {
+  const missingSalt = createDashboardData(snapshot, {
+    config: { apiUrl: 'https://kimi.builders', apiKey: 'kbu_super-secret' },
+    device: { terminal: { name: 'Warp' }, os: { name: 'macOS' } },
+    agentVersions: {},
+  });
+  const missingKey = createDashboardData(snapshot, {
+    config: { apiUrl: 'https://kimi.builders', sessionSalt: 'safe-session-salt' },
+    device: { terminal: { name: 'Warp' }, os: { name: 'macOS' } },
+    agentVersions: {},
+  });
+  assert.equal(missingSalt.community.connected, false);
+  assert.equal(missingKey.community.connected, false);
+});

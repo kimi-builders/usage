@@ -33,8 +33,23 @@ function writeJson(path, value) {
   renameSync(temporary, path);
 }
 
-function safeMessage(error) {
+function privateMessage(error) {
   return String(error?.message || error || 'Unknown sync error').replace(/[\r\n]+/g, ' ').slice(0, 500);
+}
+
+function publicFailure(error) {
+  if ([401, 403].includes(Number(error?.statusCode))) {
+    return { code: 'authentication_failed', message: 'Synchronization authorization failed. Reconnect this device and try again.' };
+  }
+  return { code: 'sync_failed', message: 'Synchronization failed. See the private local log for details.' };
+}
+
+function publicStatus(value) {
+  if (!value || typeof value !== 'object' || !value.lastError) return value;
+  const failure = value.lastErrorCode === 'authentication_failed'
+    ? publicFailure({ statusCode: 401 })
+    : publicFailure();
+  return { ...value, lastErrorCode: failure.code, lastError: failure.message };
 }
 
 function appendLog(path, message) {
@@ -68,7 +83,7 @@ function acquireLock(path) {
 }
 
 export function loadSyncStatus({ configDir = getConfigDir() } = {}) {
-  return readJson(getSyncRuntimePaths(configDir).status);
+  return publicStatus(readJson(getSyncRuntimePaths(configDir).status));
 }
 
 export async function runManagedSync({
@@ -97,12 +112,14 @@ export async function runManagedSync({
     appendLog(paths.log, `[${trigger}] synchronization completed (${next.result.buckets} buckets, ${next.result.sessions} sessions)`);
     return result;
   } catch (error) {
-    const message = safeMessage(error);
+    const privateDetail = privateMessage(error);
+    const failure = publicFailure(error);
     writeJson(paths.status, {
       ...prior, state: 'error', trigger, lastAttemptAt: startedAt,
-      lastDurationMs: Date.now() - started, lastError: message,
+      lastDurationMs: Date.now() - started,
+      lastErrorCode: failure.code, lastError: failure.message,
     });
-    appendLog(paths.log, `[${trigger}] synchronization failed: ${message}`);
+    appendLog(paths.log, `[${trigger}] synchronization failed: ${privateDetail}`);
     throw error;
   } finally {
     try { closeSync(handle); } catch {}

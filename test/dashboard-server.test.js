@@ -139,6 +139,35 @@ test('sync API distinguishes status reads from explicit local actions', async ()
   }
 });
 
+test('browser APIs return a stable error contract without raw filesystem details', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'kbu-dashboard-safe-error-'));
+  const sentinel = '/Users/sentinel/private/quota-response.json';
+  writeFileSync(join(root, 'index.html'), '<main>local dashboard</main>');
+  const local = await startLocalDashboardServer({
+    launchBrowser: false,
+    buildRoot: root,
+    dataLoader: async () => ({}),
+    limitsLoader: async () => { throw new Error(`unable to read ${sentinel}`); },
+  });
+  try {
+    const tokenPath = new URL(local.url).pathname + new URL(local.url).search;
+    const authorized = await http(local.port, tokenPath);
+    const cookie = authorized.headers['set-cookie'][0].split(';')[0];
+    const response = await http(local.port, '/api/limits', { Cookie: cookie });
+    assert.equal(response.status, 500);
+    assert.deepEqual(JSON.parse(response.body), {
+      error: {
+        code: 'internal_error',
+        message: 'The local dashboard could not complete this request.',
+      },
+    });
+    assert.equal(response.body.includes(sentinel), false);
+  } finally {
+    await local.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('development API can authorize then redirect to a loopback Vite server without a build', async () => {
   let browserOrigin = 'http://127.0.0.1:5173';
   const local = await startLocalDashboardServer({
@@ -161,7 +190,12 @@ test('development API can authorize then redirect to a loopback Vite server with
     browserOrigin = 'https://attacker.invalid';
     const rejected = await http(local.port, tokenPath);
     assert.equal(rejected.status, 500);
-    assert.match(rejected.body, /127\.0\.0\.1/);
+    assert.deepEqual(JSON.parse(rejected.body), {
+      error: {
+        code: 'internal_error',
+        message: 'The local dashboard could not complete this request.',
+      },
+    });
   } finally {
     await local.close();
   }

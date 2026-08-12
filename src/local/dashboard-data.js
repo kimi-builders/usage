@@ -99,7 +99,7 @@ export function createDashboardData(snapshot, {
     device: { ...device, collector: { name: '@kimi-builders/usage', version: COLLECTOR_VERSION } },
     agentVersions,
     community: {
-      connected: Boolean(config?.apiKey),
+      connected: Boolean(config?.apiKey && config?.sessionSalt),
       url: communityUrl(config?.apiUrl),
       origin: config?.apiUrl || 'https://kimi.builders',
     },

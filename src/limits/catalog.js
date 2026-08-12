@@ -1,3 +1,5 @@
+import { safeLocalPathDisplay } from '../safe-display.js';
+
 export const LIMIT_PROVIDER_CATALOG = [
   {
     id: 'codex', label: 'Codex', group: 'recommended', popular: true,
@@ -185,8 +187,15 @@ export function publicLimitSettings(settings, {
 } = {}) {
   const normalized = normalizeLimitSettings(settings);
   const catalogById = new Map(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id, provider]));
+  const providers = Object.fromEntries(Object.entries(normalized.providers).map(([id, provider]) => [id, {
+    ...provider,
+    customPath: safeLocalPathDisplay(provider.customPath),
+    customPathConfigured: Boolean(provider.customPath),
+    workspaceId: safeLocalPathDisplay(provider.workspaceId),
+  }]));
   return {
     ...normalized,
+    providers,
     keychainAvailable,
     catalog: normalized.providerOrder.map((id) => catalogById.get(id)).filter(Boolean).map((provider) => ({
       ...provider,

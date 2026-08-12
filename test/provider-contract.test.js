@@ -116,3 +116,59 @@ test('contract rejects duplicate windows, invalid dates, and negative quota valu
   }), /不能为负数/);
 });
 
+test('contract returns an exact browser allowlist and redacts account and path hints', () => {
+  const sentinel = 'sentinel-provider-secret';
+  const result = assertProviderContract('codex', {
+    id: 'codex', label: 'Codex', status: 'ok', updatedAt: NOW.toISOString(),
+    account: 'builder@example.com', plan: 'pro', source: '/Users/private/.codex/auth.json',
+    credential: sentinel, rawResponse: { token: sentinel },
+    notice: 'Provider-reported subscription quota; not an API rate limit.',
+    resetCredits: {
+      availableCount: 3.9, nextExpiry: '2026-08-13T12:00:00Z', secret: sentinel,
+    },
+    windows: [{
+      id: 'primary', label: '5 小时', usedPercent: 25, remainingPercent: 75,
+      resetsAt: '2026-08-12T15:00:00.000Z', detail: '/private/secret/quota.json',
+      providerExtra: sentinel,
+    }],
+  });
+  assert.deepEqual(Object.keys(result), [
+    'id', 'label', 'status', 'account', 'plan', 'source', 'notice', 'resetCredits',
+    'updatedAt', 'windows',
+  ]);
+  assert.deepEqual(Object.keys(result.windows[0]), [
+    'id', 'label', 'usedPercent', 'remainingPercent', 'resetsAt', 'windowSeconds',
+    'value', 'limit', 'unit', 'detail',
+  ]);
+  assert.equal(result.account, 'b•••@example.com');
+  assert.equal(result.source.startsWith('/'), false);
+  assert.equal(result.windows[0].detail.startsWith('/'), false);
+  assert.equal(result.notice, 'Provider-reported subscription quota; not an API rate limit.');
+  assert.deepEqual(result.resetCredits, {
+    availableCount: 3, nextExpiry: '2026-08-13T12:00:00.000Z',
+  });
+  assert.equal(JSON.stringify(result).includes(sentinel), false);
+  assert.equal(JSON.stringify(result).includes('/Users/private'), false);
+});
+
+test('optional quota facts are bounded and fail closed without widening the contract', () => {
+  const result = assertProviderContract('codex', {
+    id: 'codex', label: 'Codex', status: 'empty', updatedAt: NOW.toISOString(), windows: [],
+    notice: ` ${'n'.repeat(400)} `,
+    resetCredits: { availableCount: Number.POSITIVE_INFINITY, nextExpiry: 'not-a-date' },
+  });
+  assert.equal(result.notice.length, 300);
+  assert.deepEqual(result.resetCredits, { availableCount: 0, nextExpiry: null });
+});
+
+test('optional provider display text redacts embedded absolute paths', () => {
+  const result = assertProviderContract('codex', {
+    id: 'codex', label: 'Codex', status: 'empty', updatedAt: NOW.toISOString(), windows: [],
+    source: 'loaded from /Users/sentinel/.codex/auth.json',
+    notice: 'Private detail at /private/sentinel/quota.json is omitted.',
+  });
+  assert.equal(JSON.stringify(result).includes('/Users/sentinel'), false);
+  assert.equal(JSON.stringify(result).includes('/private/sentinel'), false);
+  assert.match(result.source, /\[local path\]/);
+  assert.match(result.notice, /\[local path\]/);
+});

@@ -51,15 +51,11 @@ function sanitizeWindow(window) {
 
 function sanitizeProvider(provider) {
   const id = String(provider?.id || '').slice(0, 100);
-  if (!id || provider?.status !== 'ok') return null;
+  // Fresh snapshots carry status; normalized history intentionally does not.
+  if (!id || (provider?.status != null && provider.status !== 'ok')) return null;
   const windows = (provider.windows || []).map(sanitizeWindow).filter(Boolean);
   if (!windows.length) return null;
-  return {
-    id, status: 'ok',
-    label: String(provider?.label || id).slice(0, 100),
-    plan: provider?.plan ? String(provider.plan).slice(0, 100) : null,
-    windows,
-  };
+  return { id, windows };
 }
 
 function sanitizeObservation(observation) {
@@ -85,7 +81,24 @@ export function compactLimitHistory(observations, { now = Date.now() } = {}) {
   for (const observation of valid) {
     const time = Date.parse(observation.observedAt);
     const interval = intervalForAge(Math.max(0, now - time));
-    buckets.set(`${interval}:${Math.floor(time / interval)}`, observation);
+    const key = `${interval}:${Math.floor(time / interval)}`;
+    const current = buckets.get(key);
+    if (!current) {
+      buckets.set(key, observation);
+      continue;
+    }
+    const providers = new Map(current.providers.map((provider) => [provider.id, provider]));
+    for (const provider of observation.providers) {
+      // A successful provider result is a complete fact set for that provider.
+      // Replacing it prevents a disappeared window from inheriting the newer
+      // observation timestamp, while providers absent from this partial poll
+      // remain represented by their latest result in the bucket.
+      providers.set(provider.id, provider);
+    }
+    buckets.set(key, {
+      observedAt: observation.observedAt,
+      providers: [...providers.values()],
+    });
   }
   return [...buckets.values()].sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt))
     .slice(-MAX_OBSERVATIONS);

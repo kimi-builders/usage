@@ -3,6 +3,10 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App.jsx";
 import "./styles.css";
 
+const savedTheme = localStorage.getItem("kbu.theme");
+document.documentElement.dataset.theme = savedTheme
+  || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+
 class DashboardErrorBoundary extends React.Component {
   constructor(props) {
     super(props);

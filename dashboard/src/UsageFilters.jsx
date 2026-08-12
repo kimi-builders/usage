@@ -19,6 +19,25 @@ function optionLabel(dimension, value, zh) {
   return value;
 }
 
+function RangeSegment({ active, onChange, zh }) {
+  const onKeyDown = (event) => {
+    const found = RANGE_OPTIONS.findIndex((item) => item.id === active);
+    const current = found >= 0 ? found : 0;
+    let next = null;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (current + 1) % RANGE_OPTIONS.length;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (current - 1 + RANGE_OPTIONS.length) % RANGE_OPTIONS.length;
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = RANGE_OPTIONS.length - 1;
+    if (next == null) return;
+    event.preventDefault();
+    onChange(RANGE_OPTIONS[next].id);
+    event.currentTarget.parentElement?.querySelectorAll('[role="radio"]')[next]?.focus();
+  };
+  return <div className="range-segment" role="radiogroup" aria-label={zh ? '时间范围' : 'Date range'}>
+    {RANGE_OPTIONS.map((item, index) => <button type="button" role="radio" key={item.id} aria-checked={active === item.id} tabIndex={active === item.id || (!RANGE_OPTIONS.some((option) => option.id === active) && index === 0) ? 0 : -1} className={active === item.id ? 'active' : ''} onKeyDown={onKeyDown} onClick={() => onChange(item.id)}>{zh ? item.zh : item.en}</button>)}
+  </div>;
+}
+
 function DimensionDropdown({ dimension, values, selected, onApply, open, setOpen, zh }) {
   const ref = useRef(null);
   const [draft, setDraft] = useState(selected);
@@ -65,14 +84,15 @@ export function UsageFilterBar({ filters, options, onChange, currency, onCurrenc
   const [mobileOpen, setMobileOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(() => DIMENSIONS.some((dimension) => dimension.secondary && filters[dimension.key]?.length));
   const [openMenu, setOpenMenu] = useState(null);
+  useEffect(() => {
+    if (currency && currency !== 'usd') onCurrency?.('usd');
+  }, [currency, onCurrency]);
   const activeCount = DIMENSIONS.reduce((sum, dimension) => sum + (filters[dimension.key]?.length || 0), 0);
   const primary = DIMENSIONS.filter((dimension) => !dimension.secondary);
   const secondary = DIMENSIONS.filter((dimension) => dimension.secondary);
   const update = (key, value) => onChange({ ...filters, [key]: value });
   return <section className="filter-bar" aria-label={zh ? '用量筛选' : 'Usage filters'}>
-    <div className="range-segment">
-      {RANGE_OPTIONS.map((item) => <button type="button" key={item.id} className={filters.range === item.id ? 'active' : ''} onClick={() => update('range', item.id)}>{zh ? item.zh : item.en}</button>)}
-    </div>
+    <RangeSegment active={filters.range} onChange={(range) => update('range', range)} zh={zh}/>
     <button className="mobile-filter-toggle" type="button" onClick={() => setMobileOpen((value) => !value)} aria-expanded={mobileOpen}><Filter size={13}/>{zh ? '筛选' : 'Filters'}{activeCount ? ` · ${activeCount}` : ''}</button>
     <div className={`dimension-bar ${mobileOpen ? 'open' : ''}`}>
       {primary.map((dimension) => <DimensionDropdown key={dimension.key} dimension={dimension} values={options[dimension.key] || []} selected={filters[dimension.key] || []} onApply={(value) => update(dimension.key, value)} open={openMenu === dimension.key} setOpen={setOpenMenu} zh={zh}/>)}
@@ -80,7 +100,6 @@ export function UsageFilterBar({ filters, options, onChange, currency, onCurrenc
       {moreOpen ? secondary.map((dimension) => <DimensionDropdown key={dimension.key} dimension={dimension} values={options[dimension.key] || []} selected={filters[dimension.key] || []} onApply={(value) => update(dimension.key, value)} open={openMenu === dimension.key} setOpen={setOpenMenu} zh={zh}/>) : null}
       {activeCount ? <button className="clear-filters" type="button" onClick={() => onChange({ ...filters, ...Object.fromEntries(DIMENSIONS.map((dimension) => [dimension.key, []])) })}>{zh ? '清除筛选' : 'Clear filters'}</button> : null}
     </div>
-    <div className="currency-toggle" aria-label={zh ? '展示币种' : 'Display currency'}><button type="button" className={currency === 'usd' ? 'active' : ''} onClick={() => onCurrency('usd')}>$</button><button type="button" className={currency === 'cny' ? 'active' : ''} onClick={() => onCurrency('cny')}>¥</button></div>
     {activeCount ? <div className="filter-chips">
       {DIMENSIONS.flatMap((dimension) => (filters[dimension.key] || []).map((value) => <span key={`${dimension.key}:${value}`}><small>{zh ? dimension.zh : dimension.en}</small>{optionLabel(dimension, value, zh)}<button type="button" aria-label={zh ? '移除此筛选' : 'Remove filter'} onClick={() => update(dimension.key, filters[dimension.key].filter((item) => item !== value))}><X size={11}/></button></span>))}
     </div> : null}

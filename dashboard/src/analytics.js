@@ -42,6 +42,10 @@ function startOfLocalWeek(date) {
   return value;
 }
 
+function localCalendarIndex(date) {
+  return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000);
+}
+
 export function rangeStart(range, now = new Date()) {
   if (range === 'all') return null;
   if (range === 'today') return startOfLocalDay(now);
@@ -166,7 +170,7 @@ function unitStart(date, unit) {
 
 function addUnit(date, unit, amount = 1) {
   const value = new Date(date);
-  if (unit === 'hour') value.setHours(value.getHours() + amount);
+  if (unit === 'hour') value.setTime(value.getTime() + amount * 3_600_000);
   else if (unit === 'day') value.setDate(value.getDate() + amount);
   else value.setDate(value.getDate() + amount * 7);
   return value;
@@ -209,9 +213,9 @@ function buildSeries(buckets, activityHours, range, start, end) {
   if (!first && observedKeys.length) first = new Date(observedKeys[0]);
   if (!first) first = unitStart(end, unit);
   const last = unitStart(end, unit);
-  // “24H” is 24 hourly slots including the current partial hour. Flooring both
+  // “24H” is 24 elapsed-hour slots including the current partial hour. Flooring both
   // endpoints of a rolling 24-hour window would otherwise render 25 bars and
-  // used to trigger a Recharts transition crash when switching from 30D.
+  // calendar-hour stepping would lose a bar during the spring DST transition.
   if (range === '24h') first = addUnit(last, 'hour', -23);
   const rows = [];
   for (let cursor = first; cursor <= last; cursor = addUnit(cursor, unit)) {
@@ -336,7 +340,7 @@ function streaks(buckets, end) {
   let previous = null;
   for (const key of [...days].sort()) {
     const current = new Date(key);
-    running = previous && current.getTime() - previous.getTime() === 86_400_000 ? running + 1 : 1;
+    running = previous && localCalendarIndex(current) - localCalendarIndex(previous) === 1 ? running + 1 : 1;
     longest = Math.max(longest, running);
     previous = current;
   }
@@ -356,7 +360,7 @@ function weeklyStreaks(buckets, end) {
   let previous = null;
   for (const key of [...weeks].sort()) {
     const current = new Date(key);
-    running = previous && current.getTime() - previous.getTime() === 604_800_000 ? running + 1 : 1;
+    running = previous && localCalendarIndex(current) - localCalendarIndex(previous) === 7 ? running + 1 : 1;
     longest = Math.max(longest, running);
     previous = current;
   }

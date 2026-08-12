@@ -22,6 +22,7 @@ import { fetchWarpLimits } from './providers/warp.js';
 import { detectWindsurfDatabase, fetchWindsurfLimits } from './providers/windsurf.js';
 import { loadLimitHistory, recordLimitSnapshot } from './history.js';
 import { assertProviderContract } from './contract.js';
+import { safeLocalPathDisplay } from '../safe-display.js';
 
 const FETCHERS = {
   codex: fetchCodexLimits,
@@ -54,7 +55,15 @@ function providerError(provider, error) {
     status: 'error',
     error: {
       code: knownCodes.has(error?.code) ? error.code : 'provider_error',
-      message: String(error?.message || '额度查询失败。').slice(0, 300),
+      message: {
+        not_configured: `${provider.label} 尚未配置，或未检测到可用登录。`,
+        unauthorized: `${provider.label} 登录已失效，或无权读取额度。`,
+        timeout: `${provider.label} 额度查询超时，请稍后重试。`,
+        network_error: `${provider.label} 暂时无法连接，请检查网络后重试。`,
+        invalid_response: `${provider.label} 返回了无法验证的额度数据。`,
+        blocked_endpoint: `${provider.label} 当前不允许此额度查询。`,
+        provider_error: `${provider.label} 额度查询失败，请稍后重试。`,
+      }[knownCodes.has(error?.code) ? error.code : 'provider_error'],
     },
     windows: [],
     quotaCoverage: provider.quotaCoverage || 'supported',
@@ -157,8 +166,23 @@ export function saveLimitSettings(payload, {
   config = loadConfig() || {},
   writeSecret = writeKeychainSecret,
   deleteSecret = deleteKeychainSecret,
+  save = saveConfig,
 } = {}) {
-  const settings = normalizeLimitSettings(payload?.settings || payload);
+  const incoming = payload?.settings || payload;
+  const current = getLimitSettings(config);
+  const mergedProviders = Object.fromEntries(LIMIT_PROVIDER_CATALOG.map((provider) => {
+    const candidate = incoming?.providers?.[provider.id];
+    if (!candidate || typeof candidate !== 'object') return [provider.id, candidate];
+    const prior = current.providers[provider.id];
+    const hasCustomPath = Object.prototype.hasOwnProperty.call(candidate, 'customPath');
+    const hasWorkspaceId = Object.prototype.hasOwnProperty.call(candidate, 'workspaceId');
+    const customPath = !hasCustomPath || candidate.customPath === safeLocalPathDisplay(prior.customPath)
+      ? prior.customPath : candidate.customPath;
+    const workspaceId = !hasWorkspaceId || candidate.workspaceId === safeLocalPathDisplay(prior.workspaceId)
+      ? prior.workspaceId : candidate.workspaceId;
+    return [provider.id, { ...candidate, customPath, workspaceId }];
+  }));
+  const settings = normalizeLimitSettings({ ...incoming, providers: mergedProviders });
   const secrets = payload?.secrets && typeof payload.secrets === 'object' ? payload.secrets : {};
   const clearSecrets = new Set(Array.isArray(payload?.clearSecrets) ? payload.clearSecrets : []);
   for (const provider of LIMIT_PROVIDER_CATALOG) {
@@ -168,9 +192,9 @@ export function saveLimitSettings(payload, {
       writeSecret(provider.id, secrets[provider.id]);
     }
   }
-  saveConfig({ ...config, subscriptionLimits: settings });
+  save({ ...config, subscriptionLimits: settings });
   clearLimitCache();
-  return settings;
+  return getPublicLimitSettings({ ...config, subscriptionLimits: settings });
 }
 
 export function clearLimitCache() {
@@ -195,6 +219,7 @@ async function fetchEnabled(settings, options = {}) {
       });
       return {
         ...assertProviderContract(provider.id, result),
+        label: provider.label,
         quotaCoverage: provider.quotaCoverage || 'supported',
       };
     } catch (error) {

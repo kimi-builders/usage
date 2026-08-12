@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { analyze, availableModels, buildRecords, filterOptions, heatmapView } from '../src/analytics.js';
+import { distributionShare, usdMoney } from '../src/format.js';
 
 function bucket(id, source, model, bucketStart, total) {
   return {
@@ -104,4 +105,19 @@ test('filter options preserve private/unknown dimensions as explicit empty value
   assert.ok(options.projects.includes(''));
   assert.ok(options.efforts.includes(''));
   assert.deepEqual(options.sources.slice(0, 2), ['kimi-code', 'codex']);
+});
+
+test('API-equivalent micros stay explicitly denominated in USD', () => {
+  assert.equal(usdMoney(7_200_000), 'USD 7.20');
+  assert.equal(usdMoney(1_000), 'USD 0.0010');
+});
+
+test('distribution shares use every row, including rows below the top six', () => {
+  const rows = [60, 20, 10, 5, 3, 1, 1].map((totalTokens) => ({
+    totalTokens,
+    costMicros: totalTokens * 10,
+  }));
+  assert.equal(distributionShare(rows, rows[0], 'tokens'), 0.6);
+  assert.equal(distributionShare(rows, rows[0], 'cost'), 0.6);
+  assert.equal(distributionShare(rows, rows[6], 'tokens'), 0.01);
 });

@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Check, Download, FileJson, FileSpreadsheet, ImagePlus, Info, LoaderCircle, Share2, ShieldCheck, Trash2, X } from 'lucide-react';
 import { toPng } from 'html-to-image';
-import { analyze, RANGE_OPTIONS } from './analytics.js';
+import { analyze, EMPTY_FILTERS, RANGE_OPTIONS } from './analytics.js';
 import { compact, money, percent } from './format.js';
 import { UsagePoster } from './UsagePoster.jsx';
 
@@ -60,7 +60,7 @@ export function ExportDialog({ open, onClose, report, data, filters, zh }) {
         device: data.device,
         pricing: data.pricing,
         sources: data.sources,
-        totals: analyze(data, { ...filters, range: 'all' }).totals,
+        totals: analyze(data, { ...EMPTY_FILTERS, range: 'all' }).totals,
         counts: { buckets: data.buckets.length, sessions: data.sessions.length, activityHours: data.activityHours.length },
         buckets: data.buckets,
         sessions: data.sessions,
@@ -143,26 +143,48 @@ export function ShareDialog({ open, onClose, data, filters, initialRange, zh }) 
   const [avatar, setAvatar] = useState(() => localStorage.getItem(POSTER_AVATAR_KEY) || '');
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarError, setAvatarError] = useState('');
-  const [preview, setPreview] = useState('');
+  const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState('');
   const posterRef = useRef(null);
+  const revisionRef = useRef(0);
+  const rangeRefs = useRef([]);
+  const rangeLegendId = useId();
   const report = useMemo(() => analyze(data, { ...filters, range }), [data, filters, range]);
   useEffect(() => { if (open) setRange(initialRange); }, [open, initialRange]);
   useEffect(() => {
     if (!open || !posterRef.current) return undefined;
+    const revision = revisionRef.current + 1;
+    revisionRef.current = revision;
     let cancelled = false;
     const timer = setTimeout(async () => {
-      setBusy(true); setError('');
+      setBusy(true); setError(''); setShareError('');
       try {
         await document.fonts.ready;
         const url = await toPng(posterRef.current, { width: 1080, height: 1440, pixelRatio: 1, cacheBust: true, backgroundColor: '#050607' });
-        if (!cancelled) setPreview(url);
-      } catch (reason) { if (!cancelled) setError(reason?.message || String(reason)); }
-      finally { if (!cancelled) setBusy(false); }
+        if (!cancelled && revision === revisionRef.current) setPreview({ url, revision, report, range, name, handle, avatar });
+      } catch (reason) {
+        if (!cancelled && revision === revisionRef.current) setError(reason?.message || String(reason));
+      } finally {
+        if (!cancelled && revision === revisionRef.current) setBusy(false);
+      }
     }, 120);
-    return () => { cancelled = true; clearTimeout(timer); };
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      if (revisionRef.current === revision) revisionRef.current += 1;
+    };
   }, [open, range, name, handle, avatar, report]);
+  const previewCurrent = Boolean(open && preview
+    && preview.revision === revisionRef.current
+    && preview.report === report
+    && preview.range === range
+    && preview.name === name
+    && preview.handle === handle
+    && preview.avatar === avatar);
+  const canUsePreview = previewCurrent && !busy && !avatarBusy && !sharing && !error;
   const selectAvatar = async (file) => {
     setAvatarBusy(true); setAvatarError('');
     try {
@@ -175,11 +197,73 @@ export function ShareDialog({ open, onClose, data, filters, initialRange, zh }) 
   };
   const removeAvatar = () => { localStorage.removeItem(POSTER_AVATAR_KEY); setAvatar(''); setAvatarError(''); };
   const persistIdentity = () => { localStorage.setItem('kbu.poster.name', name.trim() || 'Local Builder'); localStorage.setItem('kbu.poster.handle', handle.trim().replace(/^@/, '') || 'local'); };
-  const download = () => { persistIdentity(); if (!preview) return; const anchor = document.createElement('a'); anchor.href = preview; anchor.download = `kimi-builders-usage-${range}.png`; anchor.click(); };
-  const share = async () => {
-    persistIdentity(); if (!preview || !navigator.share) return download();
-    const blob = await (await fetch(preview)).blob(); const file = new File([blob], `kimi-builders-usage-${range}.png`, { type: 'image/png' });
-    if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: 'Kimi Builders Usage' }); else download();
+  const savePreview = (snapshot) => {
+    const anchor = document.createElement('a');
+    anchor.href = snapshot.url;
+    anchor.download = `kimi-builders-usage-${snapshot.range}.png`;
+    anchor.click();
   };
-  return <Dialog open={open} onClose={onClose} wide title={zh ? '分享用量' : 'Share usage'} subtitle={zh ? '海报完全在本机生成；没有二维码或失效的本地访问链接。' : 'Generated entirely on-device, with no QR code or unreachable local link.'}><div className="share-layout"><div className="poster-preview">{preview ? <img src={preview} alt={zh ? '用量分享海报预览' : 'Usage poster preview'}/> : <div className="poster-loading"><LoaderCircle className="spin"/><span>{zh ? '生成海报中…' : 'Rendering poster…'}</span></div>}{busy && preview ? <span className="preview-refresh"><LoaderCircle className="spin" size={14}/>{zh ? '正在更新' : 'Updating'}</span> : null}</div><div className="share-controls"><label><span>{zh ? '时间范围' : 'Time range'}</span><div className="share-ranges">{RANGE_OPTIONS.map((item) => <button type="button" key={item.id} className={range === item.id ? 'active' : ''} onClick={() => setRange(item.id)}>{zh ? item.zh : item.en}</button>)}</div></label><AvatarEditor avatar={avatar} name={name} busy={avatarBusy} onSelect={selectAvatar} onRemove={removeAvatar} zh={zh}/><label><span>{zh ? '海报名称' : 'Poster name'}</span><input value={name} maxLength={24} onChange={(event) => setName(event.target.value)}/></label><label><span>{zh ? '公开称呼' : 'Public handle'}</span><div className="handle-input"><i>@</i><input value={handle} maxLength={24} onChange={(event) => setHandle(event.target.value.replace(/^@/, ''))}/></div></label><div className="share-facts"><Info size={15}/><p>{zh ? '海报展示 Token 流向、标准 API 等价价值、活跃节奏、缓存效率、常用 Agent、主力模型与推理强度；头像与海报都只在本机处理，不包含项目、设备、路径或对话内容。' : 'The poster includes token flow, API-equivalent value, activity, cache efficiency, agents, model, and effort. The avatar and poster stay on-device; projects, devices, paths, and conversations are excluded.'}</p></div>{avatarError ? <p className="dialog-error" role="alert">{avatarError}</p> : null}{error ? <p className="dialog-error" role="alert">{error}</p> : null}<div className="share-buttons"><button type="button" className="ghost-btn" onClick={download} disabled={!preview}><Download size={15}/>{zh ? '下载 PNG' : 'Download PNG'}</button><button type="button" className="primary-btn" onClick={share} disabled={!preview}><Share2 size={15}/>{zh ? '系统分享' : 'Share'}</button></div></div></div><div className="poster-render-host" aria-hidden="true"><UsagePoster ref={posterRef} report={report} range={range} identity={{ name: name.trim() || 'Local Builder', handle: handle.trim() || 'local', avatar }} generatedAt={data.generatedAt}/></div></Dialog>;
+  const download = () => {
+    if (!canUsePreview || !preview) return;
+    setShareError('');
+    persistIdentity();
+    savePreview(preview);
+  };
+  const share = async () => {
+    if (!canUsePreview || !preview) return;
+    const snapshot = preview;
+    setShareError('');
+    persistIdentity();
+    if (!navigator.share) { savePreview(snapshot); return; }
+    setSharing(true);
+    try {
+      const blob = await (await fetch(snapshot.url)).blob();
+      if (snapshot.revision !== revisionRef.current) return;
+      const file = new File([blob], `kimi-builders-usage-${snapshot.range}.png`, { type: 'image/png' });
+      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: 'Kimi Builders Usage' });
+      else savePreview(snapshot);
+    } catch (reason) {
+      if (reason?.name !== 'AbortError' && snapshot.revision === revisionRef.current) setShareError(reason?.message || String(reason));
+    } finally {
+      setSharing(false);
+    }
+  };
+  const onRangeKeyDown = (event, index) => {
+    let next = null;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (index + 1) % RANGE_OPTIONS.length;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (index - 1 + RANGE_OPTIONS.length) % RANGE_OPTIONS.length;
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = RANGE_OPTIONS.length - 1;
+    if (next == null) return;
+    event.preventDefault();
+    setRange(RANGE_OPTIONS[next].id);
+    rangeRefs.current[next]?.focus();
+  };
+  const previewUrl = preview?.url || '';
+  return <Dialog open={open} onClose={onClose} wide title={zh ? '分享用量' : 'Share usage'} subtitle={zh ? '海报完全在本机生成；没有二维码或失效的本地访问链接。' : 'Generated entirely on-device, with no QR code or unreachable local link.'}>
+    <div className="share-layout">
+      <div className="poster-preview">
+        {previewUrl ? <img src={previewUrl} alt={zh ? '用量分享海报预览' : 'Usage poster preview'}/> : <div className="poster-loading"><LoaderCircle className="spin"/><span>{zh ? '生成海报中…' : 'Rendering poster…'}</span></div>}
+        {previewUrl && (busy || (!previewCurrent && !error)) ? <span className="preview-refresh"><LoaderCircle className="spin" size={14}/>{zh ? '正在更新' : 'Updating'}</span> : null}
+      </div>
+      <div className="share-controls">
+        <fieldset style={{ border: 0, margin: 0, minWidth: 0, padding: 0 }}>
+          <legend id={rangeLegendId} className="share-field-title">{zh ? '时间范围' : 'Time range'}</legend>
+          <div className="share-ranges" role="radiogroup" aria-labelledby={rangeLegendId}>{RANGE_OPTIONS.map((item, index) => <button ref={(node) => { rangeRefs.current[index] = node; }} type="button" role="radio" aria-checked={range === item.id} tabIndex={range === item.id ? 0 : -1} key={item.id} className={range === item.id ? 'active' : ''} onKeyDown={(event) => onRangeKeyDown(event, index)} onClick={() => setRange(item.id)}>{zh ? item.zh : item.en}</button>)}</div>
+        </fieldset>
+        <AvatarEditor avatar={avatar} name={name} busy={avatarBusy} onSelect={selectAvatar} onRemove={removeAvatar} zh={zh}/>
+        <label><span>{zh ? '海报名称' : 'Poster name'}</span><input value={name} maxLength={24} onChange={(event) => setName(event.target.value)}/></label>
+        <label><span>{zh ? '公开称呼' : 'Public handle'}</span><div className="handle-input"><i>@</i><input value={handle} maxLength={24} onChange={(event) => setHandle(event.target.value.replace(/^@/, ''))}/></div></label>
+        <div className="share-facts"><Info size={15}/><p>{zh ? '海报展示 Token 流向、标准 API 等价价值、活跃节奏、缓存效率、常用 Agent、主力模型与推理强度；头像与海报都只在本机处理，不包含项目、设备、路径或对话内容。' : 'The poster includes token flow, API-equivalent value, activity, cache efficiency, agents, model, and effort. The avatar and poster stay on-device; projects, devices, paths, and conversations are excluded.'}</p></div>
+        {avatarError ? <p className="dialog-error" role="alert">{avatarError}</p> : null}
+        {error ? <p className="dialog-error" role="alert">{error}</p> : null}
+        {shareError ? <p className="dialog-error" role="alert">{shareError}</p> : null}
+        <div className="share-buttons">
+          <button type="button" className="ghost-btn" onClick={download} disabled={!canUsePreview}><Download size={15}/>{zh ? '下载 PNG' : 'Download PNG'}</button>
+          <button type="button" className="primary-btn" onClick={share} disabled={!canUsePreview}>{sharing ? <LoaderCircle className="spin" size={15}/> : <Share2 size={15}/>} {zh ? '系统分享' : 'Share'}</button>
+        </div>
+      </div>
+    </div>
+    <div className="poster-render-host" aria-hidden="true"><UsagePoster ref={posterRef} report={report} range={range} identity={{ name: name.trim() || 'Local Builder', handle: handle.trim() || 'local', avatar }} generatedAt={data.generatedAt}/></div>
+  </Dialog>;
 }
