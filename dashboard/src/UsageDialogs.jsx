@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Check, Download, FileJson, FileSpreadsheet, Info, LoaderCircle, Share2, ShieldCheck, X } from 'lucide-react';
+import { Check, Download, FileJson, FileSpreadsheet, ImagePlus, Info, LoaderCircle, Share2, ShieldCheck, Trash2, X } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { analyze, RANGE_OPTIONS } from './analytics.js';
 import { compact, money, percent } from './format.js';
@@ -11,7 +11,7 @@ export function Dialog({ open, onClose, title, subtitle, children, wide = false,
   useEffect(() => {
     if (!open) return undefined;
     const previousFocus = document.activeElement;
-    const focusables = () => [...(dialogRef.current?.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])') || [])];
+    const focusables = () => [...(dialogRef.current?.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled):not([tabindex="-1"]), select:not(:disabled), [tabindex]:not([tabindex="-1"])') || [])];
     const onKey = (event) => {
       if (event.key === 'Escape') { onClose(); return; }
       if (event.key !== 'Tab') return;
@@ -92,10 +92,57 @@ export function MethodDialog({ open, onClose, zh, data, report }) {
   return <Dialog open={open} onClose={onClose} method title={zh ? '计算与数据说明' : 'Calculation & data notes'} subtitle={zh ? `本地时区 · 标准 API 价格目录 ${data.pricing.version} · 覆盖 ${percent(report.pricingCoverage)} Token` : `Local timezone · standard API catalog ${data.pricing.version} · ${percent(report.pricingCoverage)} coverage`}><div className="method-copy"><section className="method-grid"><article><b>{zh ? 'Token 与图表' : 'Tokens & charts'}</b><p>{zh ? '总 Token = 输入 + 缓存写 + 缓存读 + 输出 + 推理。趋势先按 30 分钟事实桶汇总，再按当前范围显示为小时、日或自然周；不会把同一 Token 重复计算。' : 'Total tokens are input + cache write + cache read + output + reasoning. Charts roll up 30-minute facts into hours, days, or natural weeks without double counting.'}</p></article><article><b>{zh ? '标准 API 费用' : 'Standard API cost'}</b><p>{zh ? '费用 = Σ(每类 Token × 该时点生效的模型单价) ÷ 1,000,000。缓存写、缓存读、输出和推理分别计价；这是 API 等价估算，不代表订阅账单。' : 'Cost = Σ(token class × model price effective at that time) ÷ 1,000,000. Cache write/read, output, and reasoning are priced separately. This is not a subscription invoice.'}</p></article><article><b>{zh ? '时长与活跃' : 'Time & activity'}</b><p>{zh ? '活跃时长来自 Collector 的小时 activity slice，只累计可识别的 Agent 工作；投入时长包含活动间隔，但单次空闲最多计 30 分钟。模型与推理强度无法可靠拆分会话时长。' : 'Active time comes from hourly activity slices. Engaged time includes gaps capped at 30 minutes. Session time cannot be reliably split by model or effort.'}</p></article><article><b>{zh ? '变化百分比' : 'Percentage changes'}</b><p>{zh ? '与紧邻的等长上一周期比较：30D 对比此前 30D。绿色表示增加，红色表示减少；“全部”没有可靠的等长上一周期，因此不显示变化。' : 'Compared with the immediately preceding equal-length window. Green is an increase, red a decrease; All has no comparable prior period.'}</p></article></section><section className="pricing-match"><header><div><b>{zh ? '模型定价匹配' : 'Model pricing matches'}</b><span>{zh ? '单价单位：美元 / 百万 Token' : 'USD per million tokens'}</span></div><span>{rows.length} {zh ? '个模型' : 'models'}</span></header><div className="pricing-table-wrap"><table><thead><tr><th>{zh ? '日志模型' : 'Log model'}</th><th>{zh ? '匹配' : 'Match'}</th><th>{zh ? '上下文 / 处理' : 'Context / tier'}</th><th>{zh ? '输入' : 'Input'}</th><th>{zh ? '缓存读' : 'Cache'}</th><th>{zh ? '输出' : 'Output'}</th></tr></thead><tbody>{rows.map(({ model, bucket }) => <tr key={model}><td>{model}</td><td className={bucket.pricePattern ? 'priced' : ''}>{bucket.pricePattern || (zh ? '未匹配' : 'Unmatched')}</td><td>{bucket.pricePattern ? `${bucket.priceContextTier || 'default'} / ${bucket.priceProcessingTier || 'standard'}` : '—'}</td><td>{bucket.priceInput == null ? '—' : `$${bucket.priceInput}/M`}</td><td>{bucket.priceCacheRead == null ? '—' : `$${bucket.priceCacheRead}/M`}</td><td>{bucket.priceOutput == null ? '—' : `$${bucket.priceOutput}/M`}</td></tr>)}</tbody></table></div></section><article className="method-privacy"><b>{zh ? '隐私与可信度' : 'Privacy & trust'}</b><p>{zh ? '页面只读取 Collector 已标准化的本地事实，不读取对话正文。数据来自工具日志，可能因日志格式、保留期或解析器版本而不完整；它适合个人洞察，不是可验证的计量凭证。' : 'The page reads only normalized local facts and never conversation text. Tool logs may be incomplete due to format, retention, or parser version; this is personal insight, not verified metering.'}</p></article></div><footer className="dialog-actions"><span>{zh ? `${report.totals.unpricedTokens.toLocaleString()} Token 未定价但仍保留统计` : `${report.totals.unpricedTokens.toLocaleString()} unpriced tokens remain counted`}</span><button type="button" className="primary-btn" onClick={onClose}>{zh ? '知道了' : 'Got it'}</button></footer></Dialog>;
 }
 
+const POSTER_AVATAR_KEY = 'kbu.poster.avatar.v1';
+const MAX_AVATAR_BYTES = 8 * 1024 * 1024;
+
+async function squareAvatar(file, zh) {
+  if (!file?.type?.startsWith('image/')) throw new Error(zh ? '请选择 PNG、JPG 或 WebP 图片' : 'Choose a PNG, JPG, or WebP image');
+  if (file.size > MAX_AVATAR_BYTES) throw new Error(zh ? '图片不能超过 8 MB' : 'The image must be 8 MB or smaller');
+
+  let source;
+  let objectUrl = '';
+  try {
+    if ('createImageBitmap' in window) source = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    else {
+      objectUrl = URL.createObjectURL(file);
+      source = await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error(zh ? '无法读取这张图片' : 'This image could not be read'));
+        image.src = objectUrl;
+      });
+    }
+    const width = source.naturalWidth || source.width;
+    const height = source.naturalHeight || source.height;
+    if (!width || !height) throw new Error(zh ? '图片尺寸无效' : 'The image dimensions are invalid');
+    const side = Math.min(width, height);
+    const canvas = document.createElement('canvas');
+    canvas.width = 320; canvas.height = 320;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error(zh ? '当前浏览器无法处理头像' : 'This browser cannot process the avatar');
+    context.drawImage(source, (width - side) / 2, (height - side) / 2, side, side, 0, 0, 320, 320);
+    const value = canvas.toDataURL('image/webp', .88);
+    if (!value || value === 'data:,') throw new Error(zh ? '头像生成失败' : 'Avatar generation failed');
+    return value;
+  } finally {
+    source?.close?.();
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function AvatarEditor({ avatar, name, busy, onSelect, onRemove, zh }) {
+  const inputRef = useRef(null);
+  const initials = (name.trim() || 'Local Builder').slice(0, 2).toUpperCase();
+  return <div className="poster-avatar-editor"><span className="share-field-title">{zh ? '海报头像' : 'Poster avatar'}</span><div><span className={`avatar-editor-preview ${avatar ? 'has-image' : ''}`}>{avatar ? <img src={avatar} alt=""/> : initials}</span><div className="avatar-editor-actions"><div><button type="button" className="ghost-btn" onClick={() => inputRef.current?.click()} disabled={busy}>{busy ? <LoaderCircle className="spin" size={14}/> : <ImagePlus size={14}/>} {avatar ? (zh ? '更换头像' : 'Replace') : (zh ? '选择头像' : 'Choose image')}</button>{avatar ? <button type="button" className="avatar-remove" onClick={onRemove} disabled={busy}><Trash2 size={13}/>{zh ? '移除' : 'Remove'}</button> : null}</div><small>{zh ? '自动居中裁成方形，仅保存在当前浏览器。' : 'Center-cropped automatically and stored only in this browser.'}</small></div><input ref={inputRef} className="visually-hidden" tabIndex={-1} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) onSelect(file); }} aria-label={zh ? '选择海报头像图片' : 'Choose poster avatar image'}/></div></div>;
+}
+
 export function ShareDialog({ open, onClose, data, filters, initialRange, zh }) {
   const [range, setRange] = useState(initialRange === 'all' ? 'all' : initialRange);
   const [name, setName] = useState(() => localStorage.getItem('kbu.poster.name') || 'Local Builder');
   const [handle, setHandle] = useState(() => localStorage.getItem('kbu.poster.handle') || 'local');
+  const [avatar, setAvatar] = useState(() => localStorage.getItem(POSTER_AVATAR_KEY) || '');
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
   const [preview, setPreview] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -115,7 +162,18 @@ export function ShareDialog({ open, onClose, data, filters, initialRange, zh }) 
       finally { if (!cancelled) setBusy(false); }
     }, 120);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [open, range, name, handle, report]);
+  }, [open, range, name, handle, avatar, report]);
+  const selectAvatar = async (file) => {
+    setAvatarBusy(true); setAvatarError('');
+    try {
+      const value = await squareAvatar(file, zh);
+      localStorage.setItem(POSTER_AVATAR_KEY, value);
+      setAvatar(value);
+    } catch (reason) {
+      setAvatarError(reason?.message || String(reason));
+    } finally { setAvatarBusy(false); }
+  };
+  const removeAvatar = () => { localStorage.removeItem(POSTER_AVATAR_KEY); setAvatar(''); setAvatarError(''); };
   const persistIdentity = () => { localStorage.setItem('kbu.poster.name', name.trim() || 'Local Builder'); localStorage.setItem('kbu.poster.handle', handle.trim().replace(/^@/, '') || 'local'); };
   const download = () => { persistIdentity(); if (!preview) return; const anchor = document.createElement('a'); anchor.href = preview; anchor.download = `kimi-builders-usage-${range}.png`; anchor.click(); };
   const share = async () => {
@@ -123,5 +181,5 @@ export function ShareDialog({ open, onClose, data, filters, initialRange, zh }) 
     const blob = await (await fetch(preview)).blob(); const file = new File([blob], `kimi-builders-usage-${range}.png`, { type: 'image/png' });
     if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: 'Kimi Builders Usage' }); else download();
   };
-  return <Dialog open={open} onClose={onClose} wide title={zh ? '分享成绩' : 'Share your stats'} subtitle={zh ? '海报完全在本机生成；没有二维码或失效的本地访问链接。' : 'Generated entirely on-device, with no QR code or unreachable local link.'}><div className="share-layout"><div className="poster-preview">{preview ? <img src={preview} alt={zh ? '用量分享海报预览' : 'Usage poster preview'}/> : <div className="poster-loading"><LoaderCircle className="spin"/><span>{zh ? '生成海报中…' : 'Rendering poster…'}</span></div>}{busy && preview ? <span className="preview-refresh"><LoaderCircle className="spin" size={14}/>{zh ? '正在更新' : 'Updating'}</span> : null}</div><div className="share-controls"><label><span>{zh ? '时间范围' : 'Time range'}</span><div className="share-ranges">{RANGE_OPTIONS.map((item) => <button type="button" key={item.id} className={range === item.id ? 'active' : ''} onClick={() => setRange(item.id)}>{zh ? item.zh : item.en}</button>)}</div></label><label><span>{zh ? '海报名称' : 'Poster name'}</span><input value={name} maxLength={24} onChange={(event) => setName(event.target.value)}/></label><label><span>{zh ? '公开称呼' : 'Public handle'}</span><div className="handle-input"><i>@</i><input value={handle} maxLength={24} onChange={(event) => setHandle(event.target.value.replace(/^@/, ''))}/></div></label><div className="share-facts"><Info size={15}/><p>{zh ? '海报展示 Token 流向、标准 API 等价价值、活跃节奏、缓存效率、常用 Agent、主力模型与推理强度；不包含项目、设备、路径、对话内容，也不会生成只能在本机打开的二维码。' : 'The poster includes token flow, API-equivalent value, activity, cache efficiency, agents, model, and effort—never projects, devices, paths, conversations, or a localhost QR code.'}</p></div>{error ? <p className="dialog-error">{error}</p> : null}<div className="share-buttons"><button type="button" className="ghost-btn" onClick={download} disabled={!preview}><Download size={15}/>{zh ? '下载 PNG' : 'Download PNG'}</button><button type="button" className="primary-btn" onClick={share} disabled={!preview}><Share2 size={15}/>{zh ? '系统分享' : 'Share'}</button></div></div></div><div className="poster-render-host" aria-hidden="true"><UsagePoster ref={posterRef} report={report} range={range} identity={{ name: name.trim() || 'Local Builder', handle: handle.trim() || 'local' }} generatedAt={data.generatedAt}/></div></Dialog>;
+  return <Dialog open={open} onClose={onClose} wide title={zh ? '分享用量' : 'Share usage'} subtitle={zh ? '海报完全在本机生成；没有二维码或失效的本地访问链接。' : 'Generated entirely on-device, with no QR code or unreachable local link.'}><div className="share-layout"><div className="poster-preview">{preview ? <img src={preview} alt={zh ? '用量分享海报预览' : 'Usage poster preview'}/> : <div className="poster-loading"><LoaderCircle className="spin"/><span>{zh ? '生成海报中…' : 'Rendering poster…'}</span></div>}{busy && preview ? <span className="preview-refresh"><LoaderCircle className="spin" size={14}/>{zh ? '正在更新' : 'Updating'}</span> : null}</div><div className="share-controls"><label><span>{zh ? '时间范围' : 'Time range'}</span><div className="share-ranges">{RANGE_OPTIONS.map((item) => <button type="button" key={item.id} className={range === item.id ? 'active' : ''} onClick={() => setRange(item.id)}>{zh ? item.zh : item.en}</button>)}</div></label><AvatarEditor avatar={avatar} name={name} busy={avatarBusy} onSelect={selectAvatar} onRemove={removeAvatar} zh={zh}/><label><span>{zh ? '海报名称' : 'Poster name'}</span><input value={name} maxLength={24} onChange={(event) => setName(event.target.value)}/></label><label><span>{zh ? '公开称呼' : 'Public handle'}</span><div className="handle-input"><i>@</i><input value={handle} maxLength={24} onChange={(event) => setHandle(event.target.value.replace(/^@/, ''))}/></div></label><div className="share-facts"><Info size={15}/><p>{zh ? '海报展示 Token 流向、标准 API 等价价值、活跃节奏、缓存效率、常用 Agent、主力模型与推理强度；头像与海报都只在本机处理，不包含项目、设备、路径或对话内容。' : 'The poster includes token flow, API-equivalent value, activity, cache efficiency, agents, model, and effort. The avatar and poster stay on-device; projects, devices, paths, and conversations are excluded.'}</p></div>{avatarError ? <p className="dialog-error" role="alert">{avatarError}</p> : null}{error ? <p className="dialog-error" role="alert">{error}</p> : null}<div className="share-buttons"><button type="button" className="ghost-btn" onClick={download} disabled={!preview}><Download size={15}/>{zh ? '下载 PNG' : 'Download PNG'}</button><button type="button" className="primary-btn" onClick={share} disabled={!preview}><Share2 size={15}/>{zh ? '系统分享' : 'Share'}</button></div></div></div><div className="poster-render-host" aria-hidden="true"><UsagePoster ref={posterRef} report={report} range={range} identity={{ name: name.trim() || 'Local Builder', handle: handle.trim() || 'local', avatar }} generatedAt={data.generatedAt}/></div></Dialog>;
 }

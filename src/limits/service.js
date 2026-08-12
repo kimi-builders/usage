@@ -177,7 +177,10 @@ export function clearLimitCache() {
 }
 
 async function fetchEnabled(settings, options = {}) {
-  const enabled = LIMIT_PROVIDER_CATALOG.filter((provider) => settings.providers[provider.id]?.enabled);
+  const catalogById = new Map(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id, provider]));
+  const enabled = settings.providerOrder
+    .map((id) => catalogById.get(id))
+    .filter((provider) => provider && settings.providers[provider.id]?.enabled);
   const providers = await Promise.all(enabled.map(async (provider) => {
     const fetchProvider = options.fetchers?.[provider.id] || FETCHERS[provider.id];
     try {

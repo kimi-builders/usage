@@ -117,7 +117,7 @@ export const UsagePoster = forwardRef(function UsagePoster({ report, range, iden
     <article className="usage-poster" ref={ref}>
       <header className="poster-header"><strong>KIMI BUILDERS <b>/ USAGE</b></strong><span>TOKEN X-RAY <i>{rangeZh}</i></span></header>
       <section className="poster-identity">
-        <div className="poster-avatar">{identity.name.slice(0, 2).toUpperCase()}</div>
+        <div className={`poster-avatar ${identity.avatar ? 'has-image' : ''}`}>{identity.avatar ? <img src={identity.avatar} alt=""/> : identity.name.slice(0, 2).toUpperCase()}</div>
         <div><strong>{identity.name}</strong><span>@{identity.handle}　<b>LOCAL · ZERO UPLOAD</b></span></div>
         <div className="poster-streak"><b>{weekStreak}</b><strong>周连续构建</strong><span>WEEK STREAK</span></div>
         <div className="poster-span"><strong>{fmt(start)} — {fmt(report.end)}</strong><span>数据起止 SPAN</span></div>

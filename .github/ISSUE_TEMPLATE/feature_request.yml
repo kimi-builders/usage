@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose a new source, provider, workflow, analysis, or community integration
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the user problem before the proposed UI or implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+    validations:
+      required: true
+  - type: dropdown
+    id: boundary
+    attributes:
+      label: Best product boundary
+      options:
+        - Local-only
+        - Optional provider connection
+        - Optional community sync
+        - Community-only
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: privacy
+    attributes:
+      label: Data, privacy, and network impact
+      description: List any new local path, credential, domain, or uploaded field.
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: References and licenses
+      description: Link any products or source code that inspired the request and include their licenses when known.

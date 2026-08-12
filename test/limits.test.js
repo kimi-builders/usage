@@ -19,9 +19,11 @@ import { clearLimitCache, loadSubscriptionLimits } from '../src/limits/service.j
 const NOW = new Date('2026-08-11T12:00:00.000Z');
 
 test('normalizes quota settings without accepting unknown providers or auth modes', () => {
+  assert.equal(normalizeLimitSettings({}).providerOrder[0], 'kimi-code');
   const value = normalizeLimitSettings({
     enabled: true,
     refreshMinutes: 5,
+    providerOrder: ['codex', 'malicious', 'codex'],
     providers: {
       codex: { enabled: true, authMode: 'raw-token', customPath: 'x'.repeat(2_000) },
       malicious: { enabled: true, authMode: 'keychain' },
@@ -34,9 +36,31 @@ test('normalizes quota settings without accepting unknown providers or auth mode
   assert.equal(value.providers.codex.customPath.length, 1_024);
   assert.equal(value.providers.malicious, undefined);
   assert.equal(value.providers.trae.enabled, false);
+  assert.deepEqual(value.providerOrder.slice(0, 3), ['codex', 'kimi-code', 'claude-code']);
+  assert.equal(new Set(value.providerOrder).size, value.providerOrder.length);
   const exposed = publicLimitSettings(value, { keychainAvailable: true, hasSecret: (id) => id === 'warp' });
+  assert.deepEqual(exposed.catalog.slice(0, 3).map((item) => item.id), ['codex', 'kimi-code', 'claude-code']);
   assert.equal(exposed.catalog.find((item) => item.id === 'warp').hasSecret, true);
   assert.equal(JSON.stringify(exposed).includes('raw-token'), false);
+});
+
+test('normalizes optional subscription spend without inventing prices', () => {
+  const value = normalizeLimitSettings({ providers: {
+    codex: {
+      enabled: true, subscriptionPrice: 200.129, subscriptionCurrency: 'usd',
+      billingCycle: 'monthly', renewsAt: '2026-09-12',
+    },
+    'kimi-code': {
+      subscriptionPrice: -1, subscriptionCurrency: 'bitcoin',
+      billingCycle: 'weekly', renewsAt: 'September',
+    },
+  } });
+  assert.equal(value.providers.codex.subscriptionPrice, 200.13);
+  assert.equal(value.providers.codex.renewsAt, '2026-09-12');
+  assert.equal(value.providers['kimi-code'].subscriptionPrice, null);
+  assert.equal(value.providers['kimi-code'].subscriptionCurrency, 'usd');
+  assert.equal(value.providers['kimi-code'].billingCycle, 'monthly');
+  assert.equal(value.providers['kimi-code'].renewsAt, '');
 });
 
 test('accepts copied Cookie headers and cURL fragments without retaining unrelated cookies', () => {
@@ -237,6 +261,7 @@ test('subscription limit service isolates provider failures and does not expose 
   clearLimitCache();
   const config = { subscriptionLimits: {
     enabled: true, refreshMinutes: 10,
+    providerOrder: ['warp', 'codex'],
     providers: { codex: { enabled: true }, warp: { enabled: true, authMode: 'environment', environmentVariable: 'SECRET_WARP' } },
   } };
   const result = await loadSubscriptionLimits({
@@ -248,8 +273,10 @@ test('subscription limit service isolates provider failures and does not expose 
       warp: async () => { const error = new Error('Warp needs attention'); error.code = 'unauthorized'; throw error; },
     },
   });
-  assert.equal(result.providers[0].status, 'ok');
-  assert.equal(result.providers[1].error.code, 'unauthorized');
+  assert.equal(result.providers[0].id, 'warp');
+  assert.equal(result.providers[0].error.code, 'unauthorized');
+  assert.equal(result.providers[1].id, 'codex');
+  assert.equal(result.providers[1].status, 'ok');
   assert.equal(result.summary.needsAttention, 1);
   assert.equal(JSON.stringify(result).includes('super-secret-value'), false);
 });

@@ -98,14 +98,23 @@ export const LIMIT_PROVIDER_CATALOG = [
 
 export const LIMIT_PROVIDER_IDS = LIMIT_PROVIDER_CATALOG.map((provider) => provider.id);
 
+// Kimi is the product's primary subscription view. Keep the rest of the order
+// explicit so new providers never reshuffle a user's existing dashboard.
+export const DEFAULT_LIMIT_PROVIDER_ORDER = [
+  'kimi-code', 'codex', 'claude-code', 'cursor', 'copilot', 'gemini-cli',
+  'opencode', 'qoder', 'antigravity', 'warp', 'jetbrains-ai', 'windsurf', 'trae',
+];
+
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: false,
   refreshMinutes: 10,
+  providerOrder: DEFAULT_LIMIT_PROVIDER_ORDER,
   providers: Object.fromEntries(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id, {
     enabled: false,
     authMode: provider.defaultAuthMode,
     environmentVariable: provider.defaultEnvironmentVariable || '',
     customPath: '', workspaceId: '', site: 'international',
+    subscriptionPrice: null, subscriptionCurrency: 'usd', billingCycle: 'monthly', renewsAt: '',
   }])),
 });
 
@@ -125,6 +134,7 @@ export function normalizeLimitSettings(value) {
     const authMode = provider.authModes.includes(candidate?.authMode)
       ? candidate.authMode
       : provider.defaultAuthMode;
+    const subscriptionPrice = Number(candidate?.subscriptionPrice);
     providers[provider.id] = {
       enabled: provider.quotaSupport !== 'unavailable' && candidate?.enabled === true,
       authMode,
@@ -132,14 +142,27 @@ export function normalizeLimitSettings(value) {
       customPath: safeText(candidate?.customPath, 1_024),
       workspaceId: safeText(candidate?.workspaceId, 240),
       site: candidate?.site === 'china' ? 'china' : 'international',
+      subscriptionPrice: Number.isFinite(subscriptionPrice) && subscriptionPrice >= 0 && subscriptionPrice <= 1_000_000
+        ? Math.round(subscriptionPrice * 100) / 100
+        : null,
+      subscriptionCurrency: candidate?.subscriptionCurrency === 'cny' ? 'cny' : 'usd',
+      billingCycle: candidate?.billingCycle === 'yearly' ? 'yearly' : 'monthly',
+      renewsAt: /^\d{4}-\d{2}-\d{2}$/.test(candidate?.renewsAt || '') ? candidate.renewsAt : '',
     };
   }
   const refreshMinutes = Number(input.refreshMinutes);
+  const requestedOrder = Array.isArray(input.providerOrder) ? input.providerOrder : [];
+  const providerOrder = [...new Set([
+    ...requestedOrder.filter((id) => LIMIT_PROVIDER_IDS.includes(id)),
+    ...DEFAULT_LIMIT_PROVIDER_ORDER,
+    ...LIMIT_PROVIDER_IDS,
+  ])];
   return {
     enabled: input.enabled === true,
     refreshMinutes: Number.isInteger(refreshMinutes) && refreshMinutes >= 5 && refreshMinutes <= 60
       ? refreshMinutes
       : DEFAULT_SETTINGS.refreshMinutes,
+    providerOrder,
     providers,
   };
 }
@@ -148,10 +171,11 @@ export function publicLimitSettings(settings, {
   keychainAvailable = process.platform === 'darwin', hasSecret = () => false, detections = {},
 } = {}) {
   const normalized = normalizeLimitSettings(settings);
+  const catalogById = new Map(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id, provider]));
   return {
     ...normalized,
     keychainAvailable,
-    catalog: LIMIT_PROVIDER_CATALOG.map((provider) => ({
+    catalog: normalized.providerOrder.map((id) => catalogById.get(id)).filter(Boolean).map((provider) => ({
       ...provider,
       hasSecret: hasSecret(provider.id),
       supportsKeychain: keychainAvailable && provider.authModes.includes('keychain'),
