@@ -111,3 +111,42 @@ test('finds model-family overlap without calling it a duplicate subscription', (
   assert.equal(review.upcomingRenewals[0].id, 'codex');
   assert.equal(review.paidWithoutLocalUsage[0].id, 'warp');
 });
+
+test('separates paid core from free complements and unclassified accounts', () => {
+  const provider = (id, entitlementType, tokens, price = null) => ({
+    id, label: id,
+    recentModelRows: tokens ? [{ id: 'gpt-5.6-sol', totalTokens: tokens }] : [],
+    recentTotals: { totalTokens: tokens },
+    subscription: { entitlementType, isPaid: entitlementType === 'paid', monthlyPrice: price },
+    renewalReview: { applicable: entitlementType === 'paid', configured: false },
+    economics: { apiEquivalentUsd: tokens / 1_000 },
+    quotaObservation: { state: id === 'warp' ? 'unavailable' : 'current' },
+  });
+  const codex = provider('codex', 'paid', 1_000, 200);
+  const cursor = provider('cursor', 'free', 500);
+  const windsurf = provider('windsurf', 'promotion', 300);
+  const warp = provider('warp', 'unknown', 0);
+  const review = buildPortfolioReview([codex, cursor, windsurf, warp], NOW);
+  assert.deepEqual(review.paidProviders.map((item) => item.id), ['codex']);
+  assert.deepEqual(review.benefitProviders.map((item) => item.id), ['cursor', 'windsurf']);
+  assert.deepEqual(review.unknownProviders.map((item) => item.id), ['warp']);
+  assert.equal(review.benefitApiEquivalentUsd, 0.8);
+  assert.equal(review.paidWithoutLocalUsage.length, 0);
+  assert.equal(review.quotaObservableProviders, 3);
+  assert.equal(review.overlaps[0].bothPaid, false);
+});
+
+test('does not generate renewal periods for explicitly non-paid benefits', () => {
+  const review = buildRenewalReview({
+    buckets: [],
+    subscription: {
+      entitlementType: 'free', isPaid: false, renewsAt: '2026-08-20',
+      billingCycle: 'monthly', price: 200, currency: 'usd',
+    },
+    sourceHistoryStart: null,
+    now: NOW,
+  });
+  assert.equal(review.applicable, false);
+  assert.equal(review.configured, false);
+  assert.equal(review.periodEnd, null);
+});

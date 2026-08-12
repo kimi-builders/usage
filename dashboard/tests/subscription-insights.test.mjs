@@ -120,6 +120,38 @@ test('does not turn an unset subscription price into a zero-dollar plan', () => 
   assert.equal(result.summary.pricedSubscriptions, 0);
 });
 
+test('keeps free benefits out of spend and renewal analysis while retaining usage value', () => {
+  const result = buildSubscriptionInsights(snapshot, limits, { settings: { providers: { codex: {
+    entitlementType: 'free', subscriptionPrice: 200, subscriptionCurrency: 'usd',
+    billingCycle: 'monthly', renewsAt: '2026-09-01',
+  } } } });
+  const provider = result.providers[0];
+  assert.equal(provider.subscription.entitlementType, 'free');
+  assert.equal(provider.subscription.isPaid, false);
+  assert.equal(provider.subscription.monthlyPrice, null);
+  assert.equal(provider.renewalReview.applicable, false);
+  assert.ok(provider.economics.apiEquivalentUsd > 0);
+  assert.deepEqual(result.summary.spendByCurrency, { usd: 0, cny: 0 });
+  assert.equal(result.summary.entitlementCounts.free, 1);
+  assert.equal(result.portfolio.benefitProviders[0].id, 'codex');
+  assert.equal(result.portfolio.paidWithoutLocalUsage.length, 0);
+});
+
+test('marks hidden official quota as unobservable without losing local token analytics', () => {
+  const unavailable = { providers: [{
+    id: 'codex', label: 'Codex', status: 'error', windows: [], quotaCoverage: 'best-effort',
+    error: { code: 'not_configured', message: 'No official quota available' },
+  }] };
+  const result = buildSubscriptionInsights(snapshot, unavailable);
+  const provider = result.providers[0];
+  assert.equal(provider.quotaObservation.state, 'unavailable');
+  assert.equal(provider.quotaObservation.bestEffort, true);
+  assert.equal(provider.lifetimeTotals.totalTokens, 10_500);
+  assert.ok(provider.decisionSignals.some((signal) => signal.code === 'quota-unobservable'));
+  assert.equal(result.summary.quotaUnavailableProviders, 1);
+  assert.equal(result.summary.quotaObservableProviders, 0);
+});
+
 test('reports an exhausted window as a fact instead of a future-risk prediction', () => {
   const value = structuredClone(limits);
   value.providers[0].windows[0].usedPercent = 100;
@@ -142,6 +174,7 @@ test('keeps historical quota charts available when the current provider request 
   };
   const provider = buildSubscriptionInsights(snapshot, value).providers[0];
   assert.equal(provider.windows[0].stale, true);
+  assert.equal(provider.quotaObservation.state, 'historical');
   assert.equal(provider.windows[0].historyPoints.length, 1);
   assert.equal(provider.windows[0].pace, null);
   assert.equal(provider.decisionSignals.some((signal) => signal.code === 'pace-high'), false);

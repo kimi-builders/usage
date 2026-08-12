@@ -56,6 +56,7 @@ function providerError(provider, error) {
       message: String(error?.message || '额度查询失败。').slice(0, 300),
     },
     windows: [],
+    quotaCoverage: provider.quotaCoverage || 'supported',
     updatedAt: new Date().toISOString(),
   };
 }
@@ -186,11 +187,12 @@ async function fetchEnabled(settings, options = {}) {
     const fetchProvider = options.fetchers?.[provider.id] || FETCHERS[provider.id];
     try {
       if (!fetchProvider) throw Object.assign(new Error(`${provider.label} 暂不支持订阅额度查询。`), { code: 'not_configured' });
-      return await fetchProvider({
+      const result = await fetchProvider({
         settings: settings.providers[provider.id],
         environment: options.environment || process.env,
         fetcher: options.fetcher || fetch,
       });
+      return { ...result, quotaCoverage: provider.quotaCoverage || 'supported' };
     } catch (error) {
       return providerError(provider, error);
     }

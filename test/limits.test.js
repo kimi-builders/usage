@@ -46,6 +46,7 @@ test('normalizes quota settings without accepting unknown providers or auth mode
 
 test('normalizes optional subscription spend without inventing prices', () => {
   assert.equal(normalizeLimitSettings({}).providers.codex.subscriptionPrice, null);
+  assert.equal(normalizeLimitSettings({}).providers.codex.entitlementType, 'unknown');
   const value = normalizeLimitSettings({ providers: {
     codex: {
       enabled: true, subscriptionPrice: 200.129, subscriptionCurrency: 'usd',
@@ -56,12 +57,31 @@ test('normalizes optional subscription spend without inventing prices', () => {
       billingCycle: 'weekly', renewsAt: 'September',
     },
   } });
+  assert.equal(value.providers.codex.entitlementType, 'paid');
   assert.equal(value.providers.codex.subscriptionPrice, 200.13);
   assert.equal(value.providers.codex.renewsAt, '2026-09-12');
   assert.equal(value.providers['kimi-code'].subscriptionPrice, null);
   assert.equal(value.providers['kimi-code'].subscriptionCurrency, 'usd');
   assert.equal(value.providers['kimi-code'].billingCycle, 'monthly');
   assert.equal(value.providers['kimi-code'].renewsAt, '');
+});
+
+test('keeps free and promotional benefits out of paid spend fields', () => {
+  const value = normalizeLimitSettings({ providers: {
+    cursor: {
+      entitlementType: 'free', subscriptionPrice: 20, subscriptionCurrency: 'usd',
+      billingCycle: 'monthly', renewsAt: '2026-09-12',
+    },
+    windsurf: { entitlementType: 'promotion' },
+    warp: { entitlementType: 'organization' },
+    codex: { entitlementType: 'invalid', subscriptionPrice: null },
+  } });
+  assert.equal(value.providers.cursor.entitlementType, 'free');
+  assert.equal(value.providers.cursor.subscriptionPrice, null);
+  assert.equal(value.providers.cursor.renewsAt, '');
+  assert.equal(value.providers.windsurf.entitlementType, 'promotion');
+  assert.equal(value.providers.warp.entitlementType, 'organization');
+  assert.equal(value.providers.codex.entitlementType, 'unknown');
 });
 
 test('accepts copied Cookie headers and cURL fragments without retaining unrelated cookies', () => {
@@ -279,6 +299,7 @@ test('subscription limit service isolates provider failures and does not expose 
   });
   assert.equal(result.providers[0].id, 'warp');
   assert.equal(result.providers[0].error.code, 'unauthorized');
+  assert.equal(result.providers[0].quotaCoverage, 'best-effort');
   assert.equal(result.providers[1].id, 'codex');
   assert.equal(result.providers[1].status, 'ok');
   assert.equal(result.summary.needsAttention, 1);

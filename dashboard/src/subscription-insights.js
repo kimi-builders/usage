@@ -27,6 +27,20 @@ function finite(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+const ENTITLEMENT_TYPES = new Set(['unknown', 'paid', 'free', 'promotion', 'organization']);
+
+function normalizedEntitlementType(subscription) {
+  if (ENTITLEMENT_TYPES.has(subscription?.entitlementType)) return subscription.entitlementType;
+  // Compatibility with settings saved before entitlement types existed.
+  return finite(subscription?.subscriptionPrice) > 0 ? 'paid' : 'unknown';
+}
+
+function hasQuotaFact(window) {
+  return finite(window?.usedPercent) != null
+    || finite(window?.remainingPercent) != null
+    || (finite(window?.limit) > 0 && finite(window?.value) != null);
+}
+
 function inferredWindowSeconds(window) {
   const provided = finite(window.windowSeconds);
   if (provided > 0) return provided;
@@ -212,6 +226,18 @@ function windowPace(window, now) {
 
 function decisionSignals(provider) {
   const signals = [];
+  if (provider.quotaObservation?.state === 'unavailable') {
+    signals.push({
+      code: 'quota-unobservable', tone: 'info',
+      bestEffort: provider.quotaObservation.bestEffort,
+      localTokens: provider.lifetimeTotals.totalTokens,
+    });
+  } else if (provider.quotaObservation?.state === 'historical') {
+    signals.push({
+      code: 'quota-historical', tone: 'neutral',
+      localTokens: provider.lifetimeTotals.totalTokens,
+    });
+  }
   const exhaustedWindow = [...provider.windows].filter((window) => !window.stale && finite(window.usedPercent) >= 99)
     .sort((left, right) => (right.windowSeconds || 0) - (left.windowSeconds || 0))[0];
   const paceWindow = [...provider.windows].filter((window) => !window.stale && window.pace?.projectedFinalPercent != null)
@@ -268,7 +294,10 @@ export function buildSubscriptionInsights(snapshot, limits, {
       now,
     ));
     const subscription = settings?.providers?.[provider.id] || {};
-    const price = finite(subscription.subscriptionPrice);
+    const entitlementType = normalizedEntitlementType(subscription);
+    const isPaid = entitlementType === 'paid';
+    const enteredPrice = finite(subscription.subscriptionPrice);
+    const price = isPaid && enteredPrice > 0 ? enteredPrice : null;
     const monthlyPrice = price == null ? null : subscription.billingCycle === 'yearly' ? price / 12 : price;
     const normalizedHistoryStart = Number.isFinite(sourceHistoryStart) ? sourceHistoryStart : null;
     const history = historyWindows(limits?.history, provider.id, buckets, normalizedHistoryStart);
@@ -291,6 +320,20 @@ export function buildSubscriptionInsights(snapshot, limits, {
       };
       return { ...value, pace: value.stale ? null : windowPace(value, now) };
     });
+    const currentQuotaWindows = enrichedWindows.filter((window) => !window.stale && hasQuotaFact(window));
+    const historicalQuotaWindows = enrichedWindows.filter((window) => (
+      window.stale && (window.historyPoints || []).some(hasQuotaFact)
+    ));
+    const quotaObservation = {
+      state: currentQuotaWindows.length
+        ? 'current'
+        : historicalQuotaWindows.length ? 'historical'
+          : provider.status === 'error' ? 'unavailable' : 'unavailable',
+      currentWindows: currentQuotaWindows.length,
+      historicalWindows: historicalQuotaWindows.length,
+      errorCode: provider.status === 'error' ? provider.error?.code || 'provider_error' : null,
+      bestEffort: provider.quotaCoverage === 'best-effort',
+    };
     const primaryWindow = [...enrichedWindows]
       .filter((window) => window.estimatedCapacityTokens != null && window.windowSeconds)
       .sort((left, right) => right.windowSeconds - left.windowSeconds)[0] || null;
@@ -314,13 +357,16 @@ export function buildSubscriptionInsights(snapshot, limits, {
       primaryWindow,
       hasLocalUsage: lifetimeTotals.totalTokens > 0,
       subscription: {
+        entitlementType,
+        isPaid,
         price,
         monthlyPrice,
         currency: subscription.subscriptionCurrency === 'cny' ? 'cny' : 'usd',
         billingCycle: subscription.billingCycle === 'yearly' ? 'yearly' : 'monthly',
-        renewsAt: subscription.renewsAt || null,
+        renewsAt: isPaid ? subscription.renewsAt || null : null,
       },
       economics,
+      quotaObservation,
     };
     const withReview = { ...value, renewalReview: buildRenewalReview({
       buckets,
@@ -332,10 +378,15 @@ export function buildSubscriptionInsights(snapshot, limits, {
   });
   const spendByCurrency = providers.reduce((totals, provider) => {
     const price = provider.subscription.monthlyPrice;
-    if (price != null) totals[provider.subscription.currency] += price;
+    if (provider.subscription.isPaid && price != null) totals[provider.subscription.currency] += price;
     return totals;
   }, { usd: 0, cny: 0 });
   const portfolio = buildPortfolioReview(providers, now);
+  const entitlementCounts = Object.fromEntries(
+    ['paid', 'free', 'promotion', 'organization', 'unknown'].map((type) => [
+      type, providers.filter((provider) => provider.subscription.entitlementType === type).length,
+    ]),
+  );
   return {
     providers,
     portfolio,
@@ -345,11 +396,20 @@ export function buildSubscriptionInsights(snapshot, limits, {
       estimableWindows: providers.flatMap((provider) => provider.windows)
         .filter((window) => window.estimatedCapacityTokens != null).length,
       spendByCurrency,
-      pricedSubscriptions: providers.filter((provider) => provider.subscription.monthlyPrice != null).length,
+      pricedSubscriptions: providers.filter((provider) => (
+        provider.subscription.isPaid && provider.subscription.monthlyPrice != null
+      )).length,
+      entitlementCounts,
+      classifiedProviders: providers.length - entitlementCounts.unknown,
+      benefitProviders: entitlementCounts.free + entitlementCounts.promotion + entitlementCounts.organization,
+      quotaObservableProviders: providers.filter((provider) => provider.quotaObservation.state === 'current').length,
+      quotaHistoricalProviders: providers.filter((provider) => provider.quotaObservation.state === 'historical').length,
+      quotaUnavailableProviders: providers.filter((provider) => provider.quotaObservation.state === 'unavailable').length,
       recentTokens: providers.reduce((sum, provider) => sum + provider.recentTotals.totalTokens, 0),
       apiEquivalentUsd: providers.reduce((sum, provider) => sum + provider.economics.apiEquivalentUsd, 0),
       portfolioValueRatio: spendByCurrency.usd > 0
-        ? providers.filter((provider) => provider.subscription.currency === 'usd' && provider.subscription.monthlyPrice > 0)
+        ? providers.filter((provider) => provider.subscription.isPaid
+          && provider.subscription.currency === 'usd' && provider.subscription.monthlyPrice > 0)
           .reduce((sum, provider) => sum + provider.economics.apiEquivalentUsd, 0) / spendByCurrency.usd
         : null,
       historyObservations: limits?.history?.observations?.length || 0,

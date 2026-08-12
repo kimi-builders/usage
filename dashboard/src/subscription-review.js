@@ -186,9 +186,18 @@ export function buildCycleCapacityStats(historyPoints, modelRows, now = Date.now
 }
 
 export function buildRenewalReview({ buckets, subscription, sourceHistoryStart, now = Date.now() }) {
+  const isPaid = typeof subscription?.isPaid === 'boolean'
+    ? subscription.isPaid
+    : subscription?.entitlementType === 'paid'
+      || (!subscription?.entitlementType && (finite(subscription?.price) > 0 || Boolean(subscription?.renewsAt)));
+  if (!isPaid) return {
+    applicable: false, configured: false, periodStart: null, periodEnd: null, daysRemaining: null,
+    elapsedFraction: null, coverage: 0, totals: sumBuckets([]), projectedTokens: null,
+    projectedApiEquivalentUsd: null, projectedValueRatio: null,
+  };
   const period = renewalPeriod(subscription?.renewsAt, subscription?.billingCycle, now);
   if (!period) return {
-    configured: false, periodStart: null, periodEnd: null, daysRemaining: null,
+    applicable: true, configured: false, periodStart: null, periodEnd: null, daysRemaining: null,
     elapsedFraction: null, coverage: 0, totals: sumBuckets([]), projectedTokens: null,
     projectedApiEquivalentUsd: null, projectedValueRatio: null,
   };
@@ -208,6 +217,7 @@ export function buildRenewalReview({ buckets, subscription, sourceHistoryStart, 
     ? projectedApiEquivalentUsd / cyclePrice
     : null;
   return {
+    applicable: true,
     configured: true,
     periodStart: new Date(period.start).toISOString(),
     periodEnd: new Date(period.end).toISOString(),
@@ -223,6 +233,10 @@ export function buildRenewalReview({ buckets, subscription, sourceHistoryStart, 
 }
 
 export function buildPortfolioReview(providers, now = Date.now()) {
+  const isPaidProvider = (provider) => typeof provider.subscription?.isPaid === 'boolean'
+    ? provider.subscription.isPaid
+    : provider.subscription?.entitlementType === 'paid'
+      || (!provider.subscription?.entitlementType && provider.subscription?.monthlyPrice != null);
   const overlaps = [];
   for (let leftIndex = 0; leftIndex < providers.length; leftIndex += 1) {
     const left = providers[leftIndex];
@@ -238,28 +252,46 @@ export function buildPortfolioReview(providers, now = Date.now()) {
         score: result.score,
         families: result.families,
         recentTokens: left.recentTotals.totalTokens + right.recentTotals.totalTokens,
-        bothPriced: left.subscription.monthlyPrice != null && right.subscription.monthlyPrice != null,
+        bothPaid: isPaidProvider(left) && isPaidProvider(right),
+        leftEntitlementType: left.subscription.entitlementType || 'unknown',
+        rightEntitlementType: right.subscription.entitlementType || 'unknown',
       });
     }
   }
   overlaps.sort((left, right) => right.score - left.score);
   const upcomingRenewals = providers.filter((provider) => (
-    provider.renewalReview?.configured && provider.renewalReview.daysRemaining <= 30
+    isPaidProvider(provider) && provider.renewalReview?.configured && provider.renewalReview.daysRemaining <= 30
   )).sort((left, right) => left.renewalReview.daysRemaining - right.renewalReview.daysRemaining);
   const paidWithoutLocalUsage = providers.filter((provider) => (
-    provider.subscription.monthlyPrice != null && provider.recentTotals.totalTokens === 0
+    isPaidProvider(provider) && provider.subscription.monthlyPrice != null && provider.recentTotals.totalTokens === 0
   ));
-  const configuredRenewals = providers.filter((provider) => provider.renewalReview?.configured).length;
-  const pricedSubscriptions = providers.filter((provider) => provider.subscription.monthlyPrice != null).length;
+  const paidProviders = providers.filter(isPaidProvider);
+  const benefitProviders = providers.filter((provider) => (
+    ['free', 'promotion', 'organization'].includes(provider.subscription.entitlementType)
+  ));
+  const benefitWithLocalUsage = benefitProviders.filter((provider) => provider.recentTotals.totalTokens > 0)
+    .sort((left, right) => right.recentTotals.totalTokens - left.recentTotals.totalTokens);
+  const unknownProviders = providers.filter((provider) => provider.subscription.entitlementType === 'unknown');
+  const configuredRenewals = paidProviders.filter((provider) => provider.renewalReview?.configured).length;
+  const pricedSubscriptions = paidProviders.filter((provider) => provider.subscription.monthlyPrice != null).length;
+  const quotaObservableProviders = providers.filter((provider) => provider.quotaObservation?.state === 'current').length;
   return {
     generatedAt: new Date(now).toISOString(),
     overlaps: overlaps.slice(0, 6),
     upcomingRenewals,
     paidWithoutLocalUsage,
+    benefitProviders,
+    benefitWithLocalUsage,
+    unknownProviders,
+    paidProviders,
     configuredRenewals,
     pricedSubscriptions,
+    quotaObservableProviders,
+    benefitApiEquivalentUsd: benefitProviders.reduce((sum, provider) => (
+      sum + (finite(provider.economics?.apiEquivalentUsd) || 0)
+    ), 0),
     readyProviders: providers.filter((provider) => (
-      provider.renewalReview?.configured && provider.subscription.monthlyPrice != null
+      isPaidProvider(provider) && provider.renewalReview?.configured && provider.subscription.monthlyPrice != null
     )).length,
   };
 }

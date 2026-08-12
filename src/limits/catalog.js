@@ -69,17 +69,17 @@ export const LIMIT_PROVIDER_CATALOG = [
   },
   {
     id: 'warp', label: 'Warp', group: 'more',
-    description: '月度 Credits 与附加 Credits', quotaSupport: 'manual',
+    description: '月度 Credits（部分账户不可读取）', quotaSupport: 'manual', quotaCoverage: 'best-effort',
     defaultAuthMode: 'environment', authModes: ['environment', 'keychain'],
     defaultEnvironmentVariable: 'WARP_API_KEY', dashboardUrl: 'https://app.warp.dev',
     secretKind: 'Warp API Key',
-    localHint: 'Warp 目前需要 API Key；建议保存到 macOS 钥匙串。',
+    localHint: 'Warp 目前需要 API Key，且部分账户不会返回可用额度。即使无法读取官方额度，本机 Token 仍可独立分析。',
   },
   {
     id: 'jetbrains-ai', label: 'JetBrains AI', group: 'more',
-    description: 'AI Credits 与下次补充时间', quotaSupport: 'automatic',
+    description: '本机额度缓存（并非所有账户都有）', quotaSupport: 'automatic', quotaCoverage: 'best-effort',
     defaultAuthMode: 'local', authModes: ['local'],
-    localHint: '自动读取最近使用 IDE 的本地 AIAssistantQuotaManager2.xml。',
+    localHint: '尝试读取最近使用 IDE 的本地额度缓存；若 IDE 没有写入额度字段，仍会保留本机 Token 分析。',
     extraFields: ['customPath'],
   },
   {
@@ -97,6 +97,7 @@ export const LIMIT_PROVIDER_CATALOG = [
 ];
 
 export const LIMIT_PROVIDER_IDS = LIMIT_PROVIDER_CATALOG.map((provider) => provider.id);
+export const LIMIT_ENTITLEMENT_TYPES = ['unknown', 'paid', 'free', 'promotion', 'organization'];
 
 // Kimi is the product's primary subscription view. Keep the rest of the order
 // explicit so new providers never reshuffle a user's existing dashboard.
@@ -114,6 +115,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     authMode: provider.defaultAuthMode,
     environmentVariable: provider.defaultEnvironmentVariable || '',
     customPath: '', workspaceId: '', site: 'international',
+    entitlementType: 'unknown',
     subscriptionPrice: null, subscriptionCurrency: 'usd', billingCycle: 'monthly', renewsAt: '',
   }])),
 });
@@ -137,6 +139,16 @@ export function normalizeLimitSettings(value) {
     const subscriptionPrice = candidate?.subscriptionPrice == null || candidate.subscriptionPrice === ''
       ? Number.NaN
       : Number(candidate.subscriptionPrice);
+    const validPrice = Number.isFinite(subscriptionPrice) && subscriptionPrice > 0 && subscriptionPrice <= 1_000_000
+      ? Math.round(subscriptionPrice * 100) / 100
+      : null;
+    // Before entitlementType existed, a positive entered price was the only
+    // explicit evidence that an account was paid. Preserve that intent while
+    // leaving price-less accounts unknown instead of guessing "free".
+    const entitlementType = LIMIT_ENTITLEMENT_TYPES.includes(candidate?.entitlementType)
+      ? candidate.entitlementType
+      : validPrice != null ? 'paid' : 'unknown';
+    const isPaid = entitlementType === 'paid';
     providers[provider.id] = {
       enabled: provider.quotaSupport !== 'unavailable' && candidate?.enabled === true,
       authMode,
@@ -144,12 +156,11 @@ export function normalizeLimitSettings(value) {
       customPath: safeText(candidate?.customPath, 1_024),
       workspaceId: safeText(candidate?.workspaceId, 240),
       site: candidate?.site === 'china' ? 'china' : 'international',
-      subscriptionPrice: Number.isFinite(subscriptionPrice) && subscriptionPrice > 0 && subscriptionPrice <= 1_000_000
-        ? Math.round(subscriptionPrice * 100) / 100
-        : null,
+      entitlementType,
+      subscriptionPrice: isPaid ? validPrice : null,
       subscriptionCurrency: candidate?.subscriptionCurrency === 'cny' ? 'cny' : 'usd',
       billingCycle: candidate?.billingCycle === 'yearly' ? 'yearly' : 'monthly',
-      renewsAt: /^\d{4}-\d{2}-\d{2}$/.test(candidate?.renewsAt || '') ? candidate.renewsAt : '',
+      renewsAt: isPaid && /^\d{4}-\d{2}-\d{2}$/.test(candidate?.renewsAt || '') ? candidate.renewsAt : '',
     };
   }
   const refreshMinutes = Number(input.refreshMinutes);
