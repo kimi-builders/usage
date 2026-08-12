@@ -309,14 +309,20 @@ function historyWindows(history, providerId, buckets, sourceHistoryStart, usageO
   const groups = new Map();
   for (const observation of history?.observations || []) {
     const provider = observation.providers?.find((item) => item.id === providerId);
+    const hasProviderTime = Object.prototype.hasOwnProperty.call(provider || {}, 'observedAt');
+    const providerTime = timestamp(provider?.observedAt);
+    const legacyTime = hasProviderTime ? null : timestamp(observation.observedAt);
+    const observedAt = providerTime ?? legacyTime;
+    if (observedAt == null) continue;
+    const providerObservedAt = new Date(observedAt).toISOString();
     for (const window of provider?.windows || []) {
       const normalized = normalizeQuotaWindow(window);
       if (!hasQuotaFact(normalized)) continue;
       if (!groups.has(normalized.id)) groups.set(normalized.id, []);
-      const local = totalsAtObservation(buckets, normalized, observation.observedAt, sourceHistoryStart, usageObservedAt);
+      const local = totalsAtObservation(buckets, normalized, providerObservedAt, sourceHistoryStart, usageObservedAt);
       groups.get(normalized.id).push({
         ...normalized,
-        observedAt: observation.observedAt,
+        observedAt: providerObservedAt,
         localTotals: local.totals,
         localCoverage: local.coverage,
         localObservedCoverage: local.observedCoverage,
@@ -418,16 +424,11 @@ export function buildSubscriptionInsights(snapshot, limits, {
   const usageGeneratedAt = timestamp(snapshot?.generatedAt);
   const usageObservedAt = usageGeneratedAt ?? explicitNow;
   const usageReferenceAt = usageObservedAt ?? Date.now();
-  const limitsGeneratedAt = timestamp(limits?.generatedAt);
-  const limitsObservedAt = limitsGeneratedAt ?? explicitNow;
   const allBuckets = Array.isArray(snapshot?.buckets) ? snapshot.buckets : [];
   const providers = (limits?.providers || []).map((provider) => {
     const providerObservedAt = timestamp(provider.updatedAt);
-    const quotaObservedAt = providerObservedAt ?? limitsObservedAt;
-    const quotaTimestampSource = providerObservedAt != null
-      ? 'provider.updatedAt'
-      : limitsGeneratedAt != null ? 'limits.generatedAt'
-        : explicitNow != null ? 'options.now' : null;
+    const quotaObservedAt = providerObservedAt;
+    const quotaTimestampSource = providerObservedAt != null ? 'provider.updatedAt' : null;
     const providerEvidenceClock = evidenceClock(usageObservedAt, quotaObservedAt);
     const sources = new Set(providerSources(provider.id));
     const buckets = allBuckets.filter((bucket) => sources.has(bucket.source));

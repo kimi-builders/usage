@@ -158,7 +158,22 @@ test('optional quota facts are bounded and fail closed without widening the cont
     resetCredits: { availableCount: Number.POSITIVE_INFINITY, nextExpiry: 'not-a-date' },
   });
   assert.equal(result.notice.length, 300);
-  assert.deepEqual(result.resetCredits, { availableCount: 0, nextExpiry: null });
+  assert.deepEqual(result.resetCredits, { availableCount: null, nextExpiry: null });
+});
+
+test('reset-credit count preserves observed zero and keeps missing or invalid values unknown', () => {
+  const base = {
+    id: 'codex', label: 'Codex', status: 'empty', updatedAt: NOW.toISOString(), windows: [],
+  };
+  assert.equal(assertProviderContract('codex', {
+    ...base, resetCredits: { availableCount: 0 },
+  }).resetCredits.availableCount, 0);
+  assert.equal(assertProviderContract('codex', {
+    ...base, resetCredits: { availableCount: null },
+  }).resetCredits.availableCount, null);
+  assert.equal(assertProviderContract('codex', {
+    ...base, resetCredits: { availableCount: '0' },
+  }).resetCredits.availableCount, null);
 });
 
 test('optional provider display text redacts embedded absolute paths', () => {

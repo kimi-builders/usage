@@ -38,6 +38,19 @@ test('shows a value / limit detail only when both numbers are finite', () => {
   assert.equal(module.limitWindowDetail({ value: 12, limit: Number.POSITIVE_INFINITY }), null);
 });
 
+test('reset-credit UI distinguishes available, observed zero, and unknown counts', () => {
+  assert.deepEqual(module.resetCreditPresentation({ availableCount: 2 }, false), {
+    state: 'available', value: '2', detail: null,
+  });
+  assert.deepEqual(module.resetCreditPresentation({ availableCount: 0 }, false), {
+    state: 'zero', value: '0', detail: 'Observed available count: 0',
+  });
+  assert.deepEqual(module.resetCreditPresentation({ availableCount: null }, false), {
+    state: 'unknown', value: '—', detail: 'Available count is not observable',
+  });
+  assert.equal(module.resetCreditPresentation({ availableCount: '0' }, false).state, 'unknown');
+});
+
 test('overview provider tabs control a panel labelled by the active tab', () => {
   const observedAt = '2026-08-11T12:00:00.000Z';
   const markup = renderToStaticMarkup(createElement(module.SubscriptionCenter, {
@@ -66,6 +79,9 @@ test('overview provider tabs control a panel labelled by the active tab', () => 
   assert.match(markup, /id="subscription-provider-tab-codex"/);
   assert.match(markup, /aria-controls="subscription-limit-panel"/);
   assert.match(markup, /id="subscription-limit-panel" role="tabpanel" aria-labelledby="subscription-provider-tab-codex"/);
+  assert.match(markup, /class="reset-credit" data-state="unknown"/);
+  assert.match(markup, /Available count is not observable/);
+  assert.match(markup, /<details class="subscription-deep-dive">/);
 });
 
 test('settings filter tabs control their labelled provider panel', () => {

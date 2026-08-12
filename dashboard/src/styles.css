@@ -556,8 +556,8 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .limits-header h2 { margin-top: 0; }.limits-header > div:first-child > p { max-width: 580px; }
 .limits-actions { display: flex; align-items: center; gap: 6px; }.limits-actions > span { margin-right: 5px; color: var(--green); font: 500 8px/1 'JetBrains Mono', monospace; }
 .limits-banner { min-height: 42px; display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid color-mix(in srgb, var(--red) 40%, transparent); color: var(--red); font-size: 9px; }
-.provider-tabs { min-height: 56px; display: grid; grid-template-columns: repeat(var(--provider-count), minmax(0,1fr)); padding: 0 12px; overflow-x: auto; border-bottom: 1px solid var(--line); scrollbar-width: thin; }
-.provider-tabs button { position: relative; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; border: 0; border-radius: 0; background: transparent; color: var(--grey); font: 500 9px/1 'JetBrains Mono', monospace; white-space: nowrap; }
+.provider-tabs { min-height: 56px; display: flex; padding: 0 12px; overflow-x: auto; overscroll-behavior-inline: contain; border-bottom: 1px solid var(--line); scrollbar-width: thin; }
+.provider-tabs button { position: relative; min-width: 136px; flex: 1 0 136px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; border: 0; border-radius: 0; background: transparent; color: var(--grey); font: 500 9px/1 'JetBrains Mono', monospace; white-space: nowrap; }
 .provider-tabs button:hover { color: var(--paper); background: var(--hover); }.provider-tabs button.active { color: var(--paper-strong); background: transparent; }
 .provider-tabs button:focus-visible { outline: 0; background: var(--hover); color: var(--paper); }
 .provider-tabs button.active::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--blue); }
@@ -663,8 +663,8 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 @media (max-width: 900px) {
   .limits-panel--loading, .limits-panel--empty { min-height: 0; grid-template-columns: minmax(0,1fr); gap: 14px; padding: 17px; }.limits-panel--empty > .primary-btn { width: 100%; min-height: 44px; }
   .limits-header { flex-direction: row; align-items: center; }.limits-header > div:first-child { min-width: 0; }.limits-header .panel-kicker { display: none; }.limits-header h2 { font-size: 12px; }.limits-header p { max-width: 240px; font-size: 8px; }.limits-actions > span { display: none; }
-  .provider-tabs { min-height: 0; grid-template-columns: repeat(3, minmax(0,1fr)); padding: 0 8px; overflow-x: visible; }
-  .provider-tabs button { min-width: 0; min-height: 48px; gap: 6px; padding-inline: 6px; font-size: 8px; }
+  .provider-tabs { min-height: 0; display: flex; padding: 0 8px; overflow-x: auto; }
+  .provider-tabs button { min-width: 142px; min-height: 52px; flex-basis: 142px; gap: 7px; padding-inline: 9px; }
   .provider-tabs button.active::after { left: 8px; right: 8px; }
   .limit-provider-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }.limit-provider-summary > div:nth-child(even) { border-right: 0; }.limit-provider-summary > div:nth-child(n+3) { border-top: 1px solid var(--line); }
   .limit-window-list { display: block; }.limit-window { min-height: 129px; border-right: 0; border-bottom: 1px solid var(--line) !important; }.limit-window:last-child { border-bottom: 0 !important; }.limit-segments { gap: 5px; }.limit-segments i { height: 8px; }
@@ -938,11 +938,91 @@ body.drawer-open { overflow: hidden; }
 .benefit-token-bar:focus, .benefit-quota-point:focus { filter: drop-shadow(0 0 5px color-mix(in srgb, var(--blue) 72%, transparent)); stroke: var(--paper-strong); stroke-width: 2px; }
 .benefit-quota-point { fill: var(--green); stroke: var(--card); stroke-width: 2px; }
 
-/* Benefit analytics previously encoded density with 6–8px labels. Keep the
-   information-rich layout, but enforce one readable floor across both themes. */
-.subscription-center :where(p, small, dt, label) { font-size: 9px !important; line-height: 1.5; }
-.subscription-center :where(span, button, select, input) { font-size: 9px !important; }
-.subscription-center :where(b, dd) { font-size: 10px !important; }
+/* Benefit Center type scale. Semantic defaults establish readable hierarchy
+   without blocking component-level emphasis or responsive adjustments. */
+.subscription-page-heading > div > p { max-width: 760px; font-size: 12px; line-height: 1.6; }
+.subscription-page-heading .page-actions button { font-size: 12px; }
+.subscription-center { font-size: 13px; }
+.subscription-center p { font-size: 12px; line-height: 1.55; }
+.subscription-center small, .subscription-center dt { font-size: 10.5px; line-height: 1.45; }
+.subscription-center button, .subscription-center select, .subscription-center input, .subscription-center label { font-size: 12px; }
+.subscription-center b, .subscription-center dd { font-size: 12px; line-height: 1.4; }
+.subscription-center .subscription-overview-grid span,
+.subscription-center .limit-token-facts span,
+.subscription-center .model-scenario > header span,
+.subscription-center .benefit-provider-picker > div:first-child span,
+.subscription-center .benefit-kpi-row span,
+.subscription-center .benefit-section-heading > div > span,
+.subscription-center .benefit-mix-card article > span,
+.subscription-center .subscription-decision-panel > header span,
+.subscription-center .subscription-economics-strip span,
+.subscription-center .quota-history-card > header span,
+.subscription-center .subscription-review-card > header b,
+.subscription-center .portfolio-readiness span { font-size: 11px; line-height: 1.35; }
+.subscription-center .subscription-overview-grid strong { font-size: 21px; }
+.subscription-center .subscription-overview-grid strong small { font-size: 11px; }
+.subscription-center .subscription-overview-grid p { font-size: 11px; line-height: 1.45; }
+.subscription-center .limits-header h2, .subscription-center .panel-header h2 { font-size: 15px; }
+.subscription-center .limits-header p, .subscription-center .panel-header p { font-size: 11px; }
+.subscription-center .provider-tabs button, .subscription-center .benefit-provider-picker button { font-size: 12px; }
+.subscription-center .provider-tabs button > small, .subscription-center .benefit-provider-picker button small { font-size: 10px; }
+.subscription-center .limits-actions > span { font-size: 10.5px; }
+.subscription-center .limit-provider-summary dd { font-size: 12px; }
+.subscription-center .limit-window header b { font-size: 13px; }
+.subscription-center .limit-window header span, .subscription-center .limit-window header small,
+.subscription-center .limit-window > footer { font-size: 10.5px; }
+.subscription-center .limit-progress-meta { font-size: 10.5px; }
+.subscription-center .limit-token-facts strong { font-size: 14px; }
+.subscription-center .limit-estimate-note, .subscription-center .model-scenario > footer,
+.subscription-center .limit-notice, .subscription-center .quota-unavailable-state > p,
+.subscription-center .limits-privacy { font-size: 11px; }
+.subscription-center .model-scenario > header b, .subscription-center .reset-credit b { font-size: 12px; }
+.subscription-center .model-scenario-grid span, .subscription-center .model-scenario-grid small,
+.subscription-center .reset-credit small { font-size: 10.5px; }
+.subscription-center .model-scenario select { font-size: 12px; }
+.subscription-center .benefit-provider-picker > div:first-child b { font-size: 12px; }
+.subscription-center .benefit-combo-chart text, .subscription-center .benefit-chart-axis,
+.subscription-center .benefit-heat-hours span, .subscription-center .benefit-heat-row > span,
+.subscription-center .benefit-heat-footer { font-size: 10.5px; }
+.subscription-center .benefit-inline-warning, .subscription-center .benefit-attribution-note,
+.subscription-center .subscription-method-note { font-size: 11px; line-height: 1.55; }
+.subscription-center .evidence-badge { font-size: 10.5px; }
+.subscription-center .benefit-kpi-row strong { font-size: 18px; }
+.subscription-center .benefit-kpi-row small { font-size: 10.5px; }
+.subscription-center .benefit-section-heading h2 { font-size: 18px; }
+.subscription-center .benefit-section-heading p { font-size: 12px; }
+.subscription-center .benefit-mix-card .panel-header > span,
+.subscription-center .benefit-mix-card article b, .subscription-center .benefit-mix-card article strong,
+.subscription-center .benefit-record-kind, .subscription-center .benefit-records-head,
+.subscription-center .benefit-records-row, .subscription-center .benefit-records-panel > footer { font-size: 11px; }
+.subscription-center .benefit-mix-card article strong small,
+.subscription-center .benefit-mix-card > div > p,
+.subscription-center .benefit-record-kind span { font-size: 10.5px; }
+.subscription-center .benefit-record-kind button { font-size: 12px; }
+.subscription-center .subscription-deep-dive p,
+.subscription-center .subscription-deep-dive small,
+.subscription-center .subscription-deep-dive span,
+.subscription-center .subscription-deep-dive dt { font-size: 10.5px; line-height: 1.5; }
+.subscription-center .subscription-deep-dive b,
+.subscription-center .subscription-deep-dive dd,
+.subscription-center .subscription-deep-dive strong { font-size: 11px; line-height: 1.4; }
+.subscription-center .subscription-deep-dive button,
+.subscription-center .subscription-deep-dive select { font-size: 12px; }
+
+.subscription-deep-dive { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+.subscription-deep-dive > summary { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px; color: var(--paper); cursor: pointer; list-style: none; }
+.subscription-deep-dive > summary::-webkit-details-marker { display: none; }
+.subscription-deep-dive > summary:hover { background: var(--hover); }
+.subscription-deep-dive > summary span, .subscription-deep-dive > summary b, .subscription-deep-dive > summary small { display: block; }
+.subscription-deep-dive > summary b { font-size: 13px; }
+.subscription-deep-dive > summary small { margin-top: 5px; color: var(--grey); font-size: 11px; }
+.subscription-deep-dive > summary svg { flex: 0 0 auto; color: var(--blue); transition: transform .18s ease; }
+.subscription-deep-dive[open] > summary { border-bottom: 1px solid var(--line); }
+.subscription-deep-dive[open] > summary svg { transform: rotate(90deg); }
+.subscription-deep-dive > div > .subscription-decision-panel,
+.subscription-deep-dive > div > .subscription-portfolio-review { border: 0; border-radius: 0; }
+.reset-credit[data-state="zero"] > strong { color: var(--grey); }
+.reset-credit[data-state="unknown"] > strong { color: var(--amber); }
 
 .benefit-heat-cell.is-observed-zero,
 .benefit-heat-footer i.is-observed-zero { border: 1px solid color-mix(in srgb, var(--blue) 42%, var(--line)); background: color-mix(in srgb, var(--blue) 7%, transparent); }
@@ -968,6 +1048,7 @@ body.drawer-open { overflow: hidden; }
   .diagnostic-list { grid-template-columns: 1fr; }
   .diagnostic-list article, .diagnostic-list article:nth-child(even) { border-right: 0; }
   .benefit-provider-picker > div:last-child { position: relative; overflow-x: auto; background: linear-gradient(90deg, transparent 0 calc(100% - 24px), color-mix(in srgb, var(--blue) 12%, transparent)); }
+  .benefit-provider-picker button { min-width: 148px; flex-basis: 148px; }
   .benefit-provider-picker button, .benefit-record-kind button, .mini-tabs button, .tiny-tabs button { min-height: var(--touch-target); }
   .benefit-combo-chart, .benefit-heatmap { position: relative; padding-bottom: 16px; }
   .benefit-heat-row button { min-width: 24px; min-height: 24px; }
@@ -982,6 +1063,7 @@ body.drawer-open { overflow: hidden; }
   .benefit-record-cell::before { content: attr(data-label); color: var(--grey-soft); font: 500 8px/1 var(--font-mono); }
   .benefit-record-cell:nth-last-child(-n+2) { border-bottom: 0; }
   .benefit-records-panel > footer { align-items: flex-start; padding: 12px; line-height: 1.55; }
+  .subscription-deep-dive > summary { min-height: 68px; padding-inline: 14px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

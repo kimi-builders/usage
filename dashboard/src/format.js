@@ -19,6 +19,10 @@ export function integer(value) {
   return new Intl.NumberFormat('en-US').format(Math.round(value || 0));
 }
 
+export function pluralUnit(value, singular, plural = `${singular}s`) {
+  return Number(value) === 1 ? singular : plural;
+}
+
 export function money(micros, digits = 2) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: digits }).format((micros || 0) / 1_000_000);
 }

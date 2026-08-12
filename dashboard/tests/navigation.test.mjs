@@ -6,6 +6,7 @@ import {
   isStandaloneSection,
   LOCAL_SECTION_IDS,
   sectionFromHash,
+  titleForSection,
   USAGE_SECTION_IDS,
 } from '../src/navigation.js';
 
@@ -32,3 +33,9 @@ test('standalone pages are separated from scroll-spied usage sections', () => {
   for (const id of USAGE_SECTION_IDS) assert.equal(isStandaloneSection(id), false);
 });
 
+test('builds localized document titles for routes and the legacy limits hash', () => {
+  assert.equal(titleForSection('top', 'zh'), '用量总览 — kimi.builders · Local');
+  assert.equal(titleForSection('subscription-trend', 'zh'), '权益趋势 — kimi.builders · Local');
+  assert.equal(titleForSection('subscription-distribution', 'en'), 'Benefit Distribution — kimi.builders · Local');
+  assert.equal(titleForSection(sectionFromHash('#limits'), 'en'), 'Benefit Overview — kimi.builders · Local');
+});

@@ -68,7 +68,10 @@ export function parseCodexUsage(payload, credentials, { resetCredits = null, now
     spendWindow(payload),
     ...additionalWindows(payload),
   ].filter(Boolean);
-  const availableCredits = Math.max(0, Number(resetCredits?.available_count) || 0);
+  const suppliedAvailableCredits = resetCredits?.available_count;
+  const parsedAvailableCredits = typeof suppliedAvailableCredits === 'number' && Number.isFinite(suppliedAvailableCredits) && suppliedAvailableCredits >= 0
+    ? Math.floor(suppliedAvailableCredits)
+    : null;
   const available = Array.isArray(resetCredits?.credits)
     ? resetCredits.credits.filter((credit) => credit?.status === 'available'
       && (!credit.expires_at || new Date(credit.expires_at) > now))
@@ -84,8 +87,10 @@ export function parseCodexUsage(payload, credentials, { resetCredits = null, now
     updatedAt: now.toISOString(),
     windows,
     balance: Number.isFinite(creditBalance) ? { value: creditBalance, unit: 'credits' } : null,
-    resetCredits: {
-      availableCount: Math.max(availableCredits, available.length),
+    resetCredits: resetCredits == null ? null : {
+      availableCount: parsedAvailableCredits == null
+        ? (Array.isArray(resetCredits?.credits) ? available.length : null)
+        : Math.max(parsedAvailableCredits, available.length),
       nextExpiry: available.map((credit) => asDate(credit.expires_at)).filter(Boolean).sort()[0] || null,
     },
     notice: '订阅额度来自本机 Codex 登录会话，不等同于标准 API 速率限制。',

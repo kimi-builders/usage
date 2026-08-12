@@ -13,7 +13,7 @@ import { RecordsSection } from './UsageRecords.jsx';
 import { LimitSettingsDialog, SubscriptionCenter, SubscriptionPulse } from './SubscriptionLimits.jsx';
 import { SyncDialog } from './SyncDialog.jsx';
 import { compact, delta, duration, integer, percent } from './format.js';
-import { isBenefitSection, isStandaloneSection, sectionFromHash, USAGE_SECTION_IDS } from './navigation.js';
+import { isBenefitSection, isStandaloneSection, sectionFromHash, titleForSection, USAGE_SECTION_IDS } from './navigation.js';
 import { Button, PageState } from './ui.jsx';
 
 const COPY = {
@@ -154,6 +154,10 @@ export function App() {
   const closeDialog = useCallback(() => setDialog(null), []);
   const openLimitSettings = useCallback(() => setDialog('limit-settings'), []);
   const openSync = useCallback(() => setDialog('sync'), []);
+
+  useEffect(() => {
+    document.title = titleForSection(activeSection, locale);
+  }, [activeSection, locale]);
 
   const load = async (refresh = false) => {
     setRefreshing(refresh); setError('');

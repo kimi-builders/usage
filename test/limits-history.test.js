@@ -14,6 +14,7 @@ function result(observedAt, usedPercent = 25) {
     generatedAt: observedAt,
     providers: [{
       id: 'codex', label: 'Codex', status: 'ok', account: 'private@example.com', source: '/private/path',
+      updatedAt: observedAt,
       windows: [{
         id: 'primary', label: '5 小时', usedPercent, remainingPercent: 100 - usedPercent,
         resetsAt: '2026-08-12T15:00:00.000Z', windowSeconds: 18_000,
@@ -31,7 +32,8 @@ test('records only sanitized provider quota facts in a separate private history 
     const history = recordLimitSnapshot(result('2026-08-12T11:00:00.000Z'), { path, now: NOW });
     assert.equal(history.observations.length, 1);
     assert.deepEqual(history.observations[0].providers.map((provider) => provider.id), ['codex']);
-    assert.deepEqual(Object.keys(history.observations[0].providers[0]), ['id', 'windows']);
+    assert.deepEqual(Object.keys(history.observations[0].providers[0]), ['id', 'observedAt', 'windows']);
+    assert.equal(history.observations[0].providers[0].observedAt, '2026-08-12T11:00:00.000Z');
     const raw = readFileSync(path, 'utf8');
     assert.equal(raw.includes('private@example.com'), false);
     assert.equal(raw.includes('/private/path'), false);
@@ -82,7 +84,7 @@ test('merges alternating provider successes but replaces a re-observed provider 
     observedAt: '2026-08-12T11:10:00.000Z',
     providers: [{ id: 'codex', status: 'ok', source: '/private/path', windows: [
       { id: 'primary', label: '5 hours', usedPercent: 40, remainingPercent: 60 },
-    ] }],
+    ] }, { id: 'warp', status: 'error', windows: [] }],
   }];
   const [bucket] = compactLimitHistory(observations, { now: NOW });
   assert.equal(bucket.observedAt, '2026-08-12T11:10:00.000Z');
@@ -92,9 +94,69 @@ test('merges alternating provider successes but replaces a re-observed provider 
     [['primary', 40]],
   );
   assert.equal(bucket.providers.find((provider) => provider.id === 'warp').windows[0].usedPercent, 30);
+  assert.equal(bucket.providers.find((provider) => provider.id === 'codex').observedAt, '2026-08-12T11:10:00.000Z');
+  assert.equal(bucket.providers.find((provider) => provider.id === 'warp').observedAt, '2026-08-12T11:05:00.000Z');
   assert.equal(JSON.stringify(bucket).includes('must-not-persist'), false);
   assert.equal(JSON.stringify(bucket).includes('private@example.com'), false);
   assert.equal(JSON.stringify(bucket).includes('/private/path'), false);
+});
+
+test('keeps each provider real observation time when partial successes share a compacted bucket', () => {
+  const [bucket] = compactLimitHistory([{
+    observedAt: '2026-08-12T11:01:00.000Z',
+    providers: [{
+      id: 'provider-a', observedAt: '2026-08-12T11:01:00.000Z', windows: [
+        { id: 'hourly', label: 'Hourly', usedPercent: 10, remainingPercent: 90 },
+      ],
+    }],
+  }, {
+    observedAt: '2026-08-12T11:14:00.000Z',
+    providers: [{
+      id: 'provider-b', observedAt: '2026-08-12T11:14:00.000Z', windows: [
+        { id: 'weekly', label: 'Weekly', usedPercent: 20, remainingPercent: 80 },
+      ],
+    }],
+  }], { now: NOW });
+
+  assert.equal(bucket.observedAt, '2026-08-12T11:14:00.000Z');
+  assert.equal(bucket.providers.find((provider) => provider.id === 'provider-a').observedAt, '2026-08-12T11:01:00.000Z');
+  assert.equal(bucket.providers.find((provider) => provider.id === 'provider-b').observedAt, '2026-08-12T11:14:00.000Z');
+});
+
+test('normalizes schema v1 history by preserving its real container time on each provider', () => {
+  const history = normalizeLimitHistory({ schemaVersion: 1, observations: [{
+    observedAt: '2026-08-12T10:04:00.000Z',
+    providers: [{ id: 'codex', windows: [
+      { id: 'primary', label: '5 hours', usedPercent: 10, remainingPercent: 90 },
+    ] }],
+  }] }, { now: NOW });
+
+  assert.equal(history.schemaVersion, 1);
+  assert.equal(history.observations[0].providers[0].observedAt, '2026-08-12T10:04:00.000Z');
+});
+
+test('does not treat an explicitly invalid provider time as legacy history', () => {
+  const history = normalizeLimitHistory({ schemaVersion: 1, observations: [{
+    observedAt: '2026-08-12T10:04:00.000Z',
+    providers: [{ id: 'codex', observedAt: null, windows: [
+      { id: 'primary', label: '5 hours', usedPercent: 10, remainingPercent: 90 },
+    ] }],
+  }] }, { now: NOW });
+
+  assert.deepEqual(history.observations, []);
+});
+
+test('does not record a fresh provider with a missing or invalid observation time', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kbu-limit-history-missing-time-'));
+  const path = join(directory, 'history.json');
+  try {
+    const snapshot = result('2026-08-12T11:00:00.000Z');
+    snapshot.providers[0].updatedAt = 'not-a-time';
+    const history = recordLimitSnapshot(snapshot, { path, now: NOW });
+    assert.deepEqual(history.observations, []);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('malformed history fails closed to an empty schema', () => {

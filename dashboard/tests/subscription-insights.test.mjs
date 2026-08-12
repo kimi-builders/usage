@@ -233,6 +233,59 @@ test('uses the provider observation clock for quota pace and suppresses stale cr
   assert.equal(provider.decisionSignals.find((signal) => signal.code === 'pace-low').evidenceObservedAt, '2026-08-11T13:00:00.000Z');
 });
 
+test('does not replace a missing provider observation time with its container or wall clock', () => {
+  const value = structuredClone(limits);
+  value.generatedAt = '2026-08-11T13:00:00.000Z';
+  delete value.providers[0].updatedAt;
+  const provider = buildSubscriptionInsights(snapshot, value, { now: Date.parse(value.generatedAt) }).providers[0];
+
+  assert.equal(provider.evidenceClock.quotaObservedAt, null);
+  assert.equal(provider.evidenceClock.quotaTimestampSource, null);
+  assert.equal(provider.windows[0].pace, null);
+  assert.equal(provider.windows[0].estimatedCapacityTokens, null);
+});
+
+test('uses provider history time, not its compacted container time, for local-token joining', () => {
+  const usage = structuredClone(snapshot);
+  usage.buckets.push(bucket(4, '2026-08-11T11:30:00.000Z', 'gpt-5.6-sol', 2_000, 8_000));
+  const value = structuredClone(limits);
+  value.history = { observations: [{
+    observedAt: '2026-08-11T12:30:00.000Z',
+    providers: [{
+      id: 'codex', observedAt: '2026-08-11T10:00:00.000Z', windows: [{
+        id: 'primary', label: '5 小时', usedPercent: 10, remainingPercent: 90,
+        resetsAt: '2026-08-11T14:00:00.000Z', windowSeconds: 18_000,
+      }],
+    }],
+  }] };
+
+  const point = buildSubscriptionInsights(usage, value).providers[0].windows[0].historyPoints[0];
+  assert.equal(point.observedAt, '2026-08-11T10:00:00.000Z');
+  assert.equal(point.localEvidenceState, 'quota-older');
+  assert.equal(point.localTotals.totalTokens, 1_500);
+  assert.equal(point.localCoverage, 1);
+});
+
+test('keeps legacy container times readable but drops an explicitly invalid provider time', () => {
+  const value = structuredClone(limits);
+  value.history = { observations: [{
+    observedAt: '2026-08-11T10:00:00.000Z',
+    providers: [{ id: 'codex', windows: [{
+      id: 'primary', label: '5 小时', usedPercent: 10, remainingPercent: 90,
+      resetsAt: '2026-08-11T14:00:00.000Z', windowSeconds: 18_000,
+    }] }],
+  }, {
+    observedAt: '2026-08-11T11:00:00.000Z',
+    providers: [{ id: 'codex', observedAt: null, windows: [{
+      id: 'primary', label: '5 小时', usedPercent: 20, remainingPercent: 80,
+      resetsAt: '2026-08-11T14:00:00.000Z', windowSeconds: 18_000,
+    }] }],
+  }] };
+
+  const points = buildSubscriptionInsights(snapshot, value).providers[0].windows[0].historyPoints;
+  assert.deepEqual(points.map((point) => point.observedAt), ['2026-08-11T10:00:00.000Z']);
+});
+
 test('derives quota complements without turning missing percentages into zero', () => {
   const value = structuredClone(limits);
   delete value.providers[0].windows[0].remainingPercent;

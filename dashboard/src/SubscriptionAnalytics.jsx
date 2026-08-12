@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, BarChart3, CircleAlert, Clock3, FileText, LayoutDashboard, ShieldCheck } from 'lucide-react';
 import { CHART_COLORS, CONSUMPTION_PALETTE } from './chart-colors.js';
-import { compact, percent } from './format.js';
+import { compact, percent, pluralUnit } from './format.js';
 import { ToolGlyph } from './tool-glyphs.js';
 
 const CHART_LEFT = 42;
@@ -26,6 +26,10 @@ const TOKEN_MIX_COLORS = {
 
 function money(value) {
   return `$${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function requestUnit(value, zh) {
+  return zh ? '次请求' : pluralUnit(value, 'request');
 }
 
 function dateLabel(value, zh, includeTime = false) {
@@ -83,7 +87,7 @@ function tooltipLeft(event, viewport) {
 
 function localTrendFacts(item, zh) {
   const facts = [
-    `${Number(item?.requestCount || 0).toLocaleString()} ${zh ? '次请求' : 'requests'}`,
+    `${Number(item?.requestCount || 0).toLocaleString()} ${requestUnit(item?.requestCount || 0, zh)}`,
     `${zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} ${money((item?.costMicros || 0) / 1e6)}`,
     zh ? '本机归因事实' : 'Local attributed facts',
   ];
@@ -121,6 +125,16 @@ function EmptyEvidence({ title, body, zh }) {
 export function BenefitProviderPicker({ providers, active, onChange, zh }) {
   const tabs = useRef([]);
   const activeIndex = providers.findIndex((provider) => provider.id === active?.id);
+
+  useEffect(() => {
+    const node = tabs.current[activeIndex];
+    const scroller = node?.parentElement;
+    if (!node || !scroller) return;
+    const left = node.offsetLeft;
+    const right = left + node.offsetWidth;
+    if (left < scroller.scrollLeft) scroller.scrollLeft = left;
+    else if (right > scroller.scrollLeft + scroller.clientWidth) scroller.scrollLeft = right - scroller.clientWidth;
+  }, [activeIndex]);
 
   function moveFocus(event, index) {
     let nextIndex = null;
@@ -275,7 +289,7 @@ function BenefitTrendTooltip({ active, zh }) {
     <strong>{dateLabel(point.observedAt, zh, true)}</strong>
     <div className="trend-tooltip-total"><span>{zh ? '官方已用' : 'Official used'} {point.usedPercent.toFixed(1)}%</span><small>{zh ? '额度事实' : 'quota fact'}</small></div>
     {localTotals ? <TokenBreakdown row={localTotals} zh={zh}/> : <p className="trend-tooltip-note">{zh ? '该观测时刻没有可连接的本机 Token 事实。' : 'No joinable local Token facts at this observation.'}</p>}
-    <footer>{localTotals ? `${Number(localTotals.requestCount || 0).toLocaleString()} ${zh ? '次请求' : 'requests'} · ${zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} ${money((localTotals.costMicros || 0) / 1e6)} · ` : ''}{zh ? '官方观测' : 'Official observation'} {dateLabel(point.observedAt, zh, true)}{point.localEvidenceState === 'local-stale' ? ` · ${zh ? '本机快照较旧，不参与跨源推算' : 'local snapshot is stale and excluded from cross-source estimates'}` : ''}</footer>
+    <footer>{localTotals ? `${Number(localTotals.requestCount || 0).toLocaleString()} ${requestUnit(localTotals.requestCount || 0, zh)} · ${zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} ${money((localTotals.costMicros || 0) / 1e6)} · ` : ''}{zh ? '官方观测' : 'Official observation'} {dateLabel(point.observedAt, zh, true)}{point.localEvidenceState === 'local-stale' ? ` · ${zh ? '本机快照较旧，不参与跨源推算' : 'local snapshot is stale and excluded from cross-source estimates'}` : ''}</footer>
   </aside>;
 }
 
@@ -352,7 +366,7 @@ export function BenefitTrendView({ provider, zh }) {
       {provider.evidenceClock?.state === 'local-stale' ? <div className="benefit-inline-warning" data-evidence="clock-mismatch"><CircleAlert size={14}/><span>{zh ? `本机用量快照（${dateLabel(provider.evidenceClock.usageObservedAt, true, true)}）早于额度观测（${dateLabel(provider.evidenceClock.quotaObservedAt, true, true)}）；两类事实仍分别展示，但容量与剩余额度推算已暂停。` : `The local usage snapshot (${dateLabel(provider.evidenceClock.usageObservedAt, false, true)}) predates the quota observation (${dateLabel(provider.evidenceClock.quotaObservedAt, false, true)}). Both facts remain visible, but capacity and remaining-Token estimates are paused.`}</span></div> : null}
       {!plot.quota.length ? <div className="benefit-inline-warning"><CircleAlert size={14}/><span>{provider.quotaObservation?.state === 'unavailable' ? (zh ? '该账户当前没有可验证的官方额度窗口，只展示本机趋势。' : 'This account has no verifiable official quota window; only local trends are shown.') : (zh ? '额度历史从成功刷新后开始积累，至少两个样本才计算速度。' : 'Quota history begins after successful refresh and needs two samples for pace.')}</span></div> : null}
     </section>
-    <section className="benefit-kpi-row"><article><span>{zh ? '近 30 天 TOKEN' : '30D TOKENS'}</span><strong>{compact(provider.recentTotals.totalTokens)}</strong><small>{provider.recentTotals.requestCount.toLocaleString()} {zh ? '次请求' : 'requests'}</small></article><article><span>{zh ? 'API 等价价值' : 'API EQUIVALENT'}</span><strong>{money(provider.economics.apiEquivalentUsd)}</strong><small>{zh ? '标准价格，不是账单' : 'standard pricing, not a bill'}</small></article><article><span>{zh ? '完整周期样本' : 'COMPLETE CYCLES'}</span><strong>{Math.max(0, ...provider.windows.map((window) => window.cycleStats?.sampledCycles || 0))}</strong><small>{zh ? '覆盖率 ≥90% 且接近重置' : '≥90% coverage near reset'}</small></article><article><span>{zh ? '官方额度状态' : 'QUOTA STATUS'}</span><strong>{provider.quotaObservation?.state === 'current' ? (zh ? '当前可读' : 'Current') : provider.quotaObservation?.state === 'historical' ? (zh ? '仅历史' : 'History') : (zh ? '不可观测' : 'Hidden')}</strong><small>{zh ? '不以缺失推断无限' : 'missing never means unlimited'}</small></article></section>
+    <section className="benefit-kpi-row"><article><span>{zh ? '近 30 天 TOKEN' : '30D TOKENS'}</span><strong>{compact(provider.recentTotals.totalTokens)}</strong><small>{provider.recentTotals.requestCount.toLocaleString()} {requestUnit(provider.recentTotals.requestCount, zh)}</small></article><article><span>{zh ? 'API 等价价值' : 'API EQUIVALENT'}</span><strong>{money(provider.economics.apiEquivalentUsd)}</strong><small>{zh ? '标准价格，不是账单' : 'standard pricing, not a bill'}</small></article><article><span>{zh ? '完整周期样本' : 'COMPLETE CYCLES'}</span><strong>{Math.max(0, ...provider.windows.map((window) => window.cycleStats?.sampledCycles || 0))}</strong><small>{zh ? '覆盖率 ≥90% 且接近重置' : '≥90% coverage near reset'}</small></article><article><span>{zh ? '官方额度状态' : 'QUOTA STATUS'}</span><strong>{provider.quotaObservation?.state === 'current' ? (zh ? '当前可读' : 'Current') : provider.quotaObservation?.state === 'historical' ? (zh ? '仅历史' : 'History') : (zh ? '不可观测' : 'Hidden')}</strong><small>{zh ? '不以缺失推断无限' : 'missing never means unlimited'}</small></article></section>
   </section>;
 }
 
@@ -415,7 +429,7 @@ export function BenefitActivityView({ provider, zh }) {
           return <button type="button" className="benefit-heat-cell is-unobserved" data-observed="false" aria-label={unavailable} title={unavailable} disabled key={hour}/>;
         }
         const level = cell.totalTokens > 0 ? Math.max(1, Math.ceil(cell.totalTokens / max * 6)) : 0;
-        const title = `${slot} · ${zh ? '已观测' : 'Observed'} · ${compact(cell.totalTokens)} Token · ${cell.requestCount} ${zh ? '次请求' : 'requests'} · ${money(cell.costMicros / 1e6)}`;
+        const title = `${slot} · ${zh ? '已观测' : 'Observed'} · ${compact(cell.totalTokens)} Token · ${cell.requestCount} ${requestUnit(cell.requestCount, zh)} · ${money(cell.costMicros / 1e6)}`;
         return <button
           ref={(node) => { const key = `${day}-${hour}`; if (node) heatCellRefs.current.set(key, node); else heatCellRefs.current.delete(key); }}
           type="button"
@@ -434,7 +448,7 @@ export function BenefitActivityView({ provider, zh }) {
       {hovered && selectedCell ? <aside className="heatmap-tooltip benefit-heat-tooltip" role="tooltip">
         <header><strong>{weekdays[hovered.day]} {String(hovered.hour).padStart(2, '0')}:00</strong><span>{compact(selectedCell.totalTokens)} tokens</span><small>{zh ? '命中率' : 'hit'} {cacheHit(selectedCell)}</small></header>
         {tokenBreakdownRows(selectedCell, zh, true).map(([label, value, color]) => <div key={label}><span><i style={{ background: color }}/>{label}</span><b>{compact(value)}</b></div>)}
-        <footer>{zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} {money(selectedCell.costMicros / 1e6)} · {Number(selectedCell.requestCount || 0).toLocaleString()} {zh ? '次请求' : 'requests'} · {zh ? '本机归因事实' : 'local attributed facts'}</footer>
+        <footer>{zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} {money(selectedCell.costMicros / 1e6)} · {Number(selectedCell.requestCount || 0).toLocaleString()} {requestUnit(selectedCell.requestCount || 0, zh)} · {zh ? '本机归因事实' : 'local attributed facts'}</footer>
       </aside> : null}
       <footer className="benefit-heat-footer"><span>{zh ? '少' : 'Less'} {[1,2,3,4,5,6].map((level) => <i data-level={level} key={level}/>)} {zh ? '多' : 'More'}</span><span><i className="is-observed-zero" data-level="0"/> {zh ? '已观测 0' : 'Observed 0'}　<i className="is-unobserved"/> {zh ? '未观测' : 'Not observed'}</span><span>{zh ? '悬停或聚焦查看本机证据' : 'Hover or focus for local evidence'}</span></footer>
     </section>
@@ -446,7 +460,7 @@ function MixCard({ title, rows, zh, semantic = false }) {
   const shown = rows.slice(0, 6);
   const total = rows.reduce((sum, row) => sum + row.totalTokens, 0);
   const count = shown.length === rows.length ? shown.length : `${shown.length} / ${rows.length}`;
-  return <section className="panel benefit-mix-card"><header className="panel-header"><h2>{title}</h2><span>{count} {zh ? '项' : 'items'}</span></header><div>{shown.length ? shown.map((row, index) => {
+  return <section className="panel benefit-mix-card"><header className="panel-header"><h2>{title}</h2><span>{count} {zh ? '项' : pluralUnit(count, 'item')}</span></header><div>{shown.length ? shown.map((row, index) => {
     const suppliedShare = finiteNumber(row.share);
     const share = Math.max(0, Math.min(1, suppliedShare ?? (total ? row.totalTokens / total : 0)));
     const color = semantic ? TOKEN_MIX_COLORS[row.id] : CONSUMPTION_PALETTE[index % CONSUMPTION_PALETTE.length];

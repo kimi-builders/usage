@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { analyze, availableModels, buildRecords, filterOptions, heatmapView } from '../src/analytics.js';
-import { distributionShare, usdMoney } from '../src/format.js';
+import { distributionShare, pluralUnit, usdMoney } from '../src/format.js';
 
 function bucket(id, source, model, bucketStart, total) {
   return {
@@ -28,6 +28,12 @@ const data = {
     { source: 'codex', hourStart: '2026-08-01T12:00:00.000Z', activeSeconds: 60, engagedSeconds: 70, messageCount: 3, userMessageCount: 1 },
   ],
 };
+
+test('English count units use the singular only for exactly one item', () => {
+  assert.equal(pluralUnit(1, 'item'), 'item');
+  assert.equal(pluralUnit(0, 'item'), 'items');
+  assert.equal(pluralUnit(2, 'request'), 'requests');
+});
 
 test('analysis separates selected range, equal previous window, and lifetime totals', () => {
   const report = analyze(data, { range: '7d', source: 'all', model: 'all' });

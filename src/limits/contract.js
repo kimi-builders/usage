@@ -96,12 +96,12 @@ function browserWindow(window) {
 
 function browserResetCredits(resetCredits) {
   if (!resetCredits || typeof resetCredits !== 'object' || Array.isArray(resetCredits)) return null;
-  const count = Number(resetCredits.availableCount);
+  const count = resetCredits.availableCount;
   const expiry = resetCredits.nextExpiry;
   return {
-    availableCount: Number.isFinite(count) && count >= 0
+    availableCount: typeof count === 'number' && Number.isFinite(count) && count >= 0
       ? Math.min(1_000_000, Math.floor(count))
-      : 0,
+      : null,
     nextExpiry: typeof expiry === 'string' && !Number.isNaN(Date.parse(expiry))
       ? new Date(expiry).toISOString()
       : null,

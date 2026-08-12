@@ -235,6 +235,21 @@ test('maps Codex subscription windows, model-specific limits, spend control, and
   assert.equal(result.resetCredits.availableCount, 1);
 });
 
+test('Codex reset-credit parsing preserves real zero and leaves invalid counts unknown', () => {
+  const payload = { rate_limit: { primary_window: {
+    used_percent: 27, reset_at: 1786500000, limit_window_seconds: 18_000,
+  } } };
+  assert.equal(parseCodexUsage(payload, {}, {
+    now: NOW, resetCredits: { available_count: 0 },
+  }).resetCredits.availableCount, 0);
+  assert.equal(parseCodexUsage(payload, {}, {
+    now: NOW, resetCredits: { available_count: '0' },
+  }).resetCredits.availableCount, null);
+  assert.equal(parseCodexUsage(payload, {}, {
+    now: NOW, resetCredits: null,
+  }).resetCredits, null);
+});
+
 test('maps Kimi Code local and web quota shapes', () => {
   const local = parseKimiCodeUsage({
     usage: { limit: '1000', used: '300', resetTime: '2026-08-18T12:00:00Z' },

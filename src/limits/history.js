@@ -55,13 +55,24 @@ function sanitizeProvider(provider) {
   if (!id || (provider?.status != null && provider.status !== 'ok')) return null;
   const windows = (provider.windows || []).map(sanitizeWindow).filter(Boolean);
   if (!windows.length) return null;
-  return { id, windows };
+  const observedAt = iso(provider?.observedAt);
+  return { id, ...(observedAt ? { observedAt } : {}), windows };
 }
 
-function sanitizeObservation(observation) {
+function sanitizeObservation(observation, { fallbackProviderObservedAt = true } = {}) {
   const observedAt = iso(observation?.observedAt);
   if (!observedAt) return null;
-  const providers = (observation.providers || []).map(sanitizeProvider).filter(Boolean);
+  // Schema v1 stored time only on the observation container. Normalize those
+  // files forward by copying that real legacy time to providers which do not
+  // yet carry their own timestamp. Never invent a time for malformed input.
+  const providers = (observation.providers || []).map((provider) => {
+    const hasProviderObservedAt = Object.prototype.hasOwnProperty.call(provider || {}, 'observedAt');
+    const providerObservedAt = hasProviderObservedAt
+      ? iso(provider?.observedAt)
+      : fallbackProviderObservedAt ? observedAt : null;
+    if (!providerObservedAt) return null;
+    return sanitizeProvider({ ...provider, observedAt: providerObservedAt });
+  }).filter(Boolean);
   if (!providers.length) return null;
   return { observedAt, providers };
 }
@@ -95,10 +106,7 @@ export function compactLimitHistory(observations, { now = Date.now() } = {}) {
       // remain represented by their latest result in the bucket.
       providers.set(provider.id, provider);
     }
-    buckets.set(key, {
-      observedAt: observation.observedAt,
-      providers: [...providers.values()],
-    });
+    buckets.set(key, { observedAt: observation.observedAt, providers: [...providers.values()] });
   }
   return [...buckets.values()].sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt))
     .slice(-MAX_OBSERVATIONS);
@@ -121,8 +129,14 @@ export function loadLimitHistory({ path = defaultPath(), now = Date.now() } = {}
 }
 
 export function recordLimitSnapshot(snapshot, { path = defaultPath(), now = Date.now() } = {}) {
-  const observedAt = iso(snapshot?.generatedAt) || new Date(now).toISOString();
-  const observation = sanitizeObservation({ observedAt, providers: snapshot?.providers });
+  const observedAt = iso(snapshot?.generatedAt);
+  const observation = observedAt ? sanitizeObservation({
+    observedAt,
+    providers: (snapshot?.providers || []).map((provider) => ({
+      ...provider,
+      observedAt: iso(provider?.updatedAt),
+    })),
+  }, { fallbackProviderObservedAt: false }) : null;
   const current = loadLimitHistory({ path, now });
   if (!observation) return current;
   const next = normalizeLimitHistory({ observations: [...current.observations, observation] }, { now });
