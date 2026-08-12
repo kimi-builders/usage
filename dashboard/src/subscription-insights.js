@@ -82,6 +82,66 @@ function groupModels(buckets) {
   return rows.map((row) => ({ ...row, share: total > 0 ? row.totalTokens / total : 0 }));
 }
 
+function groupDimension(buckets, keyOf, labelOf = keyOf) {
+  const groups = new Map();
+  for (const bucket of buckets) {
+    const id = keyOf(bucket) || 'unknown';
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(bucket);
+  }
+  const rows = [...groups].map(([id, values]) => ({
+    id,
+    label: labelOf(values[0]) || id,
+    ...sumBuckets(values),
+  })).sort((left, right) => right.totalTokens - left.totalTokens);
+  const total = rows.reduce((sum, row) => sum + row.totalTokens, 0);
+  return rows.map((row) => ({ ...row, share: total > 0 ? row.totalTokens / total : 0 }));
+}
+
+function providerTimeline(buckets) {
+  const groups = new Map();
+  for (const bucket of buckets) {
+    const date = new Date(bucket.bucketStart);
+    if (!Number.isFinite(date.getTime())) continue;
+    date.setHours(0, 0, 0, 0);
+    const key = date.toISOString();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(bucket);
+  }
+  return [...groups].sort(([left], [right]) => left.localeCompare(right)).map(([key, values]) => ({
+    key,
+    ...sumBuckets(values),
+  }));
+}
+
+function providerActivity(buckets) {
+  const cells = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({
+    totalTokens: 0, requestCount: 0, costMicros: 0, observed: false,
+  })));
+  for (const bucket of buckets) {
+    const date = new Date(bucket.bucketStart);
+    if (!Number.isFinite(date.getTime())) continue;
+    const cell = cells[(date.getDay() + 6) % 7][date.getHours()];
+    cell.observed = true;
+    cell.totalTokens += tokenTotal(bucket);
+    cell.requestCount += bucket.requestCount || 0;
+    cell.costMicros += bucket.costMicros || 0;
+  }
+  return cells;
+}
+
+function providerUsageRecords(buckets) {
+  return [...buckets].sort((left, right) => Date.parse(right.bucketStart) - Date.parse(left.bucketStart)).map((bucket) => ({
+    id: bucket.id || `${bucket.bucketStart}:${bucket.modelCanonical || bucket.model || 'unknown'}`,
+    observedAt: bucket.bucketStart,
+    model: bucket.modelCanonical || bucket.model || 'unknown',
+    reasoningEffort: bucket.reasoningEffort || null,
+    project: bucket.project || null,
+    agentVersion: bucket.agentVersion || null,
+    ...sumBuckets([bucket]),
+  }));
+}
+
 function confidence({ coverage, usedPercent, requestCount }) {
   if (coverage >= 0.9 && usedPercent >= 15 && requestCount >= 10) return 'high';
   if (coverage >= 0.5 && usedPercent >= 5 && requestCount >= 3) return 'medium';
@@ -285,6 +345,9 @@ export function buildSubscriptionInsights(snapshot, limits, {
     const recentTotals = sumBuckets(recentBuckets);
     const modelRows = groupModels(buckets);
     const recentModelRows = groupModels(recentBuckets);
+    const projectRows = groupDimension(buckets, (bucket) => bucket.project || 'private', (bucket) => bucket.project || 'Private / hidden');
+    const effortRows = groupDimension(buckets, (bucket) => bucket.reasoningEffort || 'not-recorded', (bucket) => bucket.reasoningEffort || 'Not recorded');
+    const agentVersionRows = groupDimension(buckets, (bucket) => bucket.agentVersion || 'unknown', (bucket) => bucket.agentVersion || 'Unknown');
     const modelRates = modelRows.filter((model) => model.effectiveCostMicrosPerToken);
     const currentWindows = (provider.windows || []).map((window) => enrichWindow(
       window,
@@ -353,6 +416,13 @@ export function buildSubscriptionInsights(snapshot, limits, {
       recentTotals,
       modelRows,
       recentModelRows,
+      projectRows,
+      effortRows,
+      agentVersionRows,
+      timeline: providerTimeline(buckets),
+      activity: providerActivity(buckets),
+      usageRecords: providerUsageRecords(buckets),
+      observationLog: [...(history.values())].flat().sort((left, right) => Date.parse(right.observedAt) - Date.parse(left.observedAt)),
       windows: enrichedWindows,
       primaryWindow,
       hasLocalUsage: lifetimeTotals.totalTokens > 0,

@@ -9,6 +9,10 @@ import { buildSubscriptionInsights } from './subscription-insights.js';
 import {
   SubscriptionPortfolioReview, SubscriptionReviewGrid,
 } from './SubscriptionReview.jsx';
+import {
+  BenefitActivityView, BenefitDistributionView, BenefitProviderPicker,
+  BenefitRecordsView, BenefitTrendView,
+} from './SubscriptionAnalytics.jsx';
 import { ToolGlyph } from './tool-glyphs.js';
 import { moveEnabledProvider, reorderEnabledProviders } from './provider-order.js';
 
@@ -307,7 +311,7 @@ export function SubscriptionPulse({ data, usageData, settings, loading, onOpen, 
   </section>;
 }
 
-export function SubscriptionCenter({ data, usageData, settings, loading, error, onRefresh, onSettings, zh }) {
+export function SubscriptionCenter({ data, usageData, settings, loading, error, onRefresh, onSettings, view = 'overview', zh }) {
   const now = useNow();
   const insights = useMemo(() => buildSubscriptionInsights(usageData, data, { settings }), [usageData, data, settings]);
   const providers = insights.providers;
@@ -319,6 +323,15 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
   if (loading && !data) return <section className="panel limits-panel limits-panel--loading" id="subscriptions"><div><h2>{zh ? '正在读取订阅中心' : 'Loading Subscription Center'}</h2><p>{zh ? '未启用供应商时不会发起外部网络请求。' : 'No external requests are made until a provider is enabled.'}</p></div></section>;
   if (!data?.enabled) return <section className="panel limits-panel limits-panel--empty" id="subscriptions">
     <div><h2>{zh ? '把付费核心、免费权益、官方额度与本机 Token 放在一起看' : 'Compare paid core, free benefits, official quotas, and local Tokens'}</h2><p>{zh ? '默认关闭且零联网。连接后先标注权益来源；额度不可读的平台仍可做本机 Token、模型和价值分析。' : 'Off and network-free by default. Classify each benefit after connecting; platforms with hidden quota still support local Token, model, and value analysis.'}</p></div><button className="primary-btn" type="button" onClick={onSettings}><Settings2 size={15}/>{zh ? '连接账户权益' : 'Connect account benefits'}<ChevronRight size={14}/></button>
+  </section>;
+  if (view !== 'overview') return <section className="subscription-center subscription-center--detail" id={`subscription-${view}`}>
+    {error ? <div className="limits-banner">{error}</div> : null}
+    <BenefitProviderPicker providers={providers} active={active} onChange={setSelected} zh={zh}/>
+    {active && view === 'trend' ? <BenefitTrendView provider={active} zh={zh}/> : null}
+    {active && view === 'activity' ? <BenefitActivityView provider={active} zh={zh}/> : null}
+    {active && view === 'distribution' ? <BenefitDistributionView provider={active} zh={zh}/> : null}
+    {active && view === 'records' ? <BenefitRecordsView provider={active} zh={zh}/> : null}
+    <section className="subscription-method-note"><Info size={16}/><div><b>{zh ? '这里展示的三类数据不会混算' : 'Three evidence classes remain separate'}</b><p>{zh ? '官方额度是供应商事实，本机 Token 是 Agent 日志，容量和价值是带前提的推算。读取不到的数据明确留空，不会当成 0、免费或无限。' : 'Official quota is a provider fact, local Tokens come from Agent logs, and capacity/value are conditional estimates. Missing data stays empty—never zero, free, or unlimited.'}</p></div></section>
   </section>;
   return <section className="subscription-center" id="subscriptions">
     <section className="subscription-overview-grid">

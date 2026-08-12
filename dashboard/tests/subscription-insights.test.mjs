@@ -179,3 +179,16 @@ test('keeps historical quota charts available when the current provider request 
   assert.equal(provider.windows[0].pace, null);
   assert.equal(provider.decisionSignals.some((signal) => signal.code === 'pace-high'), false);
 });
+
+test('builds provider-scoped trend, rhythm, distribution, and local record evidence', () => {
+  const provider = buildSubscriptionInsights(snapshot, limits).providers[0];
+  assert.equal(provider.timeline.length, 2);
+  assert.equal(provider.timeline.at(-1).totalTokens, 1_500);
+  assert.equal(provider.activity.length, 7);
+  const activityTotal = provider.activity.flat().reduce((sum, cell) => sum + cell.totalTokens, 0);
+  assert.equal(activityTotal, 10_500);
+  assert.equal(provider.projectRows[0].id, 'private');
+  assert.equal(provider.effortRows[0].id, 'not-recorded');
+  assert.equal(provider.usageRecords.length, 3);
+  assert.equal(provider.usageRecords[0].model, 'gpt-5.6-terra');
+});

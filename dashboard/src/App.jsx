@@ -65,10 +65,23 @@ function Stat({ label, value, change, previousValue, sub, onHelp, zh }) {
 
 const LOCAL_LINKS = [
   ['#top', Home, '总览', 'Overview'], ['#trend', BarChart3, '趋势', 'Trends'], ['#activity', Activity, '活跃', 'Activity'],
-  ['#distribution', LayoutDashboard, '分布', 'Distribution'], ['#records', FileText, '明细', 'Records'], ['#subscriptions', Gauge, '权益', 'Benefits'], ['#sources', Database, '本机', 'Device'],
+  ['#distribution', LayoutDashboard, '分布', 'Distribution'], ['#records', FileText, '明细', 'Records'],
 ];
-const LOCAL_SECTION_IDS = LOCAL_LINKS.map(([href]) => href.slice(1));
-const USAGE_SECTION_IDS = LOCAL_SECTION_IDS.filter((id) => id !== 'subscriptions');
+const BENEFIT_LINKS = [
+  ['#subscriptions', Home, '总览', 'Overview'],
+  ['#subscription-trend', BarChart3, '额度趋势', 'Quota trends'],
+  ['#subscription-activity', Activity, '使用节奏', 'Usage rhythm'],
+  ['#subscription-distribution', LayoutDashboard, '消耗构成', 'Consumption mix'],
+  ['#subscription-records', FileText, '观测明细', 'Observation log'],
+];
+const DEVICE_LINK = ['#sources', Database, '本机', 'Device'];
+const USAGE_SECTION_IDS = [...LOCAL_LINKS.map(([href]) => href.slice(1)), 'sources'];
+const BENEFIT_SECTION_IDS = BENEFIT_LINKS.map(([href]) => href.slice(1));
+const LOCAL_SECTION_IDS = [...USAGE_SECTION_IDS, ...BENEFIT_SECTION_IDS];
+
+function isBenefitSection(id) {
+  return BENEFIT_SECTION_IDS.includes(id);
+}
 
 function sectionFromHash(hash = '') {
   const raw = hash.replace(/^#/, '');
@@ -77,16 +90,21 @@ function sectionFromHash(hash = '') {
 }
 
 function DesktopNav({ zh, communityUrl, activeSection, onNavigate, onSettings }) {
-  return <aside className="left-nav"><a className="community-cta primary-btn" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={14}/>{zh ? '打开社区看板' : 'Open community'}</a><nav>{LOCAL_LINKS.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a className={active ? 'active' : ''} href={href} key={href} aria-current={active ? 'location' : undefined} onClick={(event) => onNavigate(event, href)}><Icon size={15}/>{zh ? cn : en}</a>; })}</nav><nav className="nav-bottom"><button type="button" onClick={onSettings}><Settings2 size={15}/>{zh ? '权益设置' : 'Benefit settings'}</button><a href="https://kimi.builders" target="_blank" rel="noreferrer"><Globe2 size={15}/>{zh ? '社区首页' : 'Community'}</a><a href="https://github.com/kimi-builders/usage" target="_blank" rel="noreferrer"><Command size={15}/>GitHub</a><a href="#sources" onClick={(event) => onNavigate(event, '#sources')}><Info size={15}/>{zh ? '隐私与数据源' : 'Privacy & sources'}</a></nav></aside>;
+  const benefitCenter = isBenefitSection(activeSection);
+  const links = benefitCenter ? BENEFIT_LINKS : LOCAL_LINKS;
+  return <aside className="left-nav"><a className="community-cta primary-btn" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={14}/>{zh ? '打开社区看板' : 'Open community'}</a><div className="center-switch" role="navigation" aria-label={zh ? '分析中心' : 'Analytics centers'}><a href="#top" className={!benefitCenter ? 'active' : ''} onClick={(event) => onNavigate(event, '#top')}><BarChart3 size={15}/><span>{zh ? '用量中心' : 'Usage Center'}</span></a><a href="#subscriptions" className={benefitCenter ? 'active' : ''} onClick={(event) => onNavigate(event, '#subscriptions')}><Gauge size={15}/><span>{zh ? '权益中心' : 'Benefit Center'}</span></a></div><nav className="center-sections" aria-label={benefitCenter ? (zh ? '权益中心页面' : 'Benefit Center pages') : (zh ? '用量中心页面' : 'Usage Center pages')}>{links.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a className={active ? 'active' : ''} href={href} key={href} aria-current={active ? 'location' : undefined} onClick={(event) => onNavigate(event, href)}><Icon size={15}/>{zh ? cn : en}</a>; })}<a className={activeSection === 'sources' ? 'active' : ''} href={DEVICE_LINK[0]} aria-current={activeSection === 'sources' ? 'location' : undefined} onClick={(event) => onNavigate(event, DEVICE_LINK[0])}><Database size={15}/>{zh ? DEVICE_LINK[2] : DEVICE_LINK[3]}</a></nav><nav className="nav-bottom"><button type="button" onClick={onSettings}><Settings2 size={15}/>{zh ? '权益设置' : 'Benefit settings'}</button><a href="https://kimi.builders" target="_blank" rel="noreferrer"><Globe2 size={15}/>{zh ? '社区首页' : 'Community'}</a><a href="https://github.com/kimi-builders/usage" target="_blank" rel="noreferrer"><Command size={15}/>GitHub</a><a href="#sources" onClick={(event) => onNavigate(event, '#sources')}><Info size={15}/>{zh ? '隐私与数据源' : 'Privacy & sources'}</a></nav></aside>;
 }
 
 function MobileDrawer({ open, onClose, zh, communityUrl, theme, setTheme, setLocale, activeSection, onNavigate, onSettings, onSync }) {
   if (!open) return null;
-  return <div className="mobile-drawer-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside className="mobile-drawer"><header><a className="brand" href="#top" onClick={(event) => { onNavigate(event, '#top'); onClose(); }}><img src="/brand/logo-tile.svg" alt=""/><span>kimi.builders</span><small>LOCAL</small></a><button className="icon-btn" type="button" onClick={onClose}><X size={19}/></button></header><div className="drawer-account"><ShieldCheck size={18}/><div><b>{zh ? '本地私有看板' : 'Private local dashboard'}</b><span>127.0.0.1 · {zh ? '零上传' : 'zero upload'}</span></div></div><nav>{LOCAL_LINKS.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a className={active ? 'active' : ''} href={href} key={href} aria-current={active ? 'location' : undefined} onClick={(event) => { onNavigate(event, href); onClose(); }}><Icon size={17}/>{zh ? cn : en}</a>; })}</nav><div className="drawer-actions"><button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>} {zh ? '切换主题' : 'Switch theme'}</button><button type="button" onClick={() => setLocale(zh ? 'en' : 'zh')}><Globe2 size={16}/>{zh ? 'English' : '中文'}</button><button type="button" onClick={() => { onSettings(); onClose(); }}><Settings2 size={16}/>{zh ? '权益设置' : 'Benefit settings'}</button><button type="button" onClick={() => { onSync(); onClose(); }}><CloudUpload size={16}/>{zh ? '同步数据' : 'Sync data'}</button></div><a className="drawer-community" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={16}/>{zh ? '打开社区用量中心' : 'Open community usage'}<ExternalLink size={13}/></a></aside></div>;
+  const benefitCenter = isBenefitSection(activeSection);
+  const links = benefitCenter ? BENEFIT_LINKS : LOCAL_LINKS;
+  return <div className="mobile-drawer-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside className="mobile-drawer"><header><a className="brand" href="#top" onClick={(event) => { onNavigate(event, '#top'); onClose(); }}><img src="/brand/logo-tile.svg" alt=""/><span>kimi.builders</span><small>LOCAL</small></a><button className="icon-btn" type="button" onClick={onClose}><X size={19}/></button></header><div className="drawer-account"><ShieldCheck size={18}/><div><b>{zh ? '本地私有看板' : 'Private local dashboard'}</b><span>127.0.0.1 · {zh ? '零上传' : 'zero upload'}</span></div></div><div className="drawer-center-switch"><button type="button" className={!benefitCenter ? 'active' : ''} onClick={(event) => onNavigate(event, '#top')}><BarChart3 size={16}/>{zh ? '用量中心' : 'Usage Center'}</button><button type="button" className={benefitCenter ? 'active' : ''} onClick={(event) => onNavigate(event, '#subscriptions')}><Gauge size={16}/>{zh ? '权益中心' : 'Benefit Center'}</button></div><nav>{links.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a className={active ? 'active' : ''} href={href} key={href} aria-current={active ? 'location' : undefined} onClick={(event) => { onNavigate(event, href); onClose(); }}><Icon size={17}/>{zh ? cn : en}</a>; })}<a className={activeSection === 'sources' ? 'active' : ''} href="#sources" onClick={(event) => { onNavigate(event, '#sources'); onClose(); }}><Database size={17}/>{zh ? '本机' : 'Device'}</a></nav><div className="drawer-actions"><button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>} {zh ? '切换主题' : 'Switch theme'}</button><button type="button" onClick={() => setLocale(zh ? 'en' : 'zh')}><Globe2 size={16}/>{zh ? 'English' : '中文'}</button><button type="button" onClick={() => { onSettings(); onClose(); }}><Settings2 size={16}/>{zh ? '权益设置' : 'Benefit settings'}</button><button type="button" onClick={() => { onSync(); onClose(); }}><CloudUpload size={16}/>{zh ? '同步数据' : 'Sync data'}</button></div><a className="drawer-community" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={16}/>{zh ? '打开社区用量中心' : 'Open community usage'}<ExternalLink size={13}/></a></aside></div>;
 }
 
 function MobileNav({ zh, activeSection, onNavigate }) {
-  const links = [LOCAL_LINKS[0], LOCAL_LINKS[5], LOCAL_LINKS[1], LOCAL_LINKS[4], LOCAL_LINKS[6]];
+  const benefitCenter = isBenefitSection(activeSection);
+  const links = benefitCenter ? BENEFIT_LINKS : [LOCAL_LINKS[0], LOCAL_LINKS[1], LOCAL_LINKS[2], LOCAL_LINKS[3], LOCAL_LINKS[4]];
   return <nav className="mobile-tabs">{links.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a href={href} className={active ? 'active' : ''} aria-current={active ? 'location' : undefined} onClick={(event) => onNavigate(event, href)} key={href}><span className={active ? 'primary' : ''}><Icon size={active ? 18 : 19}/></span><small>{zh ? cn : en}</small></a>; })}</nav>;
 }
 
@@ -176,8 +194,9 @@ export function App() {
     let frame = 0;
     const updateActiveSection = () => {
       frame = 0;
-      if (sectionFromHash(window.location.hash) === 'subscriptions') {
-        setActiveSection((current) => current === 'subscriptions' ? current : 'subscriptions');
+      if (isBenefitSection(sectionFromHash(window.location.hash))) {
+        const benefitSection = sectionFromHash(window.location.hash);
+        setActiveSection((current) => current === benefitSection ? current : benefitSection);
         return;
       }
       const lockedTarget = navigationTarget.current;
@@ -216,7 +235,7 @@ export function App() {
       navigationTarget.current = id;
       setActiveSection(id);
       window.requestAnimationFrame(() => {
-        if (id === 'subscriptions') window.scrollTo({ top: 0, behavior: 'auto' });
+        if (isBenefitSection(id)) window.scrollTo({ top: 0, behavior: 'auto' });
         else document.getElementById(id)?.scrollIntoView({ behavior: 'auto', block: 'start' });
         navigationTarget.current = null;
         scheduleUpdate();
@@ -227,7 +246,7 @@ export function App() {
       initialAnchorHandled.current = true;
       const initialId = sectionFromHash(window.location.hash);
       window.requestAnimationFrame(() => {
-        if (initialId === 'subscriptions') window.scrollTo({ top: 0, behavior: 'auto' });
+        if (isBenefitSection(initialId)) window.scrollTo({ top: 0, behavior: 'auto' });
         else document.getElementById(initialId)?.scrollIntoView({ behavior: 'instant', block: 'start' });
         setActiveSection(initialId);
         window.requestAnimationFrame(updateActiveSection);
@@ -256,13 +275,13 @@ export function App() {
     event.preventDefault();
     const id = sectionFromHash(href);
     if (window.location.hash !== href) window.history.pushState(null, '', href);
-    if (id === 'subscriptions') {
+    if (isBenefitSection(id)) {
       navigationTarget.current = null;
       setActiveSection(id);
       window.scrollTo({ top: 0, behavior: 'auto' });
       return;
     }
-    const fromSubscriptionCenter = activeSection === 'subscriptions';
+    const fromSubscriptionCenter = isBenefitSection(activeSection);
     navigationTarget.current = id;
     if (navigationSettleTimer.current) window.clearTimeout(navigationSettleTimer.current);
     navigationSettleTimer.current = window.setTimeout(() => {
@@ -293,7 +312,8 @@ export function App() {
   const inputSide = report.totals.inputTokens + report.totals.cacheWriteInputTokens;
   const dimensionFiltersActive = ['models', 'efforts'].some((key) => filters[key].length);
   const lastSeries = report.series.reduce((best, item) => item.totalTokens > (best?.totalTokens || 0) ? item : best, null);
-  const subscriptionPage = activeSection === 'subscriptions';
+  const subscriptionPage = isBenefitSection(activeSection);
+  const subscriptionView = activeSection === 'subscriptions' ? 'overview' : activeSection.replace('subscription-', '');
 
   return <div className="app-shell" id="top">
     <header className="global-topbar"><div className="mobile-brand-wrap"><button className="mobile-menu-button" type="button" onClick={() => setDrawer(true)}><Menu size={20}/></button><a className="brand" href="#top" onClick={(event) => navigateSection(event, '#top')}><img src="/brand/logo-tile.svg" alt=""/><span>kimi<span>.</span>builders</span><small>LOCAL</small></a></div><div className="global-actions"><span className="local-pill"><ShieldCheck size={12}/>{t.local}</span><button className="icon-btn" type="button" onClick={() => setDialog('limit-settings')} title={zh ? '权益设置' : 'Benefit settings'}><Settings2 size={16}/></button><button className="icon-btn" type="button" onClick={() => setLocale(zh ? 'en' : 'zh')} title="Language">{zh ? '文' : 'En'}</button><button className="icon-btn" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title="Theme">{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}</button></div></header>
@@ -301,7 +321,7 @@ export function App() {
     <main className="page-content">
       {subscriptionPage ? <>
       <section className="page-heading subscription-page-heading"><div><h1><Gauge size={22}/>{zh ? '订阅与权益中心' : 'Subscriptions & Benefits'}</h1><p>{zh ? '看清少数付费核心和多项免费/活动权益分别承载了多少工作；官方额度不可读时仍保留本机 Token 与价值分析。' : 'See how paid core subscriptions and free or promotional benefits each carry your workload. Local Token and value analysis remain available when official quota is hidden.'}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{zh ? '凭据只留本机' : 'Credentials stay local'}</span><i/><span>{zh ? '不读取对话内容' : 'No conversation content'}</span></div></div><div className="page-actions"><Button onClick={(event) => navigateSection(event, '#top')}><BarChart3 size={14}/>{zh ? '用量中心' : 'Usage Center'}</Button><Button onClick={() => setDialog('limit-settings')}><Settings2 size={14}/>{zh ? '权益设置' : 'Benefit settings'}</Button><Button primary onClick={() => loadLimits(true)} disabled={limitLoading}><RefreshCw className={limitLoading ? 'spin' : ''} size={14}/>{zh ? '刷新额度' : 'Refresh quotas'}</Button></div></section>
-      <SubscriptionCenter data={limitData} usageData={data} settings={limitSettings} loading={limitLoading} error={limitError} onRefresh={loadLimits} onSettings={() => setDialog('limit-settings')} zh={zh}/>
+      <SubscriptionCenter view={subscriptionView} onViewChange={(view) => navigateSection({ preventDefault() {} }, view === 'overview' ? '#subscriptions' : `#subscription-${view}`)} data={limitData} usageData={data} settings={limitSettings} loading={limitLoading} error={limitError} onRefresh={loadLimits} onSettings={() => setDialog('limit-settings')} zh={zh}/>
       </> : <>
       <section className="page-heading"><div><h1><BarChart3 size={22}/>{t.title}</h1><p>{t.subtitle}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{t.local}</span><i/><span>{t.lastSync} {new Date(data.generatedAt).toLocaleString(zh ? 'zh-CN' : 'en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>{staleHours > 24 ? <b>{zh ? `超过 ${Math.floor(staleHours)} 小时未扫描` : `${Math.floor(staleHours)}h stale`}</b> : null}</div></div><div className="page-actions"><Button onClick={() => setDialog('method')}><Info size={14}/>{t.method}</Button><Button onClick={() => setDialog('export')}><Download size={14}/>{t.export}</Button><Button onClick={() => setDialog('share')}><Share2 size={14}/>{t.share}</Button><Button onClick={() => load(true)} disabled={refreshing}><RefreshCw className={refreshing ? 'spin' : ''} size={14}/>{t.refresh}</Button><Button primary onClick={() => setDialog('sync')}><CloudUpload size={14}/>{t.sync}</Button></div></section>
 
