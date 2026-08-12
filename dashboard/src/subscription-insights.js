@@ -1,4 +1,7 @@
 import { sumBuckets, tokenTotal } from './analytics.js';
+import {
+  buildCycleCapacityStats, buildPortfolioReview, buildRenewalReview,
+} from './subscription-review.js';
 
 const PROVIDER_SOURCES = {
   'kimi-code': ['kimi-code'],
@@ -135,30 +138,36 @@ function providerSources(providerId) {
   return PROVIDER_SOURCES[providerId] || [providerId];
 }
 
-function totalsAtObservation(buckets, window, observedAt) {
+function totalsAtObservation(buckets, window, observedAt, sourceHistoryStart) {
   const end = Date.parse(observedAt);
   const seconds = inferredWindowSeconds(window);
-  if (!Number.isFinite(end) || !seconds) return sumBuckets([]);
+  if (!Number.isFinite(end) || !seconds) return { totals: sumBuckets([]), coverage: 0 };
   const reset = Date.parse(window.resetsAt);
   const start = Number.isFinite(reset) && reset >= end
     ? reset - seconds * 1_000
     : end - seconds * 1_000;
-  return sumBuckets(buckets.filter((bucket) => {
+  const totals = sumBuckets(buckets.filter((bucket) => {
     const time = Date.parse(bucket.bucketStart);
     return Number.isFinite(time) && time >= start && time <= end;
   }));
+  const coverage = sourceHistoryStart == null
+    ? 0
+    : sourceHistoryStart <= start ? 1 : Math.max(0, Math.min(1, (end - sourceHistoryStart) / Math.max(1, end - start)));
+  return { totals, coverage };
 }
 
-function historyWindows(history, providerId, buckets) {
+function historyWindows(history, providerId, buckets, sourceHistoryStart) {
   const groups = new Map();
   for (const observation of history?.observations || []) {
     const provider = observation.providers?.find((item) => item.id === providerId);
     for (const window of provider?.windows || []) {
       if (!groups.has(window.id)) groups.set(window.id, []);
+      const local = totalsAtObservation(buckets, window, observation.observedAt, sourceHistoryStart);
       groups.get(window.id).push({
         ...window,
         observedAt: observation.observedAt,
-        localTotals: totalsAtObservation(buckets, window, observation.observedAt),
+        localTotals: local.totals,
+        localCoverage: local.coverage,
       });
     }
   }
@@ -243,11 +252,13 @@ export function buildSubscriptionInsights(snapshot, limits, {
       return Number.isFinite(time) ? Math.min(earliest, time) : earliest;
     }, Number.POSITIVE_INFINITY);
     const lifetimeTotals = sumBuckets(buckets);
-    const recentTotals = sumBuckets(buckets.filter((bucket) => {
+    const recentBuckets = buckets.filter((bucket) => {
       const time = Date.parse(bucket.bucketStart);
       return Number.isFinite(time) && time >= now - MONTH_SECONDS * 1_000 && time <= now;
-    }));
+    });
+    const recentTotals = sumBuckets(recentBuckets);
     const modelRows = groupModels(buckets);
+    const recentModelRows = groupModels(recentBuckets);
     const modelRates = modelRows.filter((model) => model.effectiveCostMicrosPerToken);
     const currentWindows = (provider.windows || []).map((window) => enrichWindow(
       window,
@@ -259,7 +270,8 @@ export function buildSubscriptionInsights(snapshot, limits, {
     const subscription = settings?.providers?.[provider.id] || {};
     const price = finite(subscription.subscriptionPrice);
     const monthlyPrice = price == null ? null : subscription.billingCycle === 'yearly' ? price / 12 : price;
-    const history = historyWindows(limits?.history, provider.id, buckets);
+    const normalizedHistoryStart = Number.isFinite(sourceHistoryStart) ? sourceHistoryStart : null;
+    const history = historyWindows(limits?.history, provider.id, buckets, normalizedHistoryStart);
     const baseWindows = currentWindows.length ? currentWindows : [...history.values()].map((points) => {
       const latest = points.at(-1);
       return {
@@ -272,7 +284,11 @@ export function buildSubscriptionInsights(snapshot, limits, {
     });
     const enrichedWindows = baseWindows.map((window) => {
       const historyPoints = history.get(window.id) || [];
-      const value = { ...window, historyPoints };
+      const value = {
+        ...window,
+        historyPoints,
+        cycleStats: buildCycleCapacityStats(historyPoints, modelRows, now),
+      };
       return { ...value, pace: value.stale ? null : windowPace(value, now) };
     });
     const primaryWindow = [...enrichedWindows]
@@ -293,6 +309,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
       lifetimeTotals,
       recentTotals,
       modelRows,
+      recentModelRows,
       windows: enrichedWindows,
       primaryWindow,
       hasLocalUsage: lifetimeTotals.totalTokens > 0,
@@ -305,15 +322,23 @@ export function buildSubscriptionInsights(snapshot, limits, {
       },
       economics,
     };
-    return { ...value, decisionSignals: decisionSignals(value) };
+    const withReview = { ...value, renewalReview: buildRenewalReview({
+      buckets,
+      subscription: value.subscription,
+      sourceHistoryStart: normalizedHistoryStart,
+      now,
+    }) };
+    return { ...withReview, decisionSignals: decisionSignals(withReview) };
   });
   const spendByCurrency = providers.reduce((totals, provider) => {
     const price = provider.subscription.monthlyPrice;
     if (price != null) totals[provider.subscription.currency] += price;
     return totals;
   }, { usd: 0, cny: 0 });
+  const portfolio = buildPortfolioReview(providers, now);
   return {
     providers,
+    portfolio,
     summary: {
       trackedTokens: providers.reduce((sum, provider) => sum + provider.lifetimeTotals.totalTokens, 0),
       trackedProviders: providers.filter((provider) => provider.hasLocalUsage).length,

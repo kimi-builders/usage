@@ -20,3 +20,6 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Keep quota history bounded: recent points may be 15-minute resolution, medium-term points hourly, and older points daily. A cached page read must not append a duplicate observation.
 - Pace and value signals must identify their evidence window. Stale history may remain visible after a provider error, but must not produce a current-cycle forecast or prescriptive recommendation.
 - Never compare CNY and USD subscription value by silently inventing an exchange rate. Show currencies separately until the user supplies or the product versions an explicit rate source.
+- Cross-cycle capacity ranges may use only completed quota cycles sampled close to reset with at least 90% local-log coverage. Show the eligible-cycle count, interval method, and confidence; never promote a partial cycle into a historical range.
+- Renewal forecasts require a configured renewal date, at least 10% elapsed period, and at least 90% local-log coverage. Keep actual-to-date and projected figures visibly distinct.
+- Describe similar 30-day model-family distributions as workload-overlap review candidates, never as proven duplicate subscriptions. Remind users that web usage, other devices, team benefits, and non-Token features are outside the evidence.

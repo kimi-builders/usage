@@ -91,6 +91,9 @@ test('links sanitized quota history to local tokens and calculates current-cycle
   const provider = buildSubscriptionInsights(snapshot, value).providers[0];
   assert.equal(provider.windows[0].historyPoints.length, 2);
   assert.equal(provider.windows[0].historyPoints[1].localTotals.totalTokens, 1_500);
+  assert.equal(provider.windows[0].historyPoints[1].localCoverage, 1);
+  assert.equal(provider.windows[0].cycleStats.observedCycles, 1);
+  assert.equal(provider.windows[0].cycleStats.sampledCycles, 0);
   assert.equal(provider.windows[0].pace.burnPercentPerHour, 10);
   assert.equal(provider.windows[0].pace.projectedFinalPercent, 50);
 });

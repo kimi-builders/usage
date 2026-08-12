@@ -6,6 +6,9 @@ import {
 } from 'lucide-react';
 import { compact } from './format.js';
 import { buildSubscriptionInsights } from './subscription-insights.js';
+import {
+  SubscriptionPortfolioReview, SubscriptionReviewGrid,
+} from './SubscriptionReview.jsx';
 import { ToolGlyph } from './tool-glyphs.js';
 import { moveEnabledProvider, reorderEnabledProviders } from './provider-order.js';
 
@@ -225,7 +228,7 @@ function signalCopy(signal, zh) {
   };
 }
 
-function SubscriptionDecisionPanel({ provider, zh }) {
+function SubscriptionDecisionPanel({ provider, zh, onSettings }) {
   const exhausted = [...provider.windows].filter((window) => !window.stale && window.usedPercent != null && Number(window.usedPercent) >= 99)
     .sort((left, right) => (right.windowSeconds || 0) - (left.windowSeconds || 0))[0];
   const pace = [...provider.windows].filter((window) => window.pace?.projectedFinalPercent != null)
@@ -238,6 +241,7 @@ function SubscriptionDecisionPanel({ provider, zh }) {
       <article><span>{zh ? 'API 等价价值比' : 'API-EQUIVALENT RATIO'}</span><strong>{ratioText(provider.economics.valueRatio)}</strong><small>{provider.subscription.currency === 'cny' ? (zh ? '人民币未自动换汇' : 'no automatic FX') : (zh ? '等价价值 ÷ 月均支出' : 'equivalent value ÷ spend')}</small></article>
       <article><span>{zh ? '当前周期预测' : 'CURRENT PACE'}</span><strong>{exhausted ? (zh ? '已触顶' : 'EXHAUSTED') : pace ? percentNumber(pace.pace.projectedFinalPercent) : '—'}</strong><small>{exhausted ? `${exhausted.label} · ${zh ? '供应商额度事实' : 'provider quota fact'}` : pace ? `${pace.label} · ${zh ? '重置时预计' : 'at reset'}` : (zh ? '等待可比较窗口' : 'awaiting comparable window')}</small></article>
     </div>
+    <SubscriptionReviewGrid provider={provider} zh={zh} onSettings={onSettings}/>
     <div className="subscription-decision-grid">
       <QuotaHistory provider={provider} zh={zh}/>
       <section className="subscription-signals"><header><Gauge size={15}/><div><b>{zh ? '本机观察' : 'LOCAL OBSERVATIONS'}</b><span>{zh ? '提示不是账单结论，也不会自动改套餐' : 'Evidence, not billing conclusions or automatic changes'}</span></div></header><div>{provider.decisionSignals.length ? provider.decisionSignals.map((signal) => { const copy = signalCopy(signal, zh); return <article data-tone={signal.tone} key={signal.code}><i/><div><b>{copy.title}</b><p>{copy.body}</p></div></article>; }) : <article data-tone="positive"><i/><div><b>{zh ? '暂未发现明显异常' : 'No obvious issue yet'}</b><p>{zh ? '当前样本中没有明显的触顶、闲置、价值偏低或模型过度集中信号；继续积累历史后判断会更稳定。' : 'No clear limit, underuse, low-value, or concentration signal yet. More history will improve confidence.'}</p></div></article>}</div></section>
@@ -307,7 +311,8 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
     <div className="limit-card-stage" id="subscription-limit-panel" role="tabpanel">{active ? <ProviderCard provider={active} now={now} zh={zh} onSettings={onSettings}/> : <div className="limit-card-empty">{zh ? '没有已启用的供应商' : 'No providers enabled'}</div>}</div>
     <footer className="limits-privacy"><ShieldCheck size={13}/><span>{zh ? '凭据只在本地服务进程使用；Token 估算只读取本机统计，不进入导出文件或社区同步。' : 'Credentials stay in the local server process; token estimates use local statistics only and never enter exports or community sync.'}</span>{settings?.refreshMinutes ? <small>{zh ? `额度缓存 ${settings.refreshMinutes} 分钟` : `${settings.refreshMinutes}m quota cache`}</small> : null}</footer>
     </section>
-    {active ? <SubscriptionDecisionPanel provider={active} zh={zh}/> : null}
+    {active ? <SubscriptionDecisionPanel provider={active} zh={zh} onSettings={onSettings}/> : null}
+    <SubscriptionPortfolioReview review={insights.portfolio} providers={providers} zh={zh} onSettings={onSettings}/>
     <section className="subscription-method-note"><Info size={16}/><div><b>{zh ? '为什么是“推算容量”，不是“官方 Token 上限”？' : 'Why “estimated capacity” instead of an official token cap?'}</b><p>{zh ? 'ChatGPT Pro、Claude Max 等订阅通常只返回额度消耗百分比，并不公开一个固定 Token 上限。本工具把同一额度时间窗内的本机 Token 与官方消耗比例对应，反推当前工作方式下的大致容量；“只用某模型”再按版本化的标准 API 等价价格换算。账号在其他设备或网页端的用量、供应商内部权重和样本不足都会影响结果。' : 'Subscriptions such as ChatGPT Pro and Claude Max usually expose utilization, not a fixed token cap. We correlate local tokens in the same window with official utilization, then use versioned standard API-equivalent pricing for model-only scenarios. Other devices, web usage, provider weights, and limited samples can change the result.'}</p></div></section>
   </section>;
 }
