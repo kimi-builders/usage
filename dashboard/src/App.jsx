@@ -1,8 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Activity, BarChart3, Cloud, Command, Database, Download, ExternalLink, FileText,
-  Globe2, Home, Info, LayoutDashboard, Menu, Moon, RefreshCw, Share2, ShieldCheck,
-  Sun, X,
+  Gauge, Globe2, Home, Info, LayoutDashboard, Menu, Moon, RefreshCw, Settings2,
+  Share2, ShieldCheck, Sun, X,
 } from 'lucide-react';
 import { analyze, EMPTY_FILTERS, filterOptions } from './analytics.js';
 import { ActivityHeatmap, DailyTrend, DistributionCard, WeeklyTrend } from './UsageCharts.jsx';
@@ -10,6 +10,7 @@ import { ExportDialog, MethodDialog, ShareDialog } from './UsageDialogs.jsx';
 import { UsageFilterBar } from './UsageFilters.jsx';
 import { UsageManagement } from './UsageManagement.jsx';
 import { RecordsSection } from './UsageRecords.jsx';
+import { LimitSettingsDialog, SubscriptionLimits } from './SubscriptionLimits.jsx';
 import { compact, delta, duration, integer, percent } from './format.js';
 
 const COPY = {
@@ -62,7 +63,7 @@ function Stat({ label, value, change, previousValue, sub, onHelp, zh }) {
 }
 
 const LOCAL_LINKS = [
-  ['#top', Home, '总览', 'Overview'], ['#trend', BarChart3, '趋势', 'Trends'], ['#activity', Activity, '活跃', 'Activity'],
+  ['#top', Home, '总览', 'Overview'], ['#limits', Gauge, '额度', 'Limits'], ['#trend', BarChart3, '趋势', 'Trends'], ['#activity', Activity, '活跃', 'Activity'],
   ['#distribution', LayoutDashboard, '分布', 'Distribution'], ['#records', FileText, '明细', 'Records'], ['#sources', Database, '本机', 'Device'],
 ];
 const LOCAL_SECTION_IDS = LOCAL_LINKS.map(([href]) => href.slice(1));
@@ -72,17 +73,17 @@ function sectionFromHash(hash = '') {
   return LOCAL_SECTION_IDS.includes(id) ? id : 'top';
 }
 
-function DesktopNav({ zh, communityUrl, activeSection, onNavigate }) {
-  return <aside className="left-nav"><a className="community-cta primary-btn" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={15}/>{zh ? '打开社区看板' : 'Open community'}</a><nav>{LOCAL_LINKS.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a className={active ? 'active' : ''} href={href} key={href} aria-current={active ? 'location' : undefined} onClick={(event) => onNavigate(event, href)}><Icon size={15}/>{zh ? cn : en}</a>; })}</nav><nav className="nav-bottom"><a href="https://kimi.builders" target="_blank" rel="noreferrer"><Globe2 size={15}/>{zh ? '社区首页' : 'Community'}</a><a href="https://github.com/kimi-builders/usage" target="_blank" rel="noreferrer"><Command size={15}/>GitHub</a><a href="#sources" onClick={(event) => onNavigate(event, '#sources')}><Info size={15}/>{zh ? '隐私与数据源' : 'Privacy & sources'}</a></nav></aside>;
+function DesktopNav({ zh, communityUrl, activeSection, onNavigate, onSettings }) {
+  return <aside className="left-nav"><a className="community-cta primary-btn" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={14}/>{zh ? '打开社区看板' : 'Open community'}</a><nav>{LOCAL_LINKS.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a className={active ? 'active' : ''} href={href} key={href} aria-current={active ? 'location' : undefined} onClick={(event) => onNavigate(event, href)}><Icon size={15}/>{zh ? cn : en}</a>; })}</nav><nav className="nav-bottom"><button type="button" onClick={onSettings}><Settings2 size={15}/>{zh ? '额度设置' : 'Limit settings'}</button><a href="https://kimi.builders" target="_blank" rel="noreferrer"><Globe2 size={15}/>{zh ? '社区首页' : 'Community'}</a><a href="https://github.com/kimi-builders/usage" target="_blank" rel="noreferrer"><Command size={15}/>GitHub</a><a href="#sources" onClick={(event) => onNavigate(event, '#sources')}><Info size={15}/>{zh ? '隐私与数据源' : 'Privacy & sources'}</a></nav></aside>;
 }
 
-function MobileDrawer({ open, onClose, zh, communityUrl, theme, setTheme, setLocale, activeSection, onNavigate }) {
+function MobileDrawer({ open, onClose, zh, communityUrl, theme, setTheme, setLocale, activeSection, onNavigate, onSettings }) {
   if (!open) return null;
-  return <div className="mobile-drawer-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside className="mobile-drawer"><header><a className="brand" href="#top" onClick={(event) => { onNavigate(event, '#top'); onClose(); }}><img src="/brand/logo-tile.svg" alt=""/><span>kimi.builders</span><small>LOCAL</small></a><button className="icon-btn" type="button" onClick={onClose}><X size={19}/></button></header><div className="drawer-account"><ShieldCheck size={18}/><div><b>{zh ? '本地私有看板' : 'Private local dashboard'}</b><span>127.0.0.1 · {zh ? '零上传' : 'zero upload'}</span></div></div><nav>{LOCAL_LINKS.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a className={active ? 'active' : ''} href={href} key={href} aria-current={active ? 'location' : undefined} onClick={(event) => { onNavigate(event, href); onClose(); }}><Icon size={17}/>{zh ? cn : en}</a>; })}</nav><div className="drawer-actions"><button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>} {zh ? '切换主题' : 'Switch theme'}</button><button type="button" onClick={() => setLocale(zh ? 'en' : 'zh')}><Globe2 size={16}/>{zh ? 'English' : '中文'}</button></div><a className="drawer-community" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={16}/>{zh ? '打开社区用量中心' : 'Open community usage'}<ExternalLink size={13}/></a></aside></div>;
+  return <div className="mobile-drawer-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside className="mobile-drawer"><header><a className="brand" href="#top" onClick={(event) => { onNavigate(event, '#top'); onClose(); }}><img src="/brand/logo-tile.svg" alt=""/><span>kimi.builders</span><small>LOCAL</small></a><button className="icon-btn" type="button" onClick={onClose}><X size={19}/></button></header><div className="drawer-account"><ShieldCheck size={18}/><div><b>{zh ? '本地私有看板' : 'Private local dashboard'}</b><span>127.0.0.1 · {zh ? '零上传' : 'zero upload'}</span></div></div><nav>{LOCAL_LINKS.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a className={active ? 'active' : ''} href={href} key={href} aria-current={active ? 'location' : undefined} onClick={(event) => { onNavigate(event, href); onClose(); }}><Icon size={17}/>{zh ? cn : en}</a>; })}</nav><div className="drawer-actions"><button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>} {zh ? '切换主题' : 'Switch theme'}</button><button type="button" onClick={() => setLocale(zh ? 'en' : 'zh')}><Globe2 size={16}/>{zh ? 'English' : '中文'}</button><button type="button" onClick={() => { onSettings(); onClose(); }}><Settings2 size={16}/>{zh ? '额度设置' : 'Limit settings'}</button></div><a className="drawer-community" href={communityUrl} target="_blank" rel="noreferrer"><Cloud size={16}/>{zh ? '打开社区用量中心' : 'Open community usage'}<ExternalLink size={13}/></a></aside></div>;
 }
 
 function MobileNav({ zh, activeSection, onNavigate }) {
-  const links = [LOCAL_LINKS[0], LOCAL_LINKS[1], LOCAL_LINKS[2], LOCAL_LINKS[4], LOCAL_LINKS[5]];
+  const links = [LOCAL_LINKS[0], LOCAL_LINKS[1], LOCAL_LINKS[2], LOCAL_LINKS[5], LOCAL_LINKS[6]];
   return <nav className="mobile-tabs">{links.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a href={href} className={active ? 'active' : ''} aria-current={active ? 'location' : undefined} onClick={(event) => onNavigate(event, href)} key={href}><span className={active ? 'primary' : ''}><Icon size={active ? 18 : 19}/></span><small>{zh ? cn : en}</small></a>; })}</nav>;
 }
 
@@ -106,8 +107,16 @@ export function App() {
   const [heatMetric, setHeatMetric] = useState('tokens');
   const [dialog, setDialog] = useState(null);
   const [drawer, setDrawer] = useState(false);
+  const [limitData, setLimitData] = useState(null);
+  const [limitSettings, setLimitSettings] = useState(null);
+  const [limitLoading, setLimitLoading] = useState(true);
+  const [limitSaving, setLimitSaving] = useState(false);
+  const [limitError, setLimitError] = useState('');
   const [activeSection, setActiveSection] = useState(() => typeof window === 'undefined' ? 'top' : sectionFromHash(window.location.hash));
   const initialAnchorHandled = useRef(false);
+  const navigationTarget = useRef(null);
+  const navigationSettleTimer = useRef(0);
+  const scheduleScrollSpy = useRef(null);
   const zh = locale === 'zh';
   const t = COPY[locale];
 
@@ -121,7 +130,41 @@ export function App() {
     finally { setRefreshing(false); }
   };
 
+  const loadLimits = async (refresh = false) => {
+    setLimitLoading(true); setLimitError('');
+    try {
+      const response = await fetch(`/api/limits${refresh ? '?refresh=1' : ''}`, { credentials: 'same-origin', cache: 'no-store' });
+      if (!response.ok) throw new Error(`Limit request failed (${response.status})`);
+      const next = await response.json(); setLimitData(next); return next;
+    } catch (reason) { setLimitError(reason?.message || String(reason)); }
+    finally { setLimitLoading(false); }
+  };
+
+  const loadLimitSettings = async () => {
+    const response = await fetch('/api/limits/settings', { credentials: 'same-origin', cache: 'no-store' });
+    if (!response.ok) throw new Error(`Limit settings request failed (${response.status})`);
+    const next = await response.json(); setLimitSettings(next); return next;
+  };
+
+  const saveLimitPreferences = async (payload) => {
+    setLimitSaving(true);
+    try {
+      const response = await fetch('/api/limits/settings', {
+        method: 'POST', credentials: 'same-origin', cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error(await response.text() || `Settings save failed (${response.status})`);
+      setLimitSettings(await response.json());
+      return await loadLimits(true);
+    } finally { setLimitSaving(false); }
+  };
+
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    Promise.all([loadLimitSettings(), loadLimits()]).catch((reason) => {
+      setLimitError(reason?.message || String(reason)); setLimitLoading(false);
+    });
+  }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('kbu.theme', theme); }, [theme]);
   useEffect(() => { document.documentElement.lang = zh ? 'zh-CN' : 'en'; localStorage.setItem('kbu.locale', locale); }, [locale, zh]);
   useEffect(() => { localStorage.setItem('kbu.currency', currency); }, [currency]);
@@ -130,6 +173,11 @@ export function App() {
     let frame = 0;
     const updateActiveSection = () => {
       frame = 0;
+      const lockedTarget = navigationTarget.current;
+      if (lockedTarget) {
+        setActiveSection((current) => current === lockedTarget ? current : lockedTarget);
+        return;
+      }
       const marker = window.scrollY + 88;
       let next = 'top';
       for (const id of LOCAL_SECTION_IDS) {
@@ -143,6 +191,20 @@ export function App() {
       if (frame) return;
       frame = window.requestAnimationFrame(updateActiveSection);
     };
+    const releaseNavigationLock = () => {
+      navigationTarget.current = null;
+      navigationSettleTimer.current = 0;
+      scheduleUpdate();
+    };
+    const scheduleNavigationRelease = () => {
+      if (navigationSettleTimer.current) window.clearTimeout(navigationSettleTimer.current);
+      navigationSettleTimer.current = window.setTimeout(releaseNavigationLock, 140);
+    };
+    const handleScroll = () => {
+      if (navigationTarget.current) scheduleNavigationRelease();
+      scheduleUpdate();
+    };
+    scheduleScrollSpy.current = scheduleUpdate;
     if (!initialAnchorHandled.current) {
       initialAnchorHandled.current = true;
       const initialId = sectionFromHash(window.location.hash);
@@ -154,13 +216,17 @@ export function App() {
     } else {
       scheduleUpdate();
     }
-    window.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('scroll', handleScroll, { passive: true });
     window.addEventListener('resize', scheduleUpdate);
     window.addEventListener('hashchange', scheduleUpdate);
     window.addEventListener('popstate', scheduleUpdate);
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
-      window.removeEventListener('scroll', scheduleUpdate);
+      if (navigationSettleTimer.current) window.clearTimeout(navigationSettleTimer.current);
+      navigationTarget.current = null;
+      navigationSettleTimer.current = 0;
+      scheduleScrollSpy.current = null;
+      window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('resize', scheduleUpdate);
       window.removeEventListener('hashchange', scheduleUpdate);
       window.removeEventListener('popstate', scheduleUpdate);
@@ -173,6 +239,13 @@ export function App() {
     const section = document.getElementById(id);
     if (!section) return;
     if (window.location.hash !== href) window.history.pushState(null, '', href);
+    navigationTarget.current = id;
+    if (navigationSettleTimer.current) window.clearTimeout(navigationSettleTimer.current);
+    navigationSettleTimer.current = window.setTimeout(() => {
+      navigationTarget.current = null;
+      navigationSettleTimer.current = 0;
+      scheduleScrollSpy.current?.();
+    }, 180);
     setActiveSection(id);
     section.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
   };
@@ -193,14 +266,16 @@ export function App() {
   const lastSeries = report.series.reduce((best, item) => item.totalTokens > (best?.totalTokens || 0) ? item : best, null);
 
   return <div className="app-shell" id="top">
-    <header className="global-topbar"><div className="mobile-brand-wrap"><button className="mobile-menu-button" type="button" onClick={() => setDrawer(true)}><Menu size={20}/></button><a className="brand" href="#top"><img src="/brand/logo-tile.svg" alt=""/><span>kimi<span>.</span>builders</span><small>LOCAL</small></a></div><div className="global-actions"><span className="local-pill"><ShieldCheck size={12}/>{t.local}</span><button className="icon-btn" type="button" onClick={() => setLocale(zh ? 'en' : 'zh')} title="Language">{zh ? '文' : 'En'}</button><button className="icon-btn" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title="Theme">{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}</button></div></header>
-    <DesktopNav zh={zh} communityUrl={data.community.url} activeSection={activeSection} onNavigate={navigateSection}/><MobileDrawer open={drawer} onClose={() => setDrawer(false)} zh={zh} communityUrl={data.community.url} theme={theme} setTheme={setTheme} setLocale={setLocale} activeSection={activeSection} onNavigate={navigateSection}/><MobileNav zh={zh} activeSection={activeSection} onNavigate={navigateSection}/>
+    <header className="global-topbar"><div className="mobile-brand-wrap"><button className="mobile-menu-button" type="button" onClick={() => setDrawer(true)}><Menu size={20}/></button><a className="brand" href="#top"><img src="/brand/logo-tile.svg" alt=""/><span>kimi<span>.</span>builders</span><small>LOCAL</small></a></div><div className="global-actions"><span className="local-pill"><ShieldCheck size={12}/>{t.local}</span><button className="icon-btn" type="button" onClick={() => setDialog('limit-settings')} title={zh ? '额度设置' : 'Limit settings'}><Settings2 size={16}/></button><button className="icon-btn" type="button" onClick={() => setLocale(zh ? 'en' : 'zh')} title="Language">{zh ? '文' : 'En'}</button><button className="icon-btn" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title="Theme">{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}</button></div></header>
+    <DesktopNav zh={zh} communityUrl={data.community.url} activeSection={activeSection} onNavigate={navigateSection} onSettings={() => setDialog('limit-settings')}/><MobileDrawer open={drawer} onClose={() => setDrawer(false)} zh={zh} communityUrl={data.community.url} theme={theme} setTheme={setTheme} setLocale={setLocale} activeSection={activeSection} onNavigate={navigateSection} onSettings={() => setDialog('limit-settings')}/><MobileNav zh={zh} activeSection={activeSection} onNavigate={navigateSection}/>
     <main className="page-content">
       <section className="page-heading"><div><h1><BarChart3 size={22}/>{t.title}</h1><p>{t.subtitle}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{t.local}</span><i/><span>{t.lastSync} {new Date(data.generatedAt).toLocaleString(zh ? 'zh-CN' : 'en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>{staleHours > 24 ? <b>{zh ? `超过 ${Math.floor(staleHours)} 小时未扫描` : `${Math.floor(staleHours)}h stale`}</b> : null}</div></div><div className="page-actions"><Button onClick={() => setDialog('method')}><Info size={14}/>{t.method}</Button><Button onClick={() => setDialog('export')}><Download size={14}/>{t.export}</Button><Button onClick={() => setDialog('share')}><Share2 size={14}/>{t.share}</Button><Button primary onClick={() => load(true)} disabled={refreshing}><RefreshCw className={refreshing ? 'spin' : ''} size={14}/>{t.refresh}</Button></div></section>
 
       <UsageFilterBar filters={filters} options={options} onChange={setFilters} currency={currency} onCurrency={setCurrency} zh={zh}/>
 
       {staleHours > 24 ? <section className="stale-banner"><Info size={19}/><div><b>{zh ? '这份看板可能已经过期' : 'This dashboard may be stale'}</b><p>{zh ? '点击重新扫描即可更新本机数据；页面不会自行读取日志。' : 'Rescan to refresh local logs; the page never reads them on its own.'}</p></div><code>kbu-usage dashboard</code></section> : null}
+
+      <SubscriptionLimits data={limitData} settings={limitSettings} loading={limitLoading} error={limitError} onRefresh={loadLimits} onSettings={() => setDialog('limit-settings')} zh={zh}/>
 
       <section className="hero-grid">
         <HeroCard zh={zh} label={report.pricingCoverage < .9995 ? (zh ? '已定价部分' : 'Priced portion') : t.cost} value={currencyMoney(report.totals.costMicros, currency)} previousValue={currencyMoney(previous?.totals.costMicros || 0, currency)} deltaValue={delta(report.totals.costMicros, previous?.totals.costMicros)} onHelp={() => setDialog('method')}>{zh ? `vs 上一周期 · 覆盖 ${percent(report.pricingCoverage)} Token · ${compact(report.totals.unpricedTokens)} 未定价` : `vs prior · ${percent(report.pricingCoverage)} coverage · ${compact(report.totals.unpricedTokens)} unpriced`}</HeroCard>
@@ -220,6 +295,6 @@ export function App() {
 
       <footer className="page-footer"><span>kimi.builders / usage · LOCAL</span><p>{zh ? '数据属于你。分析在本机，社区同步永远可选。' : 'Your data. Local analysis. Community sync is always optional.'}</p><a href={data.community.url} target="_blank" rel="noreferrer">{zh ? '社区版' : 'Community'}<ExternalLink size={12}/></a></footer>
     </main>
-    <MethodDialog open={dialog === 'method'} onClose={() => setDialog(null)} zh={zh} data={data} report={report} currency={currency}/><ExportDialog open={dialog === 'export'} onClose={() => setDialog(null)} report={report} data={data} filters={filters} zh={zh}/><ShareDialog open={dialog === 'share'} onClose={() => setDialog(null)} data={data} filters={filters} initialRange={filters.range} zh={zh}/>
+    <MethodDialog open={dialog === 'method'} onClose={() => setDialog(null)} zh={zh} data={data} report={report} currency={currency}/><ExportDialog open={dialog === 'export'} onClose={() => setDialog(null)} report={report} data={data} filters={filters} zh={zh}/><ShareDialog open={dialog === 'share'} onClose={() => setDialog(null)} data={data} filters={filters} initialRange={filters.range} zh={zh}/><LimitSettingsDialog open={dialog === 'limit-settings'} settings={limitSettings} saving={limitSaving} onSave={saveLimitPreferences} onClose={() => setDialog(null)} zh={zh}/>
   </div>;
 }

@@ -6,6 +6,9 @@ import antigravityIcon from '@lobehub/icons-static-svg/icons/antigravity-color.s
 import copilotIcon from '@lobehub/icons-static-svg/icons/copilot-color.svg';
 import openCodeIcon from '@lobehub/icons-static-svg/icons/opencode.svg';
 import cursorIcon from '@lobehub/icons-static-svg/icons/cursor.svg';
+import qoderIcon from '@lobehub/icons-static-svg/icons/qoder-color.svg';
+import traeIcon from '@lobehub/icons-static-svg/icons/trae-color.svg';
+import windsurfIcon from '@lobehub/icons-static-svg/icons/windsurf.svg';
 import rooCodeIcon from '@lobehub/icons-static-svg/icons/roocode.svg';
 import { createElement } from 'react';
 
@@ -16,8 +19,12 @@ const TOOL_ICONS = {
   'gemini-cli': { src: geminiCliIcon, tone: 'gemini', label: 'Gemini CLI' },
   antigravity: { src: antigravityIcon, tone: 'antigravity', label: 'Antigravity' },
   'copilot-cli': { src: copilotIcon, tone: 'copilot', label: 'Copilot CLI' },
+  copilot: { src: copilotIcon, tone: 'copilot', label: 'GitHub Copilot' },
   opencode: { src: openCodeIcon, tone: 'opencode', label: 'OpenCode', mono: true },
   cursor: { src: cursorIcon, tone: 'cursor', label: 'Cursor', mono: true },
+  qoder: { src: qoderIcon, tone: 'qoder', label: 'Qoder' },
+  trae: { src: traeIcon, tone: 'trae', label: 'Trae' },
+  windsurf: { src: windsurfIcon, tone: 'windsurf', label: 'Windsurf', mono: true },
   'roo-code': { src: rooCodeIcon, tone: 'roo', label: 'Roo Code', mono: true },
 };
 
