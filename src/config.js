@@ -11,6 +11,10 @@ export function getConfigPath() {
   return configFile;
 }
 
+export function getConfigDir() {
+  return configDir;
+}
+
 export function loadConfig() {
   if (!existsSync(configFile)) return null;
   try {
@@ -37,4 +41,3 @@ export function saveConfig(config) {
     if (process.platform !== 'win32') throw error;
   }
 }
-

@@ -3,7 +3,6 @@
 import { run } from '../src/index.js';
 
 run(process.argv.slice(2)).catch((error) => {
-  console.error(`同步失败: ${error.message}`);
+  console.error(`执行失败: ${error.message}`);
   process.exitCode = 1;
 });
-

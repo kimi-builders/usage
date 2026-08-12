@@ -5,6 +5,11 @@ import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { spawn } from 'node:child_process';
+import { loadConfig } from '../config.js';
+import {
+  getDaemonStatus, installDaemon, restartDaemon, uninstallDaemon,
+} from '../daemon.js';
+import { runManagedSync } from '../sync-runtime.js';
 import { loadLocalDashboardData } from './dashboard-data.js';
 import {
   getPublicLimitSettings, loadSubscriptionLimits, saveLimitSettings,
@@ -124,6 +129,45 @@ function staticFile(buildRoot, pathname) {
   return path;
 }
 
+export function getLocalSyncStatus() {
+  const config = loadConfig();
+  return {
+    connected: Boolean(config?.apiKey && config?.sessionSalt),
+    apiUrl: config?.apiUrl || 'https://kimi.builders',
+    daemon: getDaemonStatus(),
+  };
+}
+
+export async function runLocalSyncAction(payload = {}) {
+  const action = String(payload.action || '');
+  const config = loadConfig();
+  if (!config?.apiKey || !config?.sessionSalt) {
+    throw Object.assign(new Error('尚未连接社区，请先运行 `npx @kimi-builders/usage init`。'), { statusCode: 409 });
+  }
+  let result = null;
+  if (action === 'sync') {
+    try {
+      const synced = await runManagedSync({ trigger: 'dashboard', quiet: true, surface: 'local-dashboard' });
+      result = {
+        buckets: Number(synced?.buckets || 0), sessions: Number(synced?.sessions || 0),
+        protectedBuckets: Number(synced?.protectedBuckets || 0), rejected: Number(synced?.rejected || 0),
+      };
+    } catch (error) {
+      if (error?.code === 'SYNC_BUSY') error.statusCode = 409;
+      throw error;
+    }
+  } else if (action === 'install') {
+    result = installDaemon({ intervalMinutes: payload.intervalMinutes });
+  } else if (action === 'restart') {
+    result = restartDaemon({ intervalMinutes: payload.intervalMinutes });
+  } else if (action === 'uninstall') {
+    result = uninstallDaemon();
+  } else {
+    throw Object.assign(new Error('不支持的同步操作。'), { statusCode: 400 });
+  }
+  return { ...getLocalSyncStatus(), action, result };
+}
+
 export async function startLocalDashboardServer({
   port = 0,
   launchBrowser = true,
@@ -134,6 +178,8 @@ export async function startLocalDashboardServer({
   limitsLoader = loadSubscriptionLimits,
   limitSettingsLoader = getPublicLimitSettings,
   limitSettingsSaver = saveLimitSettings,
+  syncStatusLoader = getLocalSyncStatus,
+  syncAction = runLocalSyncAction,
 } = {}) {
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
     throw new Error('本地看板端口必须是 0–65535 的整数。');
@@ -216,6 +262,24 @@ export async function startLocalDashboardServer({
           return;
         }
         sendJson(request, response, await limitsLoader({ force: url.searchParams.get('refresh') === '1' }));
+        return;
+      }
+
+      if (url.pathname === '/api/sync') {
+        if (request.method === 'GET' || request.method === 'HEAD') {
+          sendJson(request, response, await syncStatusLoader());
+          return;
+        }
+        if (request.method === 'POST') {
+          if (!String(request.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
+            send(response, 415, 'Content-Type must be application/json.');
+            return;
+          }
+          const payload = await readJson(request);
+          sendJson(request, response, await syncAction(payload));
+          return;
+        }
+        send(response, 405, 'Method not allowed.', { Allow: 'GET, HEAD, POST' });
         return;
       }
 

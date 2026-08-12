@@ -10,7 +10,9 @@
     "dashboard": "node bin/kbu-usage.js dashboard",
     "dashboard:dev": "node dashboard/scripts/dev.mjs",
     "dashboard:build": "npm --prefix dashboard run build",
-    "dashboard:test": "npm --prefix dashboard run test:sites"
+    "dashboard:test": "npm --prefix dashboard run test:sites",
+    "release:check": "npm test && npm run dashboard:build && npm run dashboard:test && npm pack --dry-run",
+    "prepublishOnly": "npm run release:check"
   },
   "bin": {
     "kbu-usage": "bin/kbu-usage.js"
@@ -20,6 +22,7 @@
     "src/",
     "dashboard/dist/client/",
     "docs/",
+    "!docs/design-qa.md",
     "PRIVACY.md",
     "NETWORK.md",
     "THREAT_MODEL.md",
@@ -33,6 +36,10 @@
   "keywords": [
     "kimi",
     "kimi-code",
+    "claude-code",
+    "codex",
+    "ai-coding-agent",
+    "local-first",
     "usage",
     "tokens"
   ],

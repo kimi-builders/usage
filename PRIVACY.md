@@ -9,7 +9,7 @@ not require a Kimi Builders account and does not require network access.
 | --- | --- | --- |
 | Local source logs | Provider-owned conversation and usage files | Read-only |
 | Local snapshot | Aggregated token buckets, session timing, local project basename | Memory only |
-| Sync payload | Protocol-v2 aggregates and diagnostic client metadata | Explicit `sync` only |
+| Sync payload | Protocol-v2 aggregates and diagnostic client metadata | Explicit `sync`, or an explicitly installed background schedule |
 | Public community | Period aggregates selected by the account owner | Off |
 | Provider quota check | Account limit/reset metadata for enabled providers | Off |
 
@@ -48,8 +48,10 @@ are source, model facts recorded by the Agent, 30-minute UTC time, exclusive
 token counters, request counts, measurement quality, salted session hash,
 session timing/message counters, and client/Agent versions used for diagnostics.
 
-`init`, `sync`, and `summary` are the only commands that contact a configured
-Kimi Builders origin. The local dashboard can separately contact a provider only
+`init`, `sync`, scheduled `daemon run`, and `summary` are the only operations that
+contact a configured Kimi Builders origin. Installing, inspecting, restarting, or
+removing the scheduler is local; install/restart may immediately trigger its first
+run. The local dashboard can separately contact a provider only
 after its subscription-limit integration is enabled. See [`NETWORK.md`](NETWORK.md)
 for the endpoint inventory.
 

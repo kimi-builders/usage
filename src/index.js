@@ -12,8 +12,8 @@ export async function run(args) {
   const command = args[0];
   if (!command) {
     if (loadConfig()?.apiKey) {
-      const { runSync } = await import('./sync.js');
-      return runSync();
+      const { runManagedSync } = await import('./sync-runtime.js');
+      return runManagedSync();
     }
     const { runInit } = await import('./init.js');
     return runInit();
@@ -26,8 +26,36 @@ export async function run(args) {
     });
   }
   if (command === 'sync') {
-    const { runSync } = await import('./sync.js');
-    return runSync();
+    const { runManagedSync } = await import('./sync-runtime.js');
+    return runManagedSync();
+  }
+  if (command === 'daemon') {
+    const action = args[1] || 'status';
+    const {
+      getDaemonStatus, installDaemon, printDaemonStatus, restartDaemon, runDaemonSync,
+      uninstallDaemon,
+    } = await import('./daemon.js');
+    if (action === 'install') {
+      const result = installDaemon({ intervalMinutes: Number(option(args, 'interval') || 15) });
+      console.log(`后台同步已启用：每 ${result.intervalMinutes} 分钟同步一次。`);
+      console.log('设备需要保持唤醒并联网；云端不会主动读取你的本地文件。');
+      return result;
+    }
+    if (action === 'status') return printDaemonStatus(getDaemonStatus(), { json: args.includes('--json') });
+    if (action === 'restart') {
+      const result = restartDaemon({
+        ...(option(args, 'interval') ? { intervalMinutes: Number(option(args, 'interval')) } : {}),
+      });
+      console.log(`后台同步已重新加载：每 ${result.intervalMinutes} 分钟一次。`);
+      return result;
+    }
+    if (action === 'uninstall') {
+      uninstallDaemon();
+      console.log('后台同步已停用；本地历史、云端数据和连接配置均未删除。');
+      return;
+    }
+    if (action === 'run') return runDaemonSync();
+    throw new Error(`未知 daemon 命令: ${action}`);
   }
   if (command === 'inspect' && (args.includes('--dry-run') || args.length === 1)) {
     const { runInspect } = await import('./inspect.js');
@@ -64,6 +92,8 @@ export async function run(args) {
     console.log(`状态: ${config?.apiKey ? `已连接 ${config.apiKey.slice(0, 12)}…` : '未连接'}`);
     console.log(`站点: ${config?.apiUrl || 'https://kimi.builders'}`);
     console.log('本地分析: 可用（无需连接社区）');
+    const { getDaemonStatus, printDaemonStatus } = await import('./daemon.js');
+    printDaemonStatus(getDaemonStatus());
     return;
   }
   if (command === 'sources') {
@@ -76,6 +106,10 @@ export async function run(args) {
 
   npx @kimi-builders/usage init [--api-url URL]
   npx @kimi-builders/usage sync
+  npx @kimi-builders/usage daemon install [--interval 15]
+  npx @kimi-builders/usage daemon status [--json]
+  npx @kimi-builders/usage daemon restart [--interval 15]
+  npx @kimi-builders/usage daemon uninstall
   npx @kimi-builders/usage inspect --dry-run
   npx @kimi-builders/usage doctor [--json]
   npx @kimi-builders/usage dashboard [--no-open] [--port 43120]
@@ -85,8 +119,14 @@ export async function run(args) {
   npx @kimi-builders/usage sources enable cursor --csv PATH
   npx @kimi-builders/usage sources disable cursor
   npx @kimi-builders/usage reset --local
+  npx @kimi-builders/usage --version
 `);
     return;
+  }
+  if (['version', '--version', '-v'].includes(command)) {
+    const { COLLECTOR_VERSION } = await import('./client-meta.js');
+    console.log(COLLECTOR_VERSION);
+    return COLLECTOR_VERSION;
   }
   throw new Error(`未知命令: ${command}`);
 }

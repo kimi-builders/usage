@@ -1,7 +1,9 @@
 # Network behaviour
 
 There is no telemetry, update check, advertising request, or hidden background
-connection. Local parsing modules do not import the network client.
+connection. Local parsing modules do not import the network client. Background
+sync exists only after an explicit `daemon install` and can be inspected or
+removed with the CLI at any time.
 
 | Command | Network | Purpose |
 | --- | --- | --- |
@@ -11,6 +13,9 @@ connection. Local parsing modules do not import the network client.
 | `reset --local` | No | Remove local sync checkpoints |
 | `init` | Yes | Device-code connection, then first explicit sync |
 | `sync` | Yes | Read privacy settings and upload changed aggregates |
+| `daemon install/restart` | Yes, in the scheduled child | Manage a per-user OS scheduler and trigger its first incremental sync |
+| `daemon status/uninstall` | No | Inspect or remove the per-user scheduler |
+| scheduled `daemon run` | Yes | Run the same incremental sync while the device is awake and online |
 | `summary` | Yes | Read the connected account's hosted summary |
 | `dashboard` | No by default | Loopback dashboard; optional provider quota checks are opt-in per provider |
 | `npm run setup` | Yes | Explicitly install the dashboard's development dependencies from npm |
@@ -27,6 +32,11 @@ For the default origin `https://kimi.builders`, the current endpoints are:
 `init --api-url` can point to another origin for development or self-hosting.
 The Collector sends the device API key only to the configured origin. Ingest
 bodies are gzip-compressed JSON; compression changes transport size, not fields.
+
+The background service uses macOS `launchd`, Linux user `systemd`, or Windows
+Task Scheduler. It stores only scheduler metadata, last-run status, a lock, and
+a bounded local log under `~/.kimi-builders/usage`. It has no additional network
+destinations and cannot be installed by merely opening the dashboard.
 
 The local web dashboard binds to loopback only and uses a random per-launch
 browser token, strict Host/Origin checks, a restrictive CSP, and no-store

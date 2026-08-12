@@ -105,6 +105,40 @@ test('quota settings API keeps capability and origin protections for writes', as
   }
 });
 
+test('sync API distinguishes status reads from explicit local actions', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'kbu-dashboard-sync-'));
+  writeFileSync(join(root, 'index.html'), '<main>local dashboard</main>');
+  const actions = [];
+  const local = await startLocalDashboardServer({
+    launchBrowser: false,
+    buildRoot: root,
+    dataLoader: async () => ({}),
+    syncStatusLoader: () => ({ connected: true, apiUrl: 'https://kimi.builders', daemon: { installed: false } }),
+    syncAction: async (payload) => { actions.push(payload); return { connected: true, action: payload.action }; },
+  });
+  try {
+    const tokenPath = new URL(local.url).pathname + new URL(local.url).search;
+    const authorized = await http(local.port, tokenPath);
+    const cookie = authorized.headers['set-cookie'][0].split(';')[0];
+    const status = await http(local.port, '/api/sync', { Cookie: cookie });
+    assert.equal(JSON.parse(status.body).connected, true);
+
+    const hostile = await http(local.port, '/api/sync', {
+      Cookie: cookie, Origin: 'https://attacker.invalid', 'Content-Type': 'application/json',
+    }, { method: 'POST', body: JSON.stringify({ action: 'sync' }) });
+    assert.equal(hostile.status, 403);
+
+    const result = await http(local.port, '/api/sync', {
+      Cookie: cookie, Origin: local.origin, 'Content-Type': 'application/json',
+    }, { method: 'POST', body: JSON.stringify({ action: 'install', intervalMinutes: 15 }) });
+    assert.equal(JSON.parse(result.body).action, 'install');
+    assert.deepEqual(actions, [{ action: 'install', intervalMinutes: 15 }]);
+  } finally {
+    await local.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('development API can authorize then redirect to a loopback Vite server without a build', async () => {
   let browserOrigin = 'http://127.0.0.1:5173';
   const local = await startLocalDashboardServer({
