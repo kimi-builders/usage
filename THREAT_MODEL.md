@@ -5,6 +5,7 @@
 - local Agent logs and project identity;
 - the installation-local session salt;
 - the per-device `kbu_` API key;
+- optional provider subscription credentials and quota metadata;
 - private usage aggregates and hosted account history;
 - the integrity of community leaderboards and work-usage claims.
 
@@ -21,7 +22,8 @@
 - accidental upload of prompts, paths, credentials, or project identity;
 - one parser failing without blocking or deleting another source's state;
 - symlink/path surprises while discovering provider stores;
-- a hostile web page trying to reach a future loopback dashboard;
+- a hostile web page trying to reach the loopback dashboard endpoints;
+- quota credentials accidentally entering browser responses, exports, logs, or sync;
 - API-key disclosure in logs or diagnostics;
 - fabricated local aggregates submitted to community rankings;
 - dependency and release-pipeline compromise.
@@ -35,8 +37,10 @@
 - local and server protocol validation;
 - bounded timestamps, strings, counters, batch sizes, and activity slices;
 - privacy-safe `doctor --json` output.
+- provider endpoint allowlisting, opt-in quota checks, and OS-keychain storage
+  for supported manual credentials;
 
-## Required before a local web UI ships
+## Local web UI controls
 
 - loopback-only listener chosen by the OS on a random high port;
 - random per-launch capability token in the initial URL;
@@ -46,6 +50,9 @@
 - response headers disabling caching of private data;
 - graceful shutdown and a visible statement that the process is local;
 - tests for DNS rebinding, CSRF, cross-origin fetches, and token reuse.
+- POST settings routes require the capability cookie, expected Host/Origin, and
+  JSON content type; request bodies are size-bounded.
+- quota fetch errors are provider-scoped and do not alter local Token facts.
 
 ## Ranking limitation
 
@@ -61,4 +68,3 @@ proof-of-work claims require independent provider-backed metering.
 - falsified provider logs created by the device owner;
 - provider billing correctness;
 - recovery of source logs deleted by the provider or user.
-
