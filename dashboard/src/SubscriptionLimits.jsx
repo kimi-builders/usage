@@ -4,7 +4,7 @@ import {
   ExternalLink, Gauge, GripVertical, Info, KeyRound, RefreshCw, Search, Settings2,
   ShieldCheck, Sparkles, Terminal, TrendingUp, X,
 } from 'lucide-react';
-import { compact, pluralUnit } from './format.js';
+import { compact, displayDollars, pluralUnit } from './format.js';
 import { buildSubscriptionInsights } from './subscription-insights.js';
 import {
   SubscriptionPortfolioReview, SubscriptionReviewGrid,
@@ -306,7 +306,7 @@ function signalCopy(signal, zh) {
   };
 }
 
-function SubscriptionDecisionPanel({ provider, zh, onSettings }) {
+function SubscriptionDecisionPanel({ provider, zh, currency, onSettings }) {
   const exhausted = [...provider.windows].filter((window) => !window.stale && window.usedPercent != null && Number(window.usedPercent) >= 99)
     .sort((left, right) => (right.windowSeconds || 0) - (left.windowSeconds || 0))[0];
   const pace = [...provider.windows].filter((window) => window.pace?.projectedFinalPercent != null)
@@ -317,10 +317,10 @@ function SubscriptionDecisionPanel({ provider, zh, onSettings }) {
     <div className="subscription-economics-strip">
       <article><span>{zh ? '近 30 天 TOKEN' : '30D TOKENS'}</span><strong>{compact(provider.recentTotals.totalTokens)}</strong><small>{localizedCount(provider.recentTotals.requestCount.toLocaleString(), zh, '次请求', 'request', 'requests')}</small></article>
       <article><span>{isPaid ? (zh ? '实际成本 / 百万 TOKEN' : 'ACTUAL COST / 1M') : (zh ? '权益来源' : 'BENEFIT SOURCE')}</span><strong>{isPaid ? (provider.economics.costPerMillionTokens == null ? '—' : subscriptionMoney(provider.economics.costPerMillionTokens, provider.subscription.currency)) : entitlementLabel(provider.subscription.entitlementType, zh)}</strong><small>{isPaid ? (zh ? '按所填月均订阅支出' : 'from entered monthly spend') : entitlementNote(provider.subscription.entitlementType, zh)}</small></article>
-      <article><span>{isPaid ? (zh ? 'API 等价价值比' : 'API-EQUIVALENT RATIO') : (zh ? 'API 等价承载价值' : 'API-EQUIVALENT THROUGHPUT')}</span><strong>{isPaid ? ratioText(provider.economics.valueRatio) : subscriptionMoney(provider.economics.apiEquivalentUsd, 'usd')}</strong><small>{isPaid ? (provider.subscription.currency === 'cny' ? (zh ? '人民币未自动换汇' : 'no automatic FX') : (zh ? '等价价值 ÷ 月均支出' : 'equivalent value ÷ spend')) : (zh ? '标准价格口径，不代表实际节省' : 'standard-price basis, not realized savings')}</small></article>
+      <article><span>{isPaid ? (zh ? 'API 等价价值比' : 'API-EQUIVALENT RATIO') : (zh ? 'API 等价承载价值' : 'API-EQUIVALENT THROUGHPUT')}</span><strong>{isPaid ? ratioText(provider.economics.valueRatio) : displayDollars(provider.economics.apiEquivalentUsd, currency)}</strong><small>{isPaid ? (provider.subscription.currency === 'cny' ? (zh ? '人民币未自动换汇' : 'no automatic FX') : (zh ? '等价价值 ÷ 月均支出' : 'equivalent value ÷ spend')) : (zh ? '标准价格口径，不代表实际节省' : 'standard-price basis, not realized savings')}</small></article>
       <article><span>{zh ? '官方额度状态' : 'OFFICIAL QUOTA STATUS'}</span><strong>{exhausted ? (zh ? '已触顶' : 'EXHAUSTED') : pace ? percentNumber(pace.pace.projectedFinalPercent) : provider.quotaObservation?.state === 'historical' ? (zh ? '仅历史' : 'HISTORY') : (zh ? '不可观测' : 'UNOBSERVABLE')}</strong><small>{exhausted ? `${exhausted.label} · ${zh ? '供应商额度事实' : 'provider quota fact'}` : pace ? `${pace.label} · ${zh ? '重置时预计' : 'at reset'}` : (zh ? '本机 Token 分析仍然可用' : 'local Token analytics remain available')}</small></article>
     </div>
-    <SubscriptionReviewGrid provider={provider} zh={zh} onSettings={onSettings}/>
+    <SubscriptionReviewGrid provider={provider} zh={zh} currency={currency} onSettings={onSettings}/>
     <div className="subscription-decision-grid">
       <QuotaHistory provider={provider} zh={zh}/>
       <section className="subscription-signals"><header><Gauge size={15}/><div><b>{zh ? '本机观察' : 'LOCAL OBSERVATIONS'}</b><span>{zh ? '提示不是账单结论，也不会自动改套餐' : 'Evidence, not billing conclusions or automatic changes'}</span></div></header><div>{provider.decisionSignals.length ? provider.decisionSignals.map((signal) => { const copy = signalCopy(signal, zh); return <article data-tone={signal.tone} key={signal.code}><i/><div><b>{copy.title}</b><p>{copy.body}</p></div></article>; }) : <article data-tone="positive"><i/><div><b>{zh ? '暂未发现明显异常' : 'No obvious issue yet'}</b><p>{zh ? '当前样本中没有明显的触顶、闲置、价值偏低或模型过度集中信号；继续积累历史后判断会更稳定。' : 'No clear limit, underuse, low-value, or concentration signal yet. More history will improve confidence.'}</p></div></article>}</div></section>
@@ -334,7 +334,7 @@ function sourceDisplay(value, zh) {
   return /[~\/\\]/.test(value) ? (zh ? '本机凭据' : 'Local credential') : value;
 }
 
-function ProviderCard({ provider, zh, onSettings }) {
+function ProviderCard({ provider, zh, currency, onSettings }) {
   const now = useNow();
   const tone = PROVIDER_TONES[provider.id] || 'blue';
   const currentWindows = provider.windows?.filter((window) => !window.stale) || [];
@@ -349,7 +349,7 @@ function ProviderCard({ provider, zh, onSettings }) {
       <div><dt>{zh ? '本机累计 TOKEN' : 'LOCAL LIFETIME TOKENS'}</dt><dd>{compact(provider.lifetimeTotals.totalTokens)}</dd></div>
       <div><dt>{zh ? '主要模型' : 'TOP MODEL'}</dt><dd>{provider.modelRows[0]?.label || '—'}</dd></div>
       <div><dt>{zh ? '个人月均支出' : 'PERSONAL MONTHLY SPEND'}</dt><dd>{provider.subscription.isPaid ? (provider.subscription.monthlyPrice == null ? (zh ? '待填写' : 'Not set') : subscriptionMoney(provider.subscription.monthlyPrice, provider.subscription.currency, zh ? '/月' : '/mo')) : (zh ? '不计入' : 'Excluded')}</dd></div>
-      <div><dt>{zh ? '近 30 天 API 等价价值' : '30D API EQUIVALENT'}</dt><dd>{subscriptionMoney(provider.recentTotals.costMicros / 1_000_000, 'usd')}</dd></div>
+      <div><dt>{zh ? '近 30 天 API 等价价值' : '30D API EQUIVALENT'}</dt><dd>{displayDollars(provider.recentTotals.costMicros / 1_000_000, currency)}</dd></div>
       <div><dt>{zh ? '更新' : 'Updated'}</dt><dd>{relativeUpdated(provider.updatedAt, now, zh)}</dd></div>
       <div><dt>{zh ? '来源' : 'Source'}</dt><dd>{sourceDisplay(provider.source, zh)}</dd></div>
     </dl>
@@ -373,7 +373,7 @@ export function SubscriptionPulse({ data, usageData, settings, loading, error, o
   </section>;
 }
 
-export function SubscriptionCenter({ data, usageData, settings, loading, error, onRefresh, onSettings, onViewChange, view = 'overview', zh }) {
+export function SubscriptionCenter({ data, usageData, settings, loading, error, onRefresh, onSettings, onViewChange, view = 'overview', zh, currency }) {
   const insights = useMemo(() => buildSubscriptionInsights(usageData, data, { settings }), [usageData, data, settings]);
   const providers = insights.providers;
   const [selected, setSelected] = useState(() => localStorage.getItem(SELECTED_BENEFIT_KEY) || '');
@@ -397,10 +397,10 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
   if (view !== 'overview') return <section className="subscription-center subscription-center--detail" id={`subscription-${view}`}>
     {error ? <div className="limits-banner">{error}</div> : null}
     <BenefitProviderPicker providers={providers} active={active} onChange={(value) => { setSelected(value); setDrilldown(null); }} zh={zh}/>
-    {active && view === 'trend' ? <BenefitTrendView provider={active} onDrilldown={openEvidence} zh={zh}/> : null}
-    {active && view === 'activity' ? <BenefitActivityView provider={active} usageData={usageData} zh={zh}/> : null}
-    {active && view === 'distribution' ? <BenefitDistributionView provider={active} usageData={usageData} zh={zh}/> : null}
-    {active && view === 'records' ? <BenefitRecordsView provider={active} drilldown={drilldown?.providerId === active.id ? drilldown : null} onClearDrilldown={() => setDrilldown(null)} zh={zh}/> : null}
+    {active && view === 'trend' ? <BenefitTrendView provider={active} onDrilldown={openEvidence} zh={zh} currency={currency}/> : null}
+    {active && view === 'activity' ? <BenefitActivityView provider={active} usageData={usageData} zh={zh} currency={currency}/> : null}
+    {active && view === 'distribution' ? <BenefitDistributionView provider={active} usageData={usageData} zh={zh} currency={currency}/> : null}
+    {active && view === 'records' ? <BenefitRecordsView provider={active} drilldown={drilldown?.providerId === active.id ? drilldown : null} onClearDrilldown={() => setDrilldown(null)} zh={zh} currency={currency}/> : null}
     <section className="subscription-method-note"><Info size={16}/><div><b>{zh ? '这里展示的三类数据不会混算' : 'Three evidence classes remain separate'}</b><p>{zh ? '官方额度是供应商事实，本机 Token 是 Agent 日志，容量和价值是带前提的推算。读取不到的数据明确留空，不会当成 0、免费或无限。' : 'Official quota is a provider fact, local Tokens come from Agent logs, and capacity/value are conditional estimates. Missing data stays empty—never zero, free, or unlimited.'}</p></div></section>
   </section>;
   return <section className="subscription-center" id="subscriptions">
@@ -415,11 +415,11 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
     <header className="panel-header limits-header"><div><h2>{zh ? '账户权益、官方额度与 Token 容量' : 'Benefits, official quotas & token capacity'}</h2><p>{zh ? '额度可观测时显示供应商事实；不可观测时只分析本机 Token，不猜测剩余额度' : 'Provider facts appear when observable; otherwise local Tokens remain without a guessed balance'}</p></div><div className="limits-actions"><span>{insights.summary.quotaObservableProviders}/{providers.length} {zh ? '额度可观测' : 'quota observable'}</span><button className="icon-btn" type="button" onClick={onSettings} aria-label={zh ? '账户权益设置' : 'Account benefit settings'}><Settings2 size={16}/></button><button className="icon-btn" type="button" onClick={() => onRefresh(true)} disabled={loading} aria-label={zh ? '刷新订阅额度' : 'Refresh subscription quotas'}><RefreshCw className={loading ? 'spin' : ''} size={16}/></button></div></header>
     {error ? <div className="limits-banner">{error}</div> : null}
     <div className="provider-tabs"><ProviderSelect providers={providers} activeId={active?.id} onChange={setSelected} zh={zh} ariaLabel={zh ? '账户权益平台' : 'Account benefit providers'} tabIdFor={overviewProviderTabId} controlsId={OVERVIEW_PROVIDER_PANEL_ID} renderIcon={(id, size) => <ProviderIcon id={id} size={size}/>} statusFor={(provider) => (provider.status === 'error' && !provider.quotaObservation?.bestEffort) ? { label: zh ? '需处理' : 'Issue', tone: 'red' } : provider.quotaObservation?.state === 'unavailable' ? { label: zh ? '仅本机' : 'Local only', tone: 'amber' } : null}/></div>
-    <div className="limit-card-stage" id={OVERVIEW_PROVIDER_PANEL_ID} role="tabpanel" aria-labelledby={active ? overviewProviderTabId(active.id) : undefined} tabIndex={0}>{active ? <ProviderCard provider={active} zh={zh} onSettings={onSettings}/> : <div className="limit-card-empty">{zh ? '没有已启用的供应商' : 'No providers enabled'}</div>}</div>
+    <div className="limit-card-stage" id={OVERVIEW_PROVIDER_PANEL_ID} role="tabpanel" aria-labelledby={active ? overviewProviderTabId(active.id) : undefined} tabIndex={0}>{active ? <ProviderCard provider={active} zh={zh} currency={currency} onSettings={onSettings}/> : <div className="limit-card-empty">{zh ? '没有已启用的供应商' : 'No providers enabled'}</div>}</div>
     <footer className="limits-privacy"><ShieldCheck size={13}/><span>{zh ? '凭据只在本地服务进程使用；Token 估算只读取本机统计，不进入导出文件或社区同步。' : 'Credentials stay in the local server process; token estimates use local statistics only and never enter exports or community sync.'}</span>{settings?.refreshMinutes ? <small>{zh ? `额度缓存 ${settings.refreshMinutes} 分钟` : `${settings.refreshMinutes}m quota cache`}</small> : null}</footer>
     </section>
-    {active ? <details className="subscription-deep-dive"><summary><span><b>{zh ? `${active.label} 深度证据与推算` : `${active.label} evidence & estimates`}</b><small>{zh ? '额度历史、容量情景和只读建议' : 'Quota history, capacity scenarios, and read-only advice'}</small></span><ChevronRight size={16}/></summary><div><SubscriptionDecisionPanel provider={active} zh={zh} onSettings={onSettings}/></div></details> : null}
-    <details className="subscription-deep-dive"><summary><span><b>{zh ? '账户组合与续费判断' : 'Portfolio & renewal review'}</b><small>{zh ? '按需查看跨账户重叠、闲置和组合证据' : 'Expand for cross-account overlap, underuse, and portfolio evidence'}</small></span><ChevronRight size={16}/></summary><div><SubscriptionPortfolioReview review={insights.portfolio} providers={providers} zh={zh} onSettings={onSettings}/></div></details>
+    {active ? <details className="subscription-deep-dive"><summary><span><b>{zh ? `${active.label} 深度证据与推算` : `${active.label} evidence & estimates`}</b><small>{zh ? '额度历史、容量情景和只读建议' : 'Quota history, capacity scenarios, and read-only advice'}</small></span><ChevronRight size={16}/></summary><div><SubscriptionDecisionPanel provider={active} zh={zh} currency={currency} onSettings={onSettings}/></div></details> : null}
+    <details className="subscription-deep-dive"><summary><span><b>{zh ? '账户组合与续费判断' : 'Portfolio & renewal review'}</b><small>{zh ? '按需查看跨账户重叠、闲置和组合证据' : 'Expand for cross-account overlap, underuse, and portfolio evidence'}</small></span><ChevronRight size={16}/></summary><div><SubscriptionPortfolioReview review={insights.portfolio} providers={providers} zh={zh} currency={currency} onSettings={onSettings}/></div></details>
     <section className="subscription-method-note"><Info size={16}/><div><b>{zh ? '为什么有些账户只有 Token，没有“剩余额度”？' : 'Why do some accounts show Tokens without remaining quota?'}</b><p>{zh ? 'ChatGPT Pro、Claude Max 等可能只返回消耗比例，Warp、JetBrains AI 等在部分账户上甚至没有稳定可读的额度窗口。本工具只有拿到可验证比例时才反推容量；否则保留本机 Token、模型与标准 API 等价价值，但明确把官方余额标成不可观测。账号在网页端、其他设备上的用量和供应商内部权重仍不在本机证据中。' : 'Some products expose only utilization, while platforms such as Warp or JetBrains AI may expose no stable quota window for a given account. Capacity is inferred only from a verifiable ratio; otherwise local Tokens, models, and standard API-equivalent value remain while official balance is marked unobservable. Web, other-device usage, and provider weighting remain outside local evidence.'}</p></div></section>
   </section>;
 }

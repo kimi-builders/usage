@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, BarChart3, CircleAlert, Clock3, FileText, LayoutDashboard, ShieldCheck } from 'lucide-react';
 import { CHART_COLORS, CONSUMPTION_PALETTE } from './chart-colors.js';
-import { compact, percent, pluralUnit } from './format.js';
+import { compact, displayDollars, percent, pluralUnit } from './format.js';
 import { ProviderSelect } from './provider-select.jsx';
 import { HeatModeTabs, WeekPager, storedHeatMode, storeHeatMode } from './heat-controls.jsx';
 import { addLocalWeeks, firstDataWeekStart, localWeekEnd, localWeekStart, weekLabel } from './week.js';
@@ -54,8 +54,8 @@ function BenefitRangeControl({ value, onChange, zh, label }) {
   </div>;
 }
 
-function money(value) {
-  return `$${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function money(value, currency) {
+  return displayDollars(value, currency);
 }
 
 function requestUnit(value, zh) {
@@ -116,10 +116,10 @@ function tooltipLeft(event, viewport, tipWidth) {
   return center < container.width / 2 ? Math.max(8, container.width - tipWidth - 8) : 8;
 }
 
-function localTrendFacts(item, zh) {
+function localTrendFacts(item, zh, currency) {
   const facts = [
     `${Number(item?.requestCount || 0).toLocaleString()} ${requestUnit(item?.requestCount || 0, zh)}`,
-    `${zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} ${money((item?.costMicros || 0) / 1e6)}`,
+    `${zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} ${money((item?.costMicros || 0) / 1e6, currency)}`,
     zh ? '本机归因事实' : 'Local attributed facts',
   ];
   if (item?.officialObservation) facts.push(zh
@@ -204,10 +204,10 @@ function buildTrendPlot(timeline, points) {
   };
 }
 
-function localTrendLabel(item, zh) {
+function localTrendLabel(item, zh, currency) {
   const parts = zh
-    ? [dateLabel(item.key, true), `本机 Token：${compact(item.totalTokens)}`, `请求：${Number(item.requestCount || 0).toLocaleString()}`, `API 等价价值：${money(item.costMicros / 1e6)}`]
-    : [dateLabel(item.key, false), `Local Tokens: ${compact(item.totalTokens)}`, `Requests: ${Number(item.requestCount || 0).toLocaleString()}`, `API-equivalent value: ${money(item.costMicros / 1e6)}`];
+    ? [dateLabel(item.key, true), `本机 Token：${compact(item.totalTokens)}`, `请求：${Number(item.requestCount || 0).toLocaleString()}`, `API 等价价值：${money(item.costMicros / 1e6, currency)}`]
+    : [dateLabel(item.key, false), `Local Tokens: ${compact(item.totalTokens)}`, `Requests: ${Number(item.requestCount || 0).toLocaleString()}`, `API-equivalent value: ${money(item.costMicros / 1e6, currency)}`];
   if (item.officialObservation) {
     parts.push(zh
       ? `官方已用：${item.officialObservation.usedPercent.toFixed(1)}%（${dateLabel(item.officialObservation.observedAt, true, true)}观测）`
@@ -216,7 +216,7 @@ function localTrendLabel(item, zh) {
   return parts.join(' · ');
 }
 
-function quotaTrendLabel(point, zh) {
+function quotaTrendLabel(point, zh, currency) {
   const localObserved = point.localObserved
     ?? finiteNumber(point.localObservedCoverage ?? point.localCoverage) > 0;
   const localTotals = point.localTotals;
@@ -225,8 +225,8 @@ function quotaTrendLabel(point, zh) {
     : [dateLabel(point.observedAt, false, true), `Official used: ${point.usedPercent.toFixed(1)}%`];
   if (localObserved && localTotals) {
     parts.push(...(zh
-      ? [`本机 Token：${compact(localTotals.totalTokens)}`, `请求：${Number(localTotals.requestCount || 0).toLocaleString()}`, `API 等价价值：${money(localTotals.costMicros / 1e6)}`]
-      : [`Local Tokens: ${compact(localTotals.totalTokens)}`, `Requests: ${Number(localTotals.requestCount || 0).toLocaleString()}`, `API-equivalent value: ${money(localTotals.costMicros / 1e6)}`]));
+      ? [`本机 Token：${compact(localTotals.totalTokens)}`, `请求：${Number(localTotals.requestCount || 0).toLocaleString()}`, `API 等价价值：${money(localTotals.costMicros / 1e6, currency)}`]
+      : [`Local Tokens: ${compact(localTotals.totalTokens)}`, `Requests: ${Number(localTotals.requestCount || 0).toLocaleString()}`, `API-equivalent value: ${money(localTotals.costMicros / 1e6, currency)}`]));
     if (point.localEvidenceState === 'local-stale') {
       parts.push(zh ? '本机快照早于额度观测，不参与跨源推算' : 'Local snapshot predates this quota observation; excluded from cross-source estimates');
     }
@@ -236,7 +236,7 @@ function quotaTrendLabel(point, zh) {
   return parts.join(' · ');
 }
 
-function QuotaLine({ points, zh, onActivate, onDeactivate, onDrilldown }) {
+function QuotaLine({ points, zh, currency, onActivate, onDeactivate, onDrilldown }) {
   if (!points.length) return null;
   const path = points.map((point, index) => `${index ? 'L' : 'M'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
   // Dense 15-minute observations overlap into an ambiguous strip on a 30-day chart;
@@ -247,7 +247,7 @@ function QuotaLine({ points, zh, onActivate, onDeactivate, onDrilldown }) {
   return <g data-evidence="official">
     {points.length > 1 ? <path className="benefit-quota-line" d={path}/> : null}
     {dots.map((point, index) => {
-      const label = quotaTrendLabel(point, zh);
+      const label = quotaTrendLabel(point, zh, currency);
       return <circle
         className="benefit-quota-point"
         cx={point.x}
@@ -271,7 +271,7 @@ function QuotaLine({ points, zh, onActivate, onDeactivate, onDrilldown }) {
   </g>;
 }
 
-function BenefitTrendTooltip({ active, zh }) {
+function BenefitTrendTooltip({ active, zh, currency }) {
   if (!active) return null;
   if (active.kind === 'local') {
     const item = active.datum;
@@ -279,7 +279,7 @@ function BenefitTrendTooltip({ active, zh }) {
       <strong>{dateLabel(item.key, zh)}</strong>
       <div className="trend-tooltip-total"><span>{compact(item.totalTokens)} tokens</span><small>{zh ? '命中率' : 'hit'} {cacheHit(item)}</small></div>
       <TokenBreakdown row={item} zh={zh}/>
-      <footer>{localTrendFacts(item, zh)}</footer>
+      <footer>{localTrendFacts(item, zh, currency)}</footer>
       <span className="benefit-tooltip-affordance">{zh ? '点击查看证据 →' : 'Click to view evidence →'}</span>
     </aside>;
   }
@@ -290,12 +290,12 @@ function BenefitTrendTooltip({ active, zh }) {
     <strong>{dateLabel(point.observedAt, zh, true)}</strong>
     <div className="trend-tooltip-total"><span>{zh ? '官方已用' : 'Official used'} {point.usedPercent.toFixed(1)}%</span><small>{zh ? '额度事实' : 'quota fact'}</small></div>
     {localTotals ? <TokenBreakdown row={localTotals} zh={zh}/> : <p className="trend-tooltip-note">{zh ? '该观测时刻没有可连接的本机 Token 事实。' : 'No joinable local Token facts at this observation.'}</p>}
-    <footer>{localTotals ? `${Number(localTotals.requestCount || 0).toLocaleString()} ${requestUnit(localTotals.requestCount || 0, zh)} · ${zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} ${money((localTotals.costMicros || 0) / 1e6)} · ` : ''}{zh ? '官方观测' : 'Official observation'} {dateLabel(point.observedAt, zh, true)}{point.localEvidenceState === 'local-stale' ? ` · ${zh ? '本机快照较旧，不参与跨源推算' : 'local snapshot is stale and excluded from cross-source estimates'}` : ''}</footer>
+    <footer>{localTotals ? `${Number(localTotals.requestCount || 0).toLocaleString()} ${requestUnit(localTotals.requestCount || 0, zh)} · ${zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} ${money((localTotals.costMicros || 0) / 1e6, currency)} · ` : ''}{zh ? '官方观测' : 'Official observation'} {dateLabel(point.observedAt, zh, true)}{point.localEvidenceState === 'local-stale' ? ` · ${zh ? '本机快照较旧，不参与跨源推算' : 'local snapshot is stale and excluded from cross-source estimates'}` : ''}</footer>
     <span className="benefit-tooltip-affordance">{zh ? '点击查看证据 →' : 'Click to view evidence →'}</span>
   </aside>;
 }
 
-export function BenefitTrendView({ provider, zh, onDrilldown }) {
+export function BenefitTrendView({ provider, zh, currency, onDrilldown }) {
   const windows = provider.windows.filter((window) => window.historyPoints?.length);
   const windowsKey = windows.map((window) => window.id).join('\u0000');
   const [windowId, setWindowId] = useState(windows[0]?.id || '');
@@ -340,7 +340,7 @@ export function BenefitTrendView({ provider, zh, onDrilldown }) {
           <g data-evidence="local">
             {plot.local.map((item) => {
               const height = item.totalTokens / maxTokens * CHART_TOKEN_HEIGHT;
-              const label = localTrendLabel(item, zh);
+              const label = localTrendLabel(item, zh, currency);
               return <rect
                 className="benefit-token-bar"
                 x={item.x - dayWidth / 2}
@@ -364,21 +364,21 @@ export function BenefitTrendView({ provider, zh, onDrilldown }) {
               />;
             })}
           </g>
-          <QuotaLine points={plot.quota} zh={zh} onActivate={activateTooltip} onDeactivate={() => setActiveTooltip(null)} onDrilldown={onDrilldown}/>
+          <QuotaLine points={plot.quota} zh={zh} currency={currency} onActivate={activateTooltip} onDeactivate={() => setActiveTooltip(null)} onDrilldown={onDrilldown}/>
         </svg>
         <div className="benefit-chart-axis"><span>{dateLabel(plot.domain.start, zh)}</span><span>{zh ? '蓝柱：本机 Token　绿线：官方已用额度' : 'Blue: local Tokens　Green: official quota used'}</span><span>{dateLabel(plot.domain.end, zh)}</span></div>
-      </div><BenefitTrendTooltip active={activeTooltip} zh={zh}/></div> : (
+      </div><BenefitTrendTooltip active={activeTooltip} zh={zh} currency={currency}/></div> : (
         <EmptyEvidence zh={zh} title={zh ? '还没有该订阅的趋势证据' : 'No trend evidence yet'} body={zh ? '继续使用、重新扫描或刷新额度后，这里只绘制真实观测点。' : 'Continue using, rescan, or refresh quotas; only real observations are plotted.'}/>
       )}
       {!plot.local.length && plot.quota.length ? <div className="benefit-inline-warning"><CircleAlert size={14}/><span>{zh ? '还没有该订阅的本机日趋势；图中仅显示真实的官方额度观测。' : 'No local daily trend exists yet; the chart shows only real official quota observations.'}</span></div> : null}
       {provider.evidenceClock?.state === 'local-stale' ? <div className="benefit-inline-warning" data-evidence="clock-mismatch"><CircleAlert size={14}/><span>{zh ? `本机用量快照（${dateLabel(provider.evidenceClock.usageObservedAt, true, true)}）早于额度观测（${dateLabel(provider.evidenceClock.quotaObservedAt, true, true)}）；两类事实仍分别展示，但容量与剩余额度推算已暂停。` : `The local usage snapshot (${dateLabel(provider.evidenceClock.usageObservedAt, false, true)}) predates the quota observation (${dateLabel(provider.evidenceClock.quotaObservedAt, false, true)}). Both facts remain visible, but capacity and remaining-Token estimates are paused.`}</span></div> : null}
       {!plot.quota.length ? <div className="benefit-inline-warning"><CircleAlert size={14}/><span>{provider.quotaObservation?.state === 'unavailable' ? (zh ? '该账户当前没有可验证的官方额度窗口，只展示本机趋势。' : 'This account has no verifiable official quota window; only local trends are shown.') : (zh ? '额度历史从成功刷新后开始积累，至少两个样本才计算速度。' : 'Quota history begins after successful refresh and needs two samples for pace.')}</span></div> : null}
     </section>
-    <section className="benefit-kpi-row"><article><span>{zh ? '近 30 天 TOKEN' : '30D TOKENS'}</span><strong>{compact(provider.recentTotals.totalTokens)}</strong><small>{provider.recentTotals.requestCount.toLocaleString()} {requestUnit(provider.recentTotals.requestCount, zh)}</small></article><article><span>{zh ? 'API 等价价值' : 'API EQUIVALENT'}</span><strong>{money(provider.economics.apiEquivalentUsd)}</strong><small>{zh ? '标准价格，不是账单' : 'standard pricing, not a bill'}</small></article><article><span>{zh ? '完整周期样本' : 'COMPLETE CYCLES'}</span><strong>{Math.max(0, ...provider.windows.map((window) => window.cycleStats?.sampledCycles || 0))}</strong><small>{zh ? '覆盖率 ≥90% 且接近重置' : '≥90% coverage near reset'}</small></article><article><span>{zh ? '官方额度状态' : 'QUOTA STATUS'}</span><strong>{provider.quotaObservation?.state === 'current' ? (zh ? '当前可读' : 'Current') : provider.quotaObservation?.state === 'historical' ? (zh ? '仅历史' : 'History') : (zh ? '不可观测' : 'Hidden')}</strong><small>{zh ? '不以缺失推断无限' : 'missing never means unlimited'}</small></article></section>
+    <section className="benefit-kpi-row"><article><span>{zh ? '近 30 天 TOKEN' : '30D TOKENS'}</span><strong>{compact(provider.recentTotals.totalTokens)}</strong><small>{provider.recentTotals.requestCount.toLocaleString()} {requestUnit(provider.recentTotals.requestCount, zh)}</small></article><article><span>{zh ? 'API 等价价值' : 'API EQUIVALENT'}</span><strong>{money(provider.economics.apiEquivalentUsd, currency)}</strong><small>{zh ? '标准价格，不是账单' : 'standard pricing, not a bill'}</small></article><article><span>{zh ? '完整周期样本' : 'COMPLETE CYCLES'}</span><strong>{Math.max(0, ...provider.windows.map((window) => window.cycleStats?.sampledCycles || 0))}</strong><small>{zh ? '覆盖率 ≥90% 且接近重置' : '≥90% coverage near reset'}</small></article><article><span>{zh ? '官方额度状态' : 'QUOTA STATUS'}</span><strong>{provider.quotaObservation?.state === 'current' ? (zh ? '当前可读' : 'Current') : provider.quotaObservation?.state === 'historical' ? (zh ? '仅历史' : 'History') : (zh ? '不可观测' : 'Hidden')}</strong><small>{zh ? '不以缺失推断无限' : 'missing never means unlimited'}</small></article></section>
   </section>;
 }
 
-export function BenefitActivityView({ provider, usageData, zh }) {
+export function BenefitActivityView({ provider, usageData, zh, currency }) {
   const [range, setRange] = useState(() => storedBenefitRange('activity'));
   const [mode, setMode] = useState(() => storedHeatMode('kbu.benefit.heat-mode.v1'));
   const [weekOffset, setWeekOffset] = useState(0);
@@ -462,7 +462,7 @@ export function BenefitActivityView({ provider, usageData, zh }) {
           return <button type="button" className="benefit-heat-cell is-unobserved" data-observed="false" aria-label={unavailable} title={unavailable} disabled key={hour}/>;
         }
         const level = cell.totalTokens > 0 ? Math.max(1, Math.ceil(cell.totalTokens / max * 6)) : 0;
-        const title = `${slot} · ${zh ? '已观测' : 'Observed'} · ${compact(cell.totalTokens)} Token · ${cell.requestCount} ${requestUnit(cell.requestCount, zh)} · ${money(cell.costMicros / 1e6)}`;
+        const title = `${slot} · ${zh ? '已观测' : 'Observed'} · ${compact(cell.totalTokens)} Token · ${cell.requestCount} ${requestUnit(cell.requestCount, zh)} · ${money(cell.costMicros / 1e6, currency)}`;
         return <button
           ref={(node) => { const key = `${day}-${hour}`; if (node) heatCellRefs.current.set(key, node); else heatCellRefs.current.delete(key); }}
           type="button"
@@ -481,7 +481,7 @@ export function BenefitActivityView({ provider, usageData, zh }) {
       {hovered && selectedCell ? <aside className="heatmap-tooltip benefit-heat-tooltip" data-dock={hovered.hour < 12 ? 'r' : 'l'} role="tooltip">
         <header><strong>{weekdays[hovered.day]} {String(hovered.hour).padStart(2, '0')}:00</strong><span>{compact(selectedCell.totalTokens)} tokens</span><small>{zh ? '命中率' : 'hit'} {cacheHit(selectedCell)}</small></header>
         {tokenBreakdownRows(selectedCell, zh, true).map(([label, value, color]) => <div key={label}><span><i style={{ background: color }}/>{label}</span><b>{compact(value)}</b></div>)}
-        <footer>{zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} {money(selectedCell.costMicros / 1e6)} · {Number(selectedCell.requestCount || 0).toLocaleString()} {requestUnit(selectedCell.requestCount || 0, zh)} · {zh ? '本机归因事实' : 'local attributed facts'}</footer>
+        <footer>{zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} {money(selectedCell.costMicros / 1e6, currency)} · {Number(selectedCell.requestCount || 0).toLocaleString()} {requestUnit(selectedCell.requestCount || 0, zh)} · {zh ? '本机归因事实' : 'local attributed facts'}</footer>
       </aside> : null}
       <footer className="benefit-heat-footer"><span>{zh ? '少' : 'Less'} {[1,2,3,4,5,6].map((level) => <i data-level={level} key={level}/>)} {zh ? '多' : 'More'}</span><span><i className="is-observed-zero" data-level="0"/> {zh ? '已观测 0' : 'Observed 0'}　<i className="is-unobserved"/> {zh ? '未观测' : 'Not observed'}</span><span>{zh ? '悬停或聚焦查看本机证据' : 'Hover or focus for local evidence'}</span></footer>
     </section>
@@ -542,7 +542,7 @@ function recordCell(content, label, index, { strong = false, className = '', tit
   return <Element className={`benefit-record-cell${className ? ` ${className}` : ''}`} role="cell" aria-colindex={index + 1} data-label={label} title={title}>{content}</Element>;
 }
 
-export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh }) {
+export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh, currency }) {
   const [kind, setKind] = useState(drilldown?.kind || 'quota');
   const [usageRange, setUsageRange] = useState(() => storedBenefitRange('records'));
   useEffect(() => {
@@ -597,7 +597,7 @@ export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh }
         {recordCell(compact(row.totalTokens), columns[2], 2, { strong: true, className: 'evidence-local' })}
         {recordCell(row.requestCount.toLocaleString(), columns[3], 3, { className: 'evidence-local' })}
         {recordCell(row.reasoningEffort || (zh ? '未记录' : 'Not recorded'), columns[4], 4, { className: 'evidence-local' })}
-        {recordCell(money(row.costMicros / 1e6), columns[5], 5, { className: 'evidence-derived' })}
+        {recordCell(money(row.costMicros / 1e6, currency), columns[5], 5, { className: 'evidence-derived' })}
       </>}
     /> : <EmptyEvidence zh={zh} title={zh ? '还没有该账户的本机用量' : 'No local usage for this account'} body={zh ? '供应商额度与本机日志相互独立；有额度不等于这台设备已经产生 Token。' : 'Provider quota and local logs are independent; having a quota does not mean this device produced Tokens.'}/>)}
     <footer><Clock3 size={13}/><span>{kind === 'quota' ? (zh ? '额度历史由本地服务管理并按时间降采样；重复读取缓存不会追加相同快照。' : 'Quota history is backend-owned and downsampled over time; cached reads do not append duplicates.') : (zh ? '本机用量按原始事实桶展示；完整路径与对话内容从不进入页面。' : 'Local usage uses raw fact buckets; full paths and conversation content never enter the page.')}</span></footer>

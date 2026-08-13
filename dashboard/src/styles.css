@@ -1316,3 +1316,39 @@ body.drawer-open { overflow: hidden; }
   .currency-toggle { margin-left: 0; }
   .currency-toggle button { min-height: var(--touch-target); }
 }
+
+/* ============================================================
+   v6.1 · records parity — 明细/观测明细对齐站点 /usage 明细
+   (规格源:UsageRecordsSection.tsx — 11px mono、py-2 行距、
+   border-t 发丝、hover 薄涂、命中率薄荷 pill、页码按钮)。
+   ============================================================ */
+.records-panel table { min-width: 970px; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+.records-panel th, .records-panel td { height: auto; padding: 8px 16px 8px 0; border-bottom: 0; font-size: 11px; }
+.records-panel th { height: auto; padding-bottom: 8px; color: var(--grey); font-weight: 400; letter-spacing: .03em; }
+.records-panel tbody tr { border-top: 1px solid var(--line); transition: background .12s ease; }
+.records-panel tbody tr:hover { background: color-mix(in srgb, var(--paper) 3%, transparent); }
+.records-panel td { color: var(--paper); }
+.records-panel td small { font-size: 8.5px; text-transform: none; }
+.records-panel .hit-chip { padding: 3px 8px; border-radius: 999px; background: color-mix(in srgb, var(--green) 10%, transparent); font-size: 10px; }
+.records-panel .pagination { min-height: 58px; font-size: 10.5px; }
+.records-panel .pagination button { min-width: 36px; min-height: 36px; border-radius: 9px; }
+
+/* 观测明细(div 网格表)用同一套词汇 */
+.benefit-records-head, .benefit-records-row, .benefit-usage-head, .benefit-usage-row { min-width: 760px; padding: 0 20px; }
+.benefit-records-head { min-height: 0; padding-top: 6px; padding-bottom: 9px; font-size: 9px; letter-spacing: .04em; }
+.benefit-records-row { min-height: 0; padding-top: 10px; padding-bottom: 10px; font-size: 10.5px; line-height: 1.4; transition: background .12s ease; }
+.benefit-records-row:hover { background: color-mix(in srgb, var(--paper) 3%, transparent); }
+.benefit-record-kind button { min-height: 32px; padding: 0 11px; font-size: 10px; }
+.benefit-record-kind span { font-size: 9px; }
+.benefit-records-panel > footer { font-size: 8.5px; }
+
+@media (max-width: 900px) {
+  .record-cards li { padding: 13px 14px; }
+  .record-cards p { font-size: 10.5px; }
+  .benefit-record-cell { font-size: 9.5px; }
+  .benefit-record-cell::before { font-size: 8px; }
+}
+
+/* v6.1.1 · 观测明细字号压过 .subscription-center 类型阶梯(9px),与明细表同读感 */
+.subscription-center .benefit-records-row { font-size: 10.5px; }
+.subscription-center .benefit-records-head { font-size: 9px; }
