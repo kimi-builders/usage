@@ -12,6 +12,8 @@ import { UsageManagement } from './UsageManagement.jsx';
 import { RecordsSection } from './UsageRecords.jsx';
 import { LimitSettingsDialog, SubscriptionCenter, SubscriptionPulse } from './SubscriptionLimits.jsx';
 import { SyncDialog } from './SyncDialog.jsx';
+import { analyzeBudget, analyzeMilestones, analyzeSpikes } from './usage-insights.js';
+import { BudgetDialog, readBudget, storeBudget, UsageInsightAlerts, UsageInsightSummary } from './UsageInsights.jsx';
 import { compact, delta, duration, integer, percent } from './format.js';
 import { isBenefitSection, isStandaloneSection, sectionFromHash, titleForSection, USAGE_SECTION_IDS } from './navigation.js';
 import { Button, PageState } from './ui.jsx';
@@ -134,6 +136,7 @@ export function App() {
   const [trendMetric, setTrendMetric] = useState('tokens');
   const [heatMetric, setHeatMetric] = useState('tokens');
   const [dialog, setDialog] = useState(null);
+  const [budget, setBudget] = useState(readBudget);
   const [drawer, setDrawer] = useState(false);
   const [limitData, setLimitData] = useState(null);
   const [limitSettings, setLimitSettings] = useState(null);
@@ -325,6 +328,14 @@ export function App() {
 
   const options = useMemo(() => data ? filterOptions(data) : null, [data]);
   const report = useMemo(() => data ? analyze(data, filters) : null, [data, filters]);
+  const insightNow = useMemo(() => {
+    const value = data?.generatedAt ? new Date(data.generatedAt) : new Date();
+    return Number.isFinite(value.getTime()) ? value : new Date();
+  }, [data]);
+  const budgetInsight = useMemo(() => data ? analyzeBudget(data, budget, insightNow) : null, [data, budget, insightNow]);
+  const spikeInsight = useMemo(() => data ? analyzeSpikes(data, insightNow) : null, [data, insightNow]);
+  const milestoneInsight = useMemo(() => data ? analyzeMilestones(data, insightNow) : null, [data, insightNow]);
+  const saveBudget = useCallback((value) => setBudget(storeBudget(value)), []);
 
   if (!data && !error) return <Loading zh={zh}/>;
   if (!data && error) return <ErrorState zh={zh} error={error} retry={() => load()}/>;
@@ -359,6 +370,8 @@ export function App() {
 
       {staleHours > 24 ? <section className="stale-banner"><Info size={19}/><div><b>{zh ? '这份看板可能已经过期' : 'This dashboard may be stale'}</b><p>{zh ? '点击重新扫描即可更新本机数据；页面不会自行读取日志。' : 'Rescan to refresh local logs; the page never reads them on its own.'}</p></div><code>kbu-usage dashboard</code></section> : null}
 
+      <UsageInsightAlerts budget={budgetInsight} spikes={spikeInsight} milestones={milestoneInsight} zh={zh} onEditBudget={() => setDialog('budget')}/>
+
       <section className="hero-grid">
         <HeroCard zh={zh} label={report.pricingCoverage < .9995 ? (zh ? '已定价 API 等价价值（USD）' : 'Priced API-equivalent value (USD)') : t.cost} value={currencyMoney(report.totals.costMicros)} previousValue={currencyMoney(previous?.totals.costMicros || 0)} deltaValue={delta(report.totals.costMicros, previous?.totals.costMicros)} onHelp={() => setDialog('method')}>{zh ? `标准 API 价格，不是账单 · 覆盖 ${percent(report.pricingCoverage)} Token · ${compact(report.totals.unpricedTokens)} 未定价` : `Standard API pricing, not a bill · ${percent(report.pricingCoverage)} coverage · ${compact(report.totals.unpricedTokens)} unpriced`}</HeroCard>
         <HeroCard zh={zh} label={t.tokens} value={compact(report.totals.totalTokens)} previousValue={compact(previous?.totals.totalTokens || 0)} deltaValue={delta(report.totals.totalTokens, previous?.totals.totalTokens)} onHelp={() => setDialog('method')}>{zh ? `输入 ${compact(inputSide)} · 输出 ${compact(report.totals.outputTokens)} · 缓存读 ${compact(report.totals.cacheReadInputTokens)}` : `Input ${compact(inputSide)} · Output ${compact(report.totals.outputTokens)} · Cache ${compact(report.totals.cacheReadInputTokens)}`}</HeroCard>
@@ -369,6 +382,7 @@ export function App() {
       </section>
 
       <section className="stats-grid"><Stat zh={zh} label={t.peak} value={compact(report.peakTokens)} sub={lastSeries?.label}/><Stat zh={zh} label={t.active} value={duration(report.activeSeconds, zh)} previousValue={duration(previous?.activeSeconds || 0, zh)} change={delta(report.activeSeconds, previous?.activeSeconds)} onHelp={() => setDialog('method')}/><Stat zh={zh} label={t.engaged} value={duration(report.engagedSeconds, zh)} previousValue={duration(previous?.engagedSeconds || 0, zh)} change={delta(report.engagedSeconds, previous?.engagedSeconds)} sub={zh ? '单次空闲最多计 30 分钟' : 'idle gaps capped at 30m'}/><Stat zh={zh} label={t.sessions} value={integer(report.sessions.length)} previousValue={integer(previous?.sessions || 0)} change={delta(report.sessions.length, previous?.sessions)}/><Stat zh={zh} label={t.messages} value={compact(report.messageCount)} previousValue={compact(previous?.messageCount || 0)} change={delta(report.messageCount, previous?.messageCount)}/><Stat zh={zh} label={t.userMessages} value={compact(report.userMessageCount)} previousValue={compact(previous?.userMessageCount || 0)} change={delta(report.userMessageCount, previous?.userMessageCount)}/><Stat zh={zh} label={t.avg} value={`${report.avgRequestSeconds.toFixed(1)}s`} sub={zh ? '≈ 活跃时长 ÷ 请求数' : '≈ active time ÷ requests'}/><Stat zh={zh} label={t.requests} value={compact(report.totals.requestCount)}/><Stat zh={zh} label={t.lifetime} value={compact(report.lifetimeTotals.totalTokens)} sub={zh ? '全部本地历史 · 保留维度筛选' : 'all local history · filters apply'}/><Stat zh={zh} label={t.reasoning} value={compact(report.totals.reasoningOutputTokens)} sub={report.topReasoning || (zh ? '未记录强度' : 'Effort not recorded')}/></section>
+      <UsageInsightSummary budget={budgetInsight} milestones={milestoneInsight} spikes={spikeInsight} zh={zh} onEditBudget={() => setDialog('budget')}/>
       <SubscriptionPulse data={limitData} usageData={data} settings={limitSettings} loading={limitLoading} error={limitError} onRetry={() => loadLimits(true)} onOpen={(event) => navigateSection(event, '#subscriptions')} onSettings={openLimitSettings} zh={zh}/>
       {dimensionFiltersActive ? <p className="metric-scope-note">{zh ? '会话与时长指标无法按模型或推理强度拆分，仍显示当前 Agent 范围。' : 'Sessions and time cannot be split by model or effort; the current Agent scope is shown.'}</p> : null}
 
@@ -379,6 +393,6 @@ export function App() {
 
       <footer className="page-footer"><span>kimi.builders / usage · LOCAL</span><p>{zh ? '数据属于你。分析在本机，社区同步永远可选。' : 'Your data. Local analysis. Community sync is always optional.'}</p><a href={data.community.url} target="_blank" rel="noreferrer">{zh ? '社区版' : 'Community'}<ExternalLink size={12}/></a></footer>
     </main>
-    <MethodDialog open={dialog === 'method'} onClose={closeDialog} zh={zh} data={data} report={report} currency={currency}/><ExportDialog open={dialog === 'export'} onClose={closeDialog} report={report} data={data} filters={filters} zh={zh}/><ShareDialog open={dialog === 'share'} onClose={closeDialog} data={data} filters={filters} initialRange={filters.range} zh={zh}/>{limitSettings ? <LimitSettingsDialog open={dialog === 'limit-settings'} settings={limitSettings} saving={limitSaving} onSave={saveLimitPreferences} onClose={closeDialog} zh={zh}/> : <Dialog open={dialog === 'limit-settings'} onClose={closeDialog} title={zh ? '账户权益与额度设置' : 'Account benefit and quota settings'} subtitle={zh ? '设置单独从本地服务读取；额度页面仍可独立工作。' : 'Settings load independently from the local service; quota views remain separate.'}><PageState kind={limitSettingsLoading ? 'loading' : 'error'} title={limitSettingsLoading ? (zh ? '正在读取权益设置' : 'Loading benefit settings') : (zh ? '权益设置读取失败' : 'Could not load benefit settings')} body={limitSettingsLoading ? (zh ? '正在读取本机配置，不会发起供应商请求。' : 'Reading local configuration without contacting providers.') : limitSettingsError || (zh ? '本地服务没有返回设置。' : 'The local service did not return settings.')} action={!limitSettingsLoading ? <Button variant="primary" onClick={loadLimitSettings}><RefreshCw size={14}/>{zh ? '重试读取' : 'Retry'}</Button> : null}/></Dialog>}<SyncDialog open={dialog === 'sync'} onClose={closeDialog} zh={zh}/>
+    <MethodDialog open={dialog === 'method'} onClose={closeDialog} zh={zh} data={data} report={report} currency={currency}/><ExportDialog open={dialog === 'export'} onClose={closeDialog} report={report} data={data} filters={filters} zh={zh}/><ShareDialog open={dialog === 'share'} onClose={closeDialog} data={data} filters={filters} initialRange={filters.range} zh={zh}/><BudgetDialog open={dialog === 'budget'} onClose={closeDialog} value={budget} onSave={saveBudget} zh={zh}/>{limitSettings ? <LimitSettingsDialog open={dialog === 'limit-settings'} settings={limitSettings} saving={limitSaving} onSave={saveLimitPreferences} onClose={closeDialog} zh={zh}/> : <Dialog open={dialog === 'limit-settings'} onClose={closeDialog} title={zh ? '账户权益与额度设置' : 'Account benefit and quota settings'} subtitle={zh ? '设置单独从本地服务读取；额度页面仍可独立工作。' : 'Settings load independently from the local service; quota views remain separate.'}><PageState kind={limitSettingsLoading ? 'loading' : 'error'} title={limitSettingsLoading ? (zh ? '正在读取权益设置' : 'Loading benefit settings') : (zh ? '权益设置读取失败' : 'Could not load benefit settings')} body={limitSettingsLoading ? (zh ? '正在读取本机配置，不会发起供应商请求。' : 'Reading local configuration without contacting providers.') : limitSettingsError || (zh ? '本地服务没有返回设置。' : 'The local service did not return settings.')} action={!limitSettingsLoading ? <Button variant="primary" onClick={loadLimitSettings}><RefreshCw size={14}/>{zh ? '重试读取' : 'Retry'}</Button> : null}/></Dialog>}<SyncDialog open={dialog === 'sync'} onClose={closeDialog} zh={zh}/>
   </div>;
 }
