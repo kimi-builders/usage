@@ -3,6 +3,7 @@ import claudeCodeIcon from '@lobehub/icons-static-svg/icons/claudecode-color.svg
 import codexIcon from '@lobehub/icons-static-svg/icons/codex-color.svg';
 import geminiCliIcon from '@lobehub/icons-static-svg/icons/geminicli-color.svg';
 import antigravityIcon from '@lobehub/icons-static-svg/icons/antigravity-color.svg';
+import codeBuddyIcon from '@lobehub/icons-static-svg/icons/codebuddy-color.svg';
 import copilotIcon from '@lobehub/icons-static-svg/icons/copilot-color.svg';
 import openCodeMono from '@lobehub/icons-static-svg/icons/opencode.svg?raw';
 import cursorMono from '@lobehub/icons-static-svg/icons/cursor.svg?raw';
@@ -33,6 +34,7 @@ const TOOL_ICONS = {
   'roo-code': { svg: rooCodeMono, tone: 'roo', label: 'Roo Code' },
   'pi-coding-agent': { svg: piMono, tone: 'pi', label: 'Pi' },
   zcode: { svg: zaiMono, tone: 'zcode', label: 'ZCode' },
+  workbuddy: { src: codeBuddyIcon, tone: 'workbuddy', label: 'WorkBuddy' },
 };
 
 export function ToolGlyph({ id, size = 16, className = '' }) {
