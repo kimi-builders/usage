@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Award, CalendarClock, Flame, Pencil, ShieldCheck, Sparkles, Target, X } from 'lucide-react';
-import { compact } from './format.js';
+import { compact, displayDollars } from './format.js';
 import { Dialog } from './UsageDialogs.jsx';
 
 export const BUDGET_STORAGE_KEY = 'kbu.budget.v1';
@@ -44,8 +44,8 @@ export function storeBudget(value) {
   return next;
 }
 
-function metricValue(value, metric) {
-  if (metric === 'cost') return `$${Number(value || 0).toFixed(2)}`;
+function metricValue(value, metric, currency) {
+  if (metric === 'cost') return displayDollars(value, currency);
   return `${compact(value || 0)} Token`;
 }
 
@@ -90,7 +90,7 @@ export function BudgetDialog({ open, onClose, value, onSave, zh }) {
   </Dialog>;
 }
 
-export function UsageInsightAlerts({ budget, spikes, milestones, zh, onEditBudget }) {
+export function UsageInsightAlerts({ budget, spikes, milestones, zh, currency, onEditBudget }) {
   const [dismissedBudgets, setDismissedBudgets] = useState(() => readList(BUDGET_DISMISSED_KEY));
   const [dismissedSpikes, setDismissedSpikes] = useState(() => readList(SPIKE_STORAGE_KEY));
   const [activeCelebrations, setActiveCelebrations] = useState([]);
@@ -116,7 +116,7 @@ export function UsageInsightAlerts({ budget, spikes, milestones, zh, onEditBudge
     setClosedCelebrations((current) => [...current, celebration.signature]);
   };
   return <div className="usage-insight-alerts" aria-live="polite">
-    {budgetVisible ? <section className="usage-insight-alert warning"><CalendarClock size={19}/><div><b>{budget.exceeded ? (zh ? `本月已超个人目标 · 已于 ${calendarDate(budget.hitDate, zh)} 触顶` : `Monthly target exceeded · reached on ${calendarDate(budget.hitDate, zh)}`) : (zh ? `按当前速度，预计 ${calendarDate(budget.hitDate, zh)} 触顶` : `At this pace, target reached around ${calendarDate(budget.hitDate, zh)}`)}</b><p>{zh ? `本月日均 ${metricValue(budget.dailyAverage, budget.metric)}；目标 ${metricValue(budget.target, budget.metric)}，月底预计约 ${metricValue(budget.projected, budget.metric)}。个人目标 · 本机观测。` : `Daily average this month: ${metricValue(budget.dailyAverage, budget.metric)}. Target: ${metricValue(budget.target, budget.metric)}; projected month end: about ${metricValue(budget.projected, budget.metric)}. Personal target · locally observed.`}</p></div><button type="button" className="insight-action" onClick={onEditBudget}>{zh ? '调整' : 'Adjust'}</button>{closeButton(zh ? '关闭预算预警' : 'Dismiss budget warning', dismissBudget)}</section> : null}
+    {budgetVisible ? <section className="usage-insight-alert warning"><CalendarClock size={19}/><div><b>{budget.exceeded ? (zh ? `本月已超个人目标 · 已于 ${calendarDate(budget.hitDate, zh)} 触顶` : `Monthly target exceeded · reached on ${calendarDate(budget.hitDate, zh)}`) : (zh ? `按当前速度，预计 ${calendarDate(budget.hitDate, zh)} 触顶` : `At this pace, target reached around ${calendarDate(budget.hitDate, zh)}`)}</b><p>{zh ? `本月日均 ${metricValue(budget.dailyAverage, budget.metric, currency)}；目标 ${metricValue(budget.target, budget.metric, currency)}，月底预计约 ${metricValue(budget.projected, budget.metric, currency)}。个人目标 · 本机观测。` : `Daily average this month: ${metricValue(budget.dailyAverage, budget.metric, currency)}. Target: ${metricValue(budget.target, budget.metric, currency)}; projected month end: about ${metricValue(budget.projected, budget.metric, currency)}. Personal target · locally observed.`}</p></div><button type="button" className="insight-action" onClick={onEditBudget}>{zh ? '调整' : 'Adjust'}</button>{closeButton(zh ? '关闭预算预警' : 'Dismiss budget warning', dismissBudget)}</section> : null}
     {spike ? <section className="usage-insight-alert danger"><AlertTriangle size={19}/><div><b>{spike.kind === 'hour' ? (zh ? `检测到 ${String(spike.hour).padStart(2, '0')}:00 用量激增` : `Usage spike detected at ${String(spike.hour).padStart(2, '0')}:00`) : (zh ? '检测到单会话用量激增' : 'Runaway session detected')}</b><p>{spike.kind === 'hour'
       ? (zh ? `今天这一小时 ${compact(spike.totalTokens)} Token${spike.ratio ? `，约为平时 P95 峰值的 ${spike.ratio.toFixed(1)} 倍` : '，超过 1M 安全阈值'}${spike.source ? `；主要来自 ${spike.source}${spike.project ? ` / ${spike.project}` : ''}` : ''}。本机观测。` : `This hour used ${compact(spike.totalTokens)} Token${spike.ratio ? `, about ${spike.ratio.toFixed(1)}× your usual P95 peak` : ', above the 1M safety floor'}${spike.source ? `; mainly ${spike.source}${spike.project ? ` / ${spike.project}` : ''}` : ''}. Locally observed.`)
       : (zh ? `今天一个 ${spike.source || 'Agent'} 会话累计 ${compact(spike.totalTokens)} Token${spike.ratio ? `，约为过去会话 P95 的 ${spike.ratio.toFixed(1)} 倍` : '，超过 5M 安全阈值'}${spike.project ? `；项目 ${spike.project}` : ''}。请检查是否存在循环任务。` : `A ${spike.source || 'Agent'} session used ${compact(spike.totalTokens)} Token today${spike.ratio ? `, about ${spike.ratio.toFixed(1)}× the prior-session P95` : ', above the 5M safety floor'}${spike.project ? `; project ${spike.project}` : ''}. Check for a looping task.`)}</p></div>{closeButton(zh ? '关闭激增预警' : 'Dismiss spike warning', dismissSpike)}</section> : null}
@@ -124,12 +124,12 @@ export function UsageInsightAlerts({ budget, spikes, milestones, zh, onEditBudge
   </div>;
 }
 
-export function UsageInsightSummary({ budget, milestones, spikes, zh, onEditBudget }) {
-  const targetLabel = budget?.metric === 'cost' ? (zh ? 'API USD 估算' : 'API USD estimate') : 'Token';
+export function UsageInsightSummary({ budget, milestones, spikes, zh, currency, onEditBudget }) {
+  const targetLabel = budget?.metric === 'cost' ? (zh ? '费用估算' : 'Cost estimate') : 'Token';
   return <section className="usage-insight-summary" aria-label={zh ? '个人目标与里程碑' : 'Personal target and milestones'}>
     <article className={`budget-summary-card ${budget?.overPace ? 'is-warning' : ''}`}>
       <header><span><Target size={15}/>{zh ? '本月目标' : 'Monthly target'}</span><em><ShieldCheck size={11}/>{zh ? '个人目标 · 本机观测' : 'Personal · locally observed'}</em></header>
-      {budget?.configured ? <><div className="budget-summary-value"><strong>{metricValue(budget.current, budget.metric)}</strong><span>/ {metricValue(budget.target, budget.metric)}</span></div><div className="insight-progress" role="progressbar" aria-label={zh ? '月度目标进度' : 'Monthly target progress'} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(Math.min(1, budget.progress) * 100)}><i style={{ width: `${Math.min(100, budget.progress * 100)}%` }}/></div><footer><span>{Math.round(budget.progress * 100)}% · {targetLabel}</span><span>{budget.mayProject ? (zh ? `月底约 ${metricValue(budget.projected, budget.metric)}` : `Month end ≈ ${metricValue(budget.projected, budget.metric)}`) : (zh ? '月初不足 3 天，暂不外推' : 'Projection starts after 3 elapsed days')}</span><button type="button" onClick={onEditBudget}><Pencil size={12}/>{zh ? '调整' : 'Edit'}</button></footer></> : <div className="budget-empty"><div><b>{zh ? '给跨 Agent 消耗设一个自己的月度节奏' : 'Set your own monthly pace across agents'}</b><p>{zh ? '目标只存浏览器，不会被当成供应商额度或实际账单。' : 'Saved only in this browser; never treated as provider quota or billing.'}</p></div><button type="button" className="ghost-btn" onClick={onEditBudget}>{zh ? '设定目标' : 'Set target'}</button></div>}
+      {budget?.configured ? <><div className="budget-summary-value"><strong>{metricValue(budget.current, budget.metric, currency)}</strong><span>/ {metricValue(budget.target, budget.metric, currency)}</span></div><div className="insight-progress" role="progressbar" aria-label={zh ? '月度目标进度' : 'Monthly target progress'} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(Math.min(1, budget.progress) * 100)}><i style={{ width: `${Math.min(100, budget.progress * 100)}%` }}/></div><footer><span>{Math.round(budget.progress * 100)}% · {targetLabel}</span><span>{budget.mayProject ? (zh ? `月底约 ${metricValue(budget.projected, budget.metric, currency)}` : `Month end ≈ ${metricValue(budget.projected, budget.metric, currency)}`) : (zh ? '月初不足 3 天，暂不外推' : 'Projection starts after 3 elapsed days')}</span><button type="button" onClick={onEditBudget}><Pencil size={12}/>{zh ? '调整' : 'Edit'}</button></footer></> : <div className="budget-empty"><div><b>{zh ? '给跨 Agent 消耗设一个自己的月度节奏' : 'Set your own monthly pace across agents'}</b><p>{zh ? '目标只存浏览器，不会被当成供应商额度或实际账单。' : 'Saved only in this browser; never treated as provider quota or billing.'}</p></div><button type="button" className="ghost-btn" onClick={onEditBudget}>{zh ? '设定目标' : 'Set target'}</button></div>}
     </article>
     <article className="milestone-summary-card">
       <header><span><Award size={15}/>{zh ? '构建里程碑' : 'Builder milestones'}</span><em><ShieldCheck size={11}/>{zh ? '本机观测 · 全量历史' : 'Locally observed · all history'}</em></header>

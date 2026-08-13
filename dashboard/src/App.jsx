@@ -14,7 +14,7 @@ import { LimitSettingsDialog, SubscriptionCenter, SubscriptionPulse } from './Su
 import { SyncDialog } from './SyncDialog.jsx';
 import { analyzeBudget, analyzeMilestones, analyzeSpikes } from './usage-insights.js';
 import { BudgetDialog, readBudget, storeBudget, UsageInsightAlerts, UsageInsightSummary } from './UsageInsights.jsx';
-import { compact, delta, duration, integer, percent } from './format.js';
+import { compact, delta, displayMoney, duration, integer, percent } from './format.js';
 import { isBenefitSection, isStandaloneSection, sectionFromHash, titleForSection, USAGE_SECTION_IDS } from './navigation.js';
 import { Button, PageState } from './ui.jsx';
 
@@ -32,10 +32,6 @@ const COPY = {
     messages: 'Messages', userMessages: 'User messages', avg: 'Avg active', requests: 'Requests', lifetime: 'Lifetime tokens', reasoning: 'Reasoning', good: 'Good',
   },
 };
-
-function currencyMoney(micros) {
-  return `$${(micros / 1e6).toFixed(2)}`;
-}
 
 function MetricHint({ children, text, className = '' }) {
   const tooltipId = useId();
@@ -132,7 +128,9 @@ export function App() {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [theme, setTheme] = useState(() => localStorage.getItem('kbu.theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
   const [locale, setLocale] = useState(() => localStorage.getItem('kbu.locale') || 'zh');
-  const currency = 'usd';
+  const [currency, setCurrency] = useState(() => localStorage.getItem('kbu.currency.v1') === 'cny' ? 'cny' : 'usd');
+  useEffect(() => { localStorage.setItem('kbu.currency.v1', currency); }, [currency]);
+  const changeCurrency = useCallback((value) => setCurrency(value === 'cny' ? 'cny' : 'usd'), []);
   const [trendMetric, setTrendMetric] = useState('tokens');
   const [heatMetric, setHeatMetric] = useState('tokens');
   const [dialog, setDialog] = useState(null);
@@ -370,14 +368,14 @@ export function App() {
       </> : <>
       <section className="page-heading"><div><h1><BarChart3 size={22}/>{t.title}</h1><p>{t.subtitle}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{t.local}</span><i/><span>{t.lastSync} {new Date(data.generatedAt).toLocaleString(zh ? 'zh-CN' : 'en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>{staleHours > 24 ? <b>{zh ? `超过 ${Math.floor(staleHours)} 小时未扫描` : `${Math.floor(staleHours)}h stale`}</b> : null}</div></div><div className="page-actions"><Button onClick={() => setDialog('method')}><Info size={14}/>{t.method}</Button><Button onClick={() => setDialog('export')}><Download size={14}/>{t.export}</Button><Button onClick={() => setDialog('share')}><Share2 size={14}/>{t.share}</Button><Button onClick={() => load(true)} disabled={refreshing}><RefreshCw className={refreshing ? 'spin' : ''} size={14}/>{t.refresh}</Button><Button variant="primary" onClick={() => setDialog('sync')}><CloudUpload size={14}/>{t.sync}</Button></div></section>
 
-      <UsageFilterBar filters={filters} options={options} onChange={setFilters} currency={currency} zh={zh}/>
+      <UsageFilterBar filters={filters} options={options} onChange={setFilters} currency={currency} onCurrency={changeCurrency} zh={zh}/>
 
       {staleHours > 24 ? <section className="stale-banner"><Info size={19}/><div><b>{zh ? '这份看板可能已经过期' : 'This dashboard may be stale'}</b><p>{zh ? '点击重新扫描即可更新本机数据；页面不会自行读取日志。' : 'Rescan to refresh local logs; the page never reads them on its own.'}</p></div><code>kbu-usage dashboard</code></section> : null}
 
-      <UsageInsightAlerts budget={budgetInsight} spikes={spikeInsight} milestones={milestoneInsight} zh={zh} onEditBudget={() => setDialog('budget')}/>
+      <UsageInsightAlerts budget={budgetInsight} spikes={spikeInsight} milestones={milestoneInsight} zh={zh} currency={currency} onEditBudget={() => setDialog('budget')}/>
 
       <section className="hero-grid">
-        <HeroCard zh={zh} label={report.pricingCoverage < .9995 ? (zh ? '已定价 API 等价价值（USD）' : 'Priced API-equivalent value (USD)') : t.cost} value={currencyMoney(report.totals.costMicros)} previousValue={currencyMoney(previous?.totals.costMicros || 0)} deltaValue={delta(report.totals.costMicros, previous?.totals.costMicros)} onHelp={() => setDialog('method')}>{zh ? `标准 API 价格，不是账单 · 覆盖 ${percent(report.pricingCoverage)} Token · ${compact(report.totals.unpricedTokens)} 未定价` : `Standard API pricing, not a bill · ${percent(report.pricingCoverage)} coverage · ${compact(report.totals.unpricedTokens)} unpriced`}</HeroCard>
+        <HeroCard zh={zh} label={report.pricingCoverage < .9995 ? (zh ? '已定价 API 等价价值（USD）' : 'Priced API-equivalent value (USD)') : t.cost} value={displayMoney(report.totals.costMicros, currency)} previousValue={displayMoney(previous?.totals.costMicros || 0, currency)} deltaValue={delta(report.totals.costMicros, previous?.totals.costMicros)} onHelp={() => setDialog('method')}>{zh ? `标准 API 价格，不是账单 · 覆盖 ${percent(report.pricingCoverage)} Token · ${compact(report.totals.unpricedTokens)} 未定价` : `Standard API pricing, not a bill · ${percent(report.pricingCoverage)} coverage · ${compact(report.totals.unpricedTokens)} unpriced`}</HeroCard>
         <HeroCard zh={zh} label={t.tokens} value={compact(report.totals.totalTokens)} previousValue={compact(previous?.totals.totalTokens || 0)} deltaValue={delta(report.totals.totalTokens, previous?.totals.totalTokens)} onHelp={() => setDialog('method')}>{zh ? `输入 ${compact(inputSide)} · 输出 ${compact(report.totals.outputTokens)} · 缓存读 ${compact(report.totals.cacheReadInputTokens)}` : `Input ${compact(inputSide)} · Output ${compact(report.totals.outputTokens)} · Cache ${compact(report.totals.cacheReadInputTokens)}`}</HeroCard>
         <HeroCard zh={zh} label={t.hit} value={report.cacheHitRate == null ? '—' : percent(report.cacheHitRate)} tone="hero-card--green">
           {report.cacheHitRate != null ? <MetricHint className="quality-hint" text={zh ? `缓存命中率 = 缓存读 ÷（输入 + 缓存写 + 缓存读）。当前 ${percent(report.cacheHitRate)}；85% 以上为“良好”，60%–85% 为“一般”，低于 60% 为“偏低”。命中率越高，通常意味着重复上下文的 API 等价成本越低。` : `Cache hit rate = cache read ÷ (input + cache write + cache read). Current: ${percent(report.cacheHitRate)}. Good is ≥85%, Fair is 60–85%, Low is <60%. A higher rate usually lowers API-equivalent cost for repeated context.`}><span className="quality"><i/>{report.cacheHitRate >= .85 ? t.good : report.cacheHitRate >= .6 ? (zh ? '一般' : 'Fair') : (zh ? '偏低' : 'Low')}</span></MetricHint> : null}
@@ -386,7 +384,7 @@ export function App() {
       </section>
 
       <section className="stats-grid"><Stat zh={zh} label={t.peak} value={compact(report.peakTokens)} sub={lastSeries?.label}/><Stat zh={zh} label={t.active} value={duration(report.activeSeconds, zh)} previousValue={duration(previous?.activeSeconds || 0, zh)} change={delta(report.activeSeconds, previous?.activeSeconds)} onHelp={() => setDialog('method')}/><Stat zh={zh} label={t.engaged} value={duration(report.engagedSeconds, zh)} previousValue={duration(previous?.engagedSeconds || 0, zh)} change={delta(report.engagedSeconds, previous?.engagedSeconds)} sub={zh ? '单次空闲最多计 30 分钟' : 'idle gaps capped at 30m'}/><Stat zh={zh} label={t.sessions} value={integer(report.sessions.length)} previousValue={integer(previous?.sessions || 0)} change={delta(report.sessions.length, previous?.sessions)}/><Stat zh={zh} label={t.messages} value={compact(report.messageCount)} previousValue={compact(previous?.messageCount || 0)} change={delta(report.messageCount, previous?.messageCount)}/><Stat zh={zh} label={t.userMessages} value={compact(report.userMessageCount)} previousValue={compact(previous?.userMessageCount || 0)} change={delta(report.userMessageCount, previous?.userMessageCount)}/><Stat zh={zh} label={t.avg} value={`${report.avgRequestSeconds.toFixed(1)}s`} sub={zh ? '≈ 活跃时长 ÷ 请求数' : '≈ active time ÷ requests'}/><Stat zh={zh} label={t.requests} value={compact(report.totals.requestCount)}/><Stat zh={zh} label={t.lifetime} value={compact(report.lifetimeTotals.totalTokens)} sub={zh ? '全部本地历史 · 保留维度筛选' : 'all local history · filters apply'}/><Stat zh={zh} label={t.reasoning} value={compact(report.totals.reasoningOutputTokens)} sub={report.topReasoning || (zh ? '未记录强度' : 'Effort not recorded')}/></section>
-      <UsageInsightSummary budget={budgetInsight} milestones={milestoneInsight} spikes={spikeInsight} zh={zh} onEditBudget={() => setDialog('budget')}/>
+      <UsageInsightSummary budget={budgetInsight} milestones={milestoneInsight} spikes={spikeInsight} zh={zh} currency={currency} onEditBudget={() => setDialog('budget')}/>
       <SubscriptionPulse data={limitData} usageData={data} settings={limitSettings} loading={limitLoading} error={limitError} onRetry={() => loadLimits(true)} onOpen={(event) => navigateSection(event, '#subscriptions')} onSettings={openLimitSettings} zh={zh}/>
       {dimensionFiltersActive ? <p className="metric-scope-note">{zh ? '会话与时长指标无法按模型或推理强度拆分，仍显示当前 Agent 范围。' : 'Sessions and time cannot be split by model or effort; the current Agent scope is shown.'}</p> : null}
 

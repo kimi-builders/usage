@@ -65,3 +65,31 @@ export function delta(current, previous) {
 export function sourceLabel(source) {
   return SOURCE_LABELS[source] || source;
 }
+
+/* 展示层币种(静态汇率,手工维护;与站点 kimi.builders 的
+   src/lib/usage/pricing.ts 中 USAGE_DISPLAY_CURRENCIES / USAGE_FX_AS_OF 保持同步;
+   只影响展示,不改美元存储与估费口径)。 */
+export const DISPLAY_FX_AS_OF = '2026-08-08';
+export const DISPLAY_CURRENCIES = {
+  usd: { rate: 1, symbol: '$', label: 'USD' },
+  cny: { rate: 7.16, symbol: '¥', label: 'CNY' },
+};
+
+export function displayMoney(micros, currency = 'usd', digits = 2) {
+  const spec = DISPLAY_CURRENCIES[currency] || DISPLAY_CURRENCIES.usd;
+  const value = (micros || 0) / 1e6 * spec.rate;
+  return `${spec.symbol}${value.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+}
+
+/* 坐标轴等窄位的紧凑币种格式:$3.7k / ¥26.5k。 */
+export function compactMoney(micros, currency = 'usd') {
+  const spec = DISPLAY_CURRENCIES[currency] || DISPLAY_CURRENCIES.usd;
+  return `${spec.symbol}${compact((micros || 0) / 1e6 * spec.rate)}`;
+}
+
+/* 预算等以「美元」为单位的数值(非 micros)。 */
+export function displayDollars(value, currency = 'usd', digits = 2) {
+  const spec = DISPLAY_CURRENCIES[currency] || DISPLAY_CURRENCIES.usd;
+  const scaled = (Number(value) || 0) * spec.rate;
+  return `${spec.symbol}${scaled.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+}

@@ -1275,3 +1275,44 @@ body.drawer-open { overflow: hidden; }
   .benefit-record-controls { width: 100%; align-items: stretch; flex-direction: column; }
   .benefit-evidence-window { padding-inline: 13px; }
 }
+
+/* ============================================================
+   v6 · site parity — 用量中心对齐站点 /usage(kimi.builders app 域)。
+   规格源:kimi.builders/app/globals.css(@theme)+ components/seg-classes.ts。
+   两仓没有共享包,本块手工对齐;站点令牌变更时回抄这里。
+   ============================================================ */
+:root {
+  --bg: #121212; --moon: #1f1f1f;
+  --paper: rgba(255,255,255,.84); --paper-strong: rgba(255,255,255,.94);
+  --grey: rgba(255,255,255,.56); --grey-soft: rgba(255,255,255,.4);
+  --line: rgba(255,255,255,.12); --line-strong: rgba(255,255,255,.2);
+  --card: rgba(255,255,255,.05); --hover: rgba(255,255,255,.035);
+  --blue: #1a88ff; --surface: #181818; --surface-raised: #1f1f1f;
+}
+
+/* —— 筛选条:单行布局(历轮叠加的 grid/堆叠规则在此统一复位)—— */
+@media (min-width: 901px) {
+  .filter-bar { display: flex; grid-template-columns: initial; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 0; padding: 10px 0; }
+  .filter-bar .range-segment { flex: 0 0 auto; grid-column: initial; width: auto; overflow: visible; }
+  .filter-bar .dimension-bar { order: initial; flex: 0 1 auto; flex-basis: auto; display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+  .filter-bar .filter-chips { order: initial; flex-basis: auto; padding: 0; }
+}
+.currency-toggle { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; padding: 3px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 9px; background: var(--card); }
+.currency-toggle button { min-width: 34px; min-height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: var(--grey); font: 600 10px/1 'JetBrains Mono', monospace; cursor: pointer; }
+.currency-toggle button:hover { color: var(--paper); }
+.currency-toggle button.active { background: var(--paper); color: var(--bg); }
+
+/* —— 明细表:可读性字号(站内滚动保留,细滚动条沿用)—— */
+.records-scroll th { font-size: 9px; letter-spacing: .04em; }
+.records-scroll td { font-size: 10.5px; }
+.records-scroll th, .records-scroll td { padding: 9px 12px; }
+
+/* —— 洞察卡(预算/里程碑)小字从 7.5px 抬到可读物 —— */
+.budget-summary-card > header em, .milestone-summary-card > header em,
+.milestone-summary-card > footer, .budget-summary-card > footer { font-size: 8.5px; }
+.milestone-next small { font-size: 8.5px; }
+
+@media (max-width: 900px) {
+  .currency-toggle { margin-left: 0; }
+  .currency-toggle button { min-height: var(--touch-target); }
+}

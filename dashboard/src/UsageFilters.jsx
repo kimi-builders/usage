@@ -84,9 +84,6 @@ export function UsageFilterBar({ filters, options, onChange, currency, onCurrenc
   const [mobileOpen, setMobileOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(() => DIMENSIONS.some((dimension) => dimension.secondary && filters[dimension.key]?.length));
   const [openMenu, setOpenMenu] = useState(null);
-  useEffect(() => {
-    if (currency && currency !== 'usd') onCurrency?.('usd');
-  }, [currency, onCurrency]);
   const activeCount = DIMENSIONS.reduce((sum, dimension) => sum + (filters[dimension.key]?.length || 0), 0);
   const primary = DIMENSIONS.filter((dimension) => !dimension.secondary);
   const secondary = DIMENSIONS.filter((dimension) => dimension.secondary);
@@ -106,6 +103,10 @@ export function UsageFilterBar({ filters, options, onChange, currency, onCurrenc
         <button className="more-filter" type="button" onClick={() => setMoreOpen((value) => !value)} aria-expanded={moreOpen}><Settings2 size={13}/>{moreOpen ? (zh ? '收起筛选' : 'Fewer filters') : `${zh ? '更多筛选' : 'More filters'} +${secondary.length}`}</button>
         {moreOpen ? secondary.map((dimension) => <DimensionDropdown key={dimension.key} dimension={dimension} values={options[dimension.key] || []} selected={filters[dimension.key] || []} onApply={(value) => update(dimension.key, value)} open={openMenu === dimension.key} setOpen={setOpenMenu} zh={zh}/>) : null}
         {activeCount ? <button className="clear-filters" type="button" onClick={() => onChange({ ...filters, ...Object.fromEntries(DIMENSIONS.map((dimension) => [dimension.key, []])) })}>{zh ? '清除筛选' : 'Clear filters'}</button> : null}
+        <div className="currency-toggle" role="radiogroup" aria-label={zh ? '展示币种' : 'Display currency'}>
+          <button type="button" role="radio" aria-checked={currency !== 'cny'} className={currency !== 'cny' ? 'active' : ''} onClick={() => onCurrency?.('usd')}>{zh ? '$' : '$'}</button>
+          <button type="button" role="radio" aria-checked={currency === 'cny'} className={currency === 'cny' ? 'active' : ''} onClick={() => onCurrency?.('cny')}>¥</button>
+        </div>
       </div>
       {activeCount ? <div className="filter-chips">
         {DIMENSIONS.flatMap((dimension) => (filters[dimension.key] || []).map((value) => <span key={`${dimension.key}:${value}`}><small>{zh ? dimension.zh : dimension.en}</small>{optionLabel(dimension, value, zh)}<button type="button" aria-label={zh ? '移除此筛选' : 'Remove filter'} onClick={() => update(dimension.key, filters[dimension.key].filter((item) => item !== value))}><X size={11}/></button></span>))}
