@@ -7,6 +7,9 @@ const AGENT_COMMANDS = [
   { source: 'opencode', commands: [['opencode', '--version']] },
   { source: 'gemini-cli', commands: [['gemini', '--version']] },
   { source: 'copilot-cli', commands: [['copilot', '--version']] },
+  { source: 'pi-coding-agent', commands: [['pi', '--version']] },
+  { source: 'zcode', commands: [['zcode', '--version']] },
+  { source: 'workbuddy', commands: [['workbuddy', '--version']] },
 ];
 
 export function versionFromOutput(output) {

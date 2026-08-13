@@ -8,6 +8,9 @@ import { parse as parseAntigravity, roots as antigravityRoots } from './antigrav
 import { parse as parseCopilotCli, roots as copilotCliRoots } from './copilot-cli.js';
 import { parse as parseRooCode, roots as rooCodeRoots } from './roo-code.js';
 import { parse as parseCursor, roots as cursorRoots } from './cursor.js';
+import { parse as parsePiCodingAgent, roots as piCodingAgentRoots } from './pi-coding-agent.js';
+import { parse as parseZcode, roots as zcodeRoots } from './zcode.js';
+import { parse as parseWorkbuddy, roots as workbuddyRoots } from './workbuddy.js';
 import { canonicalModelId } from '../model-meta.js';
 
 // Multi-source registry. Tiers: core (always on), stable (on), beta (opt-in,
@@ -24,6 +27,9 @@ export const sourceRegistry = [
   { id: 'antigravity', tier: 'stable', parse: parseAntigravity, roots: antigravityRoots },
   { id: 'copilot-cli', tier: 'stable', parse: parseCopilotCli, roots: copilotCliRoots },
   { id: 'roo-code', tier: 'stable', parse: parseRooCode, roots: rooCodeRoots },
+  { id: 'pi-coding-agent', tier: 'stable', parse: parsePiCodingAgent, roots: piCodingAgentRoots },
+  { id: 'zcode', tier: 'stable', parse: parseZcode, roots: zcodeRoots },
+  { id: 'workbuddy', tier: 'stable', parse: parseWorkbuddy, roots: workbuddyRoots },
   { id: 'cursor', tier: 'explicit-opt-in', parse: parseCursor, roots: cursorRoots },
 ];
 

@@ -2,7 +2,7 @@ const SOURCE_IDS = new Set([
   'kimi-code', 'claude-code', 'codex', 'gemini-cli', 'opencode', 'copilot-cli',
   'grok', 'craft-agent', 'cursor', 'dimagent', 'openclaw', 'omp',
   'pi-coding-agent', 'qwen-code', 'amp', 'droid', 'antigravity', 'trae-cli',
-  'hermes', 'kiro', 'mimocode', 'cline', 'roo-code', 'zcode',
+  'hermes', 'kiro', 'mimocode', 'cline', 'roo-code', 'zcode', 'workbuddy',
 ]);
 
 const MAX_TOKEN_COUNT = 1_000_000_000_000_000;

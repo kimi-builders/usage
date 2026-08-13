@@ -318,6 +318,8 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .tool-glyph--opencode { --tool-ink: #fbbf24; }
 .tool-glyph--cursor { --tool-ink: var(--paper-strong); }
 .tool-glyph--roo { --tool-ink: #c084fc; }
+.tool-glyph--pi { --tool-ink: #f97316; }
+.tool-glyph--zcode { --tool-ink: #7c8cff; }
 .tool-glyph--fallback { border: 1px solid var(--line); font: 600 9px/1 'JetBrains Mono', monospace; }
 
 .page-footer { min-height: 90px; display: flex; align-items: center; gap: 18px; color: var(--grey); font: 500 9.5px/1.5 'JetBrains Mono', monospace; }

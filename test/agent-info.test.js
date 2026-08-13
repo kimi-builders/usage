@@ -13,6 +13,9 @@ test('Agent version detection uses source-specific commands and skips missing to
     ['kimi-cli --version', 'kimi, version 1.44.0'],
     ['claude --version', '2.1.220 (Claude Code)'],
     ['codex --version', 'codex-cli 0.146.1'],
+    ['pi --version', 'pi 0.42.3'],
+    ['zcode --version', 'zcode v0.16.3'],
+    ['workbuddy --version', 'WorkBuddy 1.8.0'],
   ]);
   const versions = detectAgentVersions({
     run(command, args) {
@@ -23,5 +26,8 @@ test('Agent version detection uses source-specific commands and skips missing to
     'kimi-code': '1.44.0',
     'claude-code': '2.1.220',
     codex: '0.146.1',
+    'pi-coding-agent': '0.42.3',
+    zcode: '0.16.3',
+    workbuddy: '1.8.0',
   });
 });

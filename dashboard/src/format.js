@@ -7,6 +7,9 @@ export const SOURCE_LABELS = {
   antigravity: 'antigravity',
   'copilot-cli': 'Copilot CLI',
   'roo-code': 'Roo Code',
+  'pi-coding-agent': 'Pi',
+  zcode: 'ZCode',
+  workbuddy: 'WorkBuddy',
   cursor: 'Cursor',
 };
 

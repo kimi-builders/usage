@@ -10,6 +10,8 @@ import qoderIcon from '@lobehub/icons-static-svg/icons/qoder-color.svg';
 import traeIcon from '@lobehub/icons-static-svg/icons/trae-color.svg';
 import windsurfMono from '@lobehub/icons-static-svg/icons/windsurf.svg?raw';
 import rooCodeMono from '@lobehub/icons-static-svg/icons/roocode.svg?raw';
+import piMono from '@lobehub/icons-static-svg/icons/pi.svg?raw';
+import zaiMono from '@lobehub/icons-static-svg/icons/zai.svg?raw';
 import { createElement } from 'react';
 
 /* Agent glyph registry — mirrors the site's components/AgentIcon.tsx split:
@@ -29,6 +31,8 @@ const TOOL_ICONS = {
   trae: { src: traeIcon, tone: 'trae', label: 'Trae' },
   windsurf: { svg: windsurfMono, tone: 'windsurf', label: 'Windsurf' },
   'roo-code': { svg: rooCodeMono, tone: 'roo', label: 'Roo Code' },
+  'pi-coding-agent': { svg: piMono, tone: 'pi', label: 'Pi' },
+  zcode: { svg: zaiMono, tone: 'zcode', label: 'ZCode' },
 };
 
 export function ToolGlyph({ id, size = 16, className = '' }) {
