@@ -90,18 +90,26 @@ export function UsageFilterBar({ filters, options, onChange, currency, onCurrenc
   const activeCount = DIMENSIONS.reduce((sum, dimension) => sum + (filters[dimension.key]?.length || 0), 0);
   const primary = DIMENSIONS.filter((dimension) => !dimension.secondary);
   const secondary = DIMENSIONS.filter((dimension) => dimension.secondary);
+  const activeDimensions = DIMENSIONS.filter((dimension) => filters[dimension.key]?.length);
+  const activeRange = RANGE_OPTIONS.find((item) => item.id === filters.range) || RANGE_OPTIONS[0];
   const update = (key, value) => onChange({ ...filters, [key]: value });
   return <section className="filter-bar" aria-label={zh ? '用量筛选' : 'Usage filters'}>
-    <RangeSegment active={filters.range} onChange={(range) => update('range', range)} zh={zh}/>
-    <button className="mobile-filter-toggle" type="button" onClick={() => setMobileOpen((value) => !value)} aria-expanded={mobileOpen}><Filter size={13}/>{zh ? '筛选' : 'Filters'}{activeCount ? ` · ${activeCount}` : ''}</button>
-    <div className={`dimension-bar ${mobileOpen ? 'open' : ''}`}>
-      {primary.map((dimension) => <DimensionDropdown key={dimension.key} dimension={dimension} values={options[dimension.key] || []} selected={filters[dimension.key] || []} onApply={(value) => update(dimension.key, value)} open={openMenu === dimension.key} setOpen={setOpenMenu} zh={zh}/>)}
-      <button className="more-filter" type="button" onClick={() => setMoreOpen((value) => !value)} aria-expanded={moreOpen}><Settings2 size={13}/>{moreOpen ? (zh ? '收起筛选' : 'Fewer filters') : `${zh ? '更多筛选' : 'More filters'} +${secondary.length}`}</button>
-      {moreOpen ? secondary.map((dimension) => <DimensionDropdown key={dimension.key} dimension={dimension} values={options[dimension.key] || []} selected={filters[dimension.key] || []} onApply={(value) => update(dimension.key, value)} open={openMenu === dimension.key} setOpen={setOpenMenu} zh={zh}/>) : null}
-      {activeCount ? <button className="clear-filters" type="button" onClick={() => onChange({ ...filters, ...Object.fromEntries(DIMENSIONS.map((dimension) => [dimension.key, []])) })}>{zh ? '清除筛选' : 'Clear filters'}</button> : null}
+    <div className="mobile-filter-summary">
+      <strong>{zh ? activeRange.zh : activeRange.en}</strong>
+      <div>{activeDimensions.slice(0, 2).map((dimension) => <span key={dimension.key}>{zh ? dimension.zh : dimension.en} · {filters[dimension.key].length}</span>)}{activeDimensions.length > 2 ? <span>+{activeDimensions.length - 2}</span> : null}{!activeDimensions.length ? <small>{zh ? '全部数据' : 'All data'}</small> : null}</div>
+      <button className="mobile-filter-toggle" type="button" onClick={() => setMobileOpen((value) => !value)} aria-expanded={mobileOpen} aria-controls="usage-filter-controls"><Filter size={13}/>{mobileOpen ? (zh ? '收起' : 'Close') : (zh ? '展开' : 'Expand')}<ChevronDown className={mobileOpen ? 'open' : ''} size={13}/></button>
     </div>
-    {activeCount ? <div className="filter-chips">
-      {DIMENSIONS.flatMap((dimension) => (filters[dimension.key] || []).map((value) => <span key={`${dimension.key}:${value}`}><small>{zh ? dimension.zh : dimension.en}</small>{optionLabel(dimension, value, zh)}<button type="button" aria-label={zh ? '移除此筛选' : 'Remove filter'} onClick={() => update(dimension.key, filters[dimension.key].filter((item) => item !== value))}><X size={11}/></button></span>))}
-    </div> : null}
+    <div className={`filter-controls ${mobileOpen ? 'open' : ''}`} id="usage-filter-controls">
+      <RangeSegment active={filters.range} onChange={(range) => update('range', range)} zh={zh}/>
+      <div className={`dimension-bar ${mobileOpen ? 'open' : ''}`}>
+        {primary.map((dimension) => <DimensionDropdown key={dimension.key} dimension={dimension} values={options[dimension.key] || []} selected={filters[dimension.key] || []} onApply={(value) => update(dimension.key, value)} open={openMenu === dimension.key} setOpen={setOpenMenu} zh={zh}/>)}
+        <button className="more-filter" type="button" onClick={() => setMoreOpen((value) => !value)} aria-expanded={moreOpen}><Settings2 size={13}/>{moreOpen ? (zh ? '收起筛选' : 'Fewer filters') : `${zh ? '更多筛选' : 'More filters'} +${secondary.length}`}</button>
+        {moreOpen ? secondary.map((dimension) => <DimensionDropdown key={dimension.key} dimension={dimension} values={options[dimension.key] || []} selected={filters[dimension.key] || []} onApply={(value) => update(dimension.key, value)} open={openMenu === dimension.key} setOpen={setOpenMenu} zh={zh}/>) : null}
+        {activeCount ? <button className="clear-filters" type="button" onClick={() => onChange({ ...filters, ...Object.fromEntries(DIMENSIONS.map((dimension) => [dimension.key, []])) })}>{zh ? '清除筛选' : 'Clear filters'}</button> : null}
+      </div>
+      {activeCount ? <div className="filter-chips">
+        {DIMENSIONS.flatMap((dimension) => (filters[dimension.key] || []).map((value) => <span key={`${dimension.key}:${value}`}><small>{zh ? dimension.zh : dimension.en}</small>{optionLabel(dimension, value, zh)}<button type="button" aria-label={zh ? '移除此筛选' : 'Remove filter'} onClick={() => update(dimension.key, filters[dimension.key].filter((item) => item !== value))}><X size={11}/></button></span>))}
+      </div> : null}
+    </div>
   </section>;
 }

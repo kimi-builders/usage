@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildSubscriptionInsights, subscriptionSourceIds } from '../src/subscription-insights.js';
+import {
+  buildSubscriptionInsights, buildSubscriptionViewUsage, filterBenefitUsageRecords,
+  localEvidenceDayKey, nearestBenefitObservation, subscriptionSourceIds,
+} from '../src/subscription-insights.js';
 
 const generatedAt = '2026-08-11T12:00:00.000Z';
 
@@ -353,4 +356,52 @@ test('keeps an expired quota cycle historical without emitting current pace advi
   assert.equal(provider.quotaObservation.historicalWindows, 1);
   assert.ok(codes.includes('quota-historical'));
   assert.equal(codes.some((code) => ['pace-low', 'pace-high', 'exhausted'].includes(code)), false);
+});
+
+test('scopes benefit activity and distribution without changing provider attribution', () => {
+  const end = Date.parse(generatedAt);
+  const usage = { generatedAt, buckets: [
+    bucket('inside', new Date(end - 29 * 86_400_000).toISOString(), 'gpt-inside', 300),
+    bucket('boundary', new Date(end - 30 * 86_400_000).toISOString(), 'gpt-boundary', 200),
+    bucket('outside', new Date(end - 30 * 86_400_000 - 1).toISOString(), 'gpt-outside', 100),
+    { ...bucket('other', generatedAt, 'claude', 9_000), source: 'claude-code' },
+  ] };
+  const all = buildSubscriptionViewUsage(usage, ['codex'], 'all');
+  const month = buildSubscriptionViewUsage(usage, ['codex'], '30d');
+
+  assert.equal(all.totals.totalTokens, 600);
+  assert.equal(month.totals.totalTokens, 500);
+  assert.deepEqual(month.modelRows.map((row) => row.id), ['gpt-inside', 'gpt-boundary']);
+  assert.equal(month.sources.includes('claude-code'), false);
+  assert.equal(buildSubscriptionInsights(usage, limits).providers[0].lifetimeTotals.totalTokens, 600);
+});
+
+test('benefit view ranges are empty-safe and invalid values preserve the all-history default', () => {
+  const empty = buildSubscriptionViewUsage({ generatedAt, buckets: [] }, ['codex'], '30d');
+  assert.equal(empty.totals.totalTokens, 0);
+  assert.equal(empty.activity.flat().some((cell) => cell.observed), false);
+  const fallback = buildSubscriptionViewUsage(snapshot, ['codex'], 'unexpected');
+  assert.equal(fallback.range, 'all');
+  assert.equal(fallback.totals.totalTokens, 10_500);
+});
+
+test('local evidence day keys honor the machine timezone and record windows include their boundary', () => {
+  assert.equal(localEvidenceDayKey(new Date(2026, 7, 11, 23, 59)), '2026-08-11');
+  assert.equal(localEvidenceDayKey(new Date(2026, 7, 12, 0, 1)), '2026-08-12');
+  const end = Date.parse(generatedAt);
+  const records = [
+    { observedAt: new Date(end - 30 * 86_400_000).toISOString(), id: 'boundary' },
+    { observedAt: new Date(end - 30 * 86_400_000 - 1).toISOString(), id: 'outside' },
+  ];
+  assert.deepEqual(filterBenefitUsageRecords(records, '30d', generatedAt).map((row) => row.id), ['boundary']);
+});
+
+test('quota evidence drilldown locates the nearest sanitized observation', () => {
+  const rows = [
+    { observedAt: '2026-08-11T10:00:00.000Z', id: 'early' },
+    { observedAt: '2026-08-11T10:08:00.000Z', id: 'near' },
+    { observedAt: 'invalid', id: 'invalid' },
+  ];
+  assert.equal(nearestBenefitObservation(rows, '2026-08-11T10:06:00.000Z').id, 'near');
+  assert.equal(nearestBenefitObservation(rows, 'invalid'), null);
 });

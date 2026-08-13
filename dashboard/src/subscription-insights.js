@@ -22,6 +22,8 @@ const DAY_SECONDS = 86_400;
 const MONTH_SECONDS = DAY_SECONDS * 30;
 const EVIDENCE_SKEW_TOLERANCE_MS = 5 * 60 * 1_000;
 
+export const BENEFIT_VIEW_RANGES = ['30d', '90d', 'all'];
+
 function finite(value) {
   if (value == null || value === '') return null;
   const number = Number(value);
@@ -187,6 +189,89 @@ function providerUsageRecords(buckets) {
     agentVersion: bucket.agentVersion || null,
     ...sumBuckets([bucket]),
   }));
+}
+
+function normalizedBenefitRange(range) {
+  return BENEFIT_VIEW_RANGES.includes(range) ? range : 'all';
+}
+
+function benefitReferenceTime(snapshot, now, buckets) {
+  const explicit = Number.isFinite(now) ? now : null;
+  const generated = timestamp(snapshot?.generatedAt);
+  if (explicit != null) return explicit;
+  if (generated != null) return generated;
+  return buckets.reduce((latest, bucket) => {
+    const time = timestamp(bucket.bucketStart);
+    return time == null ? latest : Math.max(latest, time);
+  }, Number.NEGATIVE_INFINITY);
+}
+
+export function localEvidenceDayKey(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const pad = (part) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+export function filterBenefitUsageRecords(records, range = 'all', referenceAt = null) {
+  const normalized = normalizedBenefitRange(range);
+  const values = Array.isArray(records) ? records : [];
+  if (normalized === 'all') return [...values];
+  const fallback = values.reduce((latest, row) => {
+    const time = timestamp(row.observedAt);
+    return time == null ? latest : Math.max(latest, time);
+  }, Number.NEGATIVE_INFINITY);
+  const end = timestamp(referenceAt) ?? (Number.isFinite(referenceAt) ? referenceAt : null)
+    ?? (Number.isFinite(fallback) ? fallback : null);
+  if (end == null) return [];
+  const days = normalized === '30d' ? 30 : 90;
+  const start = end - days * DAY_SECONDS * 1_000;
+  return values.filter((row) => {
+    const time = timestamp(row.observedAt);
+    return time != null && time >= start && time <= end;
+  });
+}
+
+export function nearestBenefitObservation(records, observedAt) {
+  const target = timestamp(observedAt);
+  if (target == null) return null;
+  return (Array.isArray(records) ? records : []).reduce((nearest, row) => {
+    const time = timestamp(row.observedAt);
+    if (time == null) return nearest;
+    const distance = Math.abs(time - target);
+    return nearest == null || distance < nearest.distance ? { row, distance } : nearest;
+  }, null)?.row || null;
+}
+
+// Activity and distribution views may choose a local evidence window without
+// changing quota, value, capacity, or decision signals built from full history.
+export function buildSubscriptionViewUsage(snapshot, sourceIds, range = 'all', { now = null } = {}) {
+  const normalized = normalizedBenefitRange(range);
+  const sources = new Set(Array.isArray(sourceIds) ? sourceIds : []);
+  const allBuckets = (Array.isArray(snapshot?.buckets) ? snapshot.buckets : [])
+    .filter((bucket) => sources.has(bucket.source));
+  const referenceAt = benefitReferenceTime(snapshot, now, allBuckets);
+  const days = normalized === '30d' ? 30 : normalized === '90d' ? 90 : null;
+  const start = days == null || !Number.isFinite(referenceAt)
+    ? null
+    : referenceAt - days * DAY_SECONDS * 1_000;
+  const buckets = normalized === 'all' ? allBuckets : allBuckets.filter((bucket) => {
+    const time = timestamp(bucket.bucketStart);
+    if (time == null) return false;
+    return start != null && time >= start && time <= referenceAt;
+  });
+  return {
+    range: normalized,
+    sources: [...sources],
+    evidenceStart: start == null ? null : new Date(start).toISOString(),
+    evidenceEnd: Number.isFinite(referenceAt) ? new Date(referenceAt).toISOString() : null,
+    bucketCount: buckets.length,
+    totals: sumBuckets(buckets),
+    activity: providerActivity(buckets),
+    modelRows: groupModels(buckets),
+    projectRows: groupDimension(buckets, (bucket) => bucket.project || 'private', (bucket) => bucket.project || 'Private / hidden'),
+    effortRows: groupDimension(buckets, (bucket) => bucket.reasoningEffort || 'not-recorded', (bucket) => bucket.reasoningEffort || 'Not recorded'),
+  };
 }
 
 function confidence({ coverage, usedPercent, requestCount }) {

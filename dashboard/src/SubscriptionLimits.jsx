@@ -373,10 +373,11 @@ export function SubscriptionPulse({ data, usageData, settings, loading, error, o
   </section>;
 }
 
-export function SubscriptionCenter({ data, usageData, settings, loading, error, onRefresh, onSettings, view = 'overview', zh }) {
+export function SubscriptionCenter({ data, usageData, settings, loading, error, onRefresh, onSettings, onViewChange, view = 'overview', zh }) {
   const insights = useMemo(() => buildSubscriptionInsights(usageData, data, { settings }), [usageData, data, settings]);
   const providers = insights.providers;
   const [selected, setSelected] = useState(() => localStorage.getItem(SELECTED_BENEFIT_KEY) || '');
+  const [drilldown, setDrilldown] = useState(null);
   useEffect(() => {
     if (!providers.some((provider) => provider.id === selected)) setSelected(providers[0]?.id || '');
   }, [providers, selected]);
@@ -384,6 +385,10 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
     if (selected) localStorage.setItem(SELECTED_BENEFIT_KEY, selected);
   }, [selected]);
   const active = providers.find((provider) => provider.id === selected) || providers[0];
+  const openEvidence = (evidence) => {
+    setDrilldown({ ...evidence, providerId: active?.id || null });
+    onViewChange?.('records');
+  };
   if (loading && !data) return <section className="panel limits-panel limits-panel--loading" id="subscriptions"><div><h2>{zh ? '正在读取订阅中心' : 'Loading Subscription Center'}</h2><p>{zh ? '未启用供应商时不会发起外部网络请求。' : 'No external requests are made until a provider is enabled.'}</p></div></section>;
   if (error && !data) return <PageState className="panel limits-panel" kind="error" title={zh ? '权益数据读取失败' : 'Could not load benefit data'} body={error} action={<button className="primary-btn" type="button" onClick={() => onRefresh(true)}><RefreshCw size={14}/>{zh ? '重新读取' : 'Try again'}</button>}/>;
   if (!data?.enabled) return <section className="panel limits-panel limits-panel--empty" id="subscriptions">
@@ -391,11 +396,11 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
   </section>;
   if (view !== 'overview') return <section className="subscription-center subscription-center--detail" id={`subscription-${view}`}>
     {error ? <div className="limits-banner">{error}</div> : null}
-    <BenefitProviderPicker providers={providers} active={active} onChange={setSelected} zh={zh}/>
-    {active && view === 'trend' ? <BenefitTrendView provider={active} zh={zh}/> : null}
-    {active && view === 'activity' ? <BenefitActivityView provider={active} zh={zh}/> : null}
-    {active && view === 'distribution' ? <BenefitDistributionView provider={active} zh={zh}/> : null}
-    {active && view === 'records' ? <BenefitRecordsView provider={active} zh={zh}/> : null}
+    <BenefitProviderPicker providers={providers} active={active} onChange={(value) => { setSelected(value); setDrilldown(null); }} zh={zh}/>
+    {active && view === 'trend' ? <BenefitTrendView provider={active} onDrilldown={openEvidence} zh={zh}/> : null}
+    {active && view === 'activity' ? <BenefitActivityView provider={active} usageData={usageData} zh={zh}/> : null}
+    {active && view === 'distribution' ? <BenefitDistributionView provider={active} usageData={usageData} zh={zh}/> : null}
+    {active && view === 'records' ? <BenefitRecordsView provider={active} drilldown={drilldown?.providerId === active.id ? drilldown : null} onClearDrilldown={() => setDrilldown(null)} zh={zh}/> : null}
     <section className="subscription-method-note"><Info size={16}/><div><b>{zh ? '这里展示的三类数据不会混算' : 'Three evidence classes remain separate'}</b><p>{zh ? '官方额度是供应商事实，本机 Token 是 Agent 日志，容量和价值是带前提的推算。读取不到的数据明确留空，不会当成 0、免费或无限。' : 'Official quota is a provider fact, local Tokens come from Agent logs, and capacity/value are conditional estimates. Missing data stays empty—never zero, free, or unlimited.'}</p></div></section>
   </section>;
   return <section className="subscription-center" id="subscriptions">
