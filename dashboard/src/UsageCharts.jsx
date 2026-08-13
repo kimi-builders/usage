@@ -1,6 +1,8 @@
 import { useId, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Cpu, Folder, Monitor, Terminal } from 'lucide-react';
-import { heatmapView } from './analytics.js';
+import { buildHeatmap, heatmapView } from './analytics.js';
+import { HeatModeTabs, WeekPager, storedHeatMode, storeHeatMode } from './heat-controls.jsx';
+import { addLocalWeeks, firstDataWeekStart, localWeekEnd, localWeekStart, weekLabel } from './week.js';
 import { CHART_COLORS as COLORS } from './chart-colors.js';
 import { compact, distributionShare, duration, percent, sourceLabel, usdMoney } from './format.js';
 import { ToolGlyph } from './tool-glyphs.js';
@@ -224,15 +226,38 @@ function heatValueText(value, metric, zh) {
   return `${compact(value)} tokens`;
 }
 
-export function ActivityHeatmap({ report, zh, metric, onMetric }) {
+export function ActivityHeatmap({ report, data, zh, metric, onMetric }) {
   const metricPanelId = useId();
   const heatCellRefs = useRef(new Map());
+  const [mode, setMode] = useState(() => storedHeatMode('kbu.usage.heat-mode.v1'));
+  const [weekOffset, setWeekOffset] = useState(0);
   const weekdays = zh ? ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const weekdayShort = zh ? ['一', '二', '三', '四', '五', '六', '日'] : ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
-  const view = useMemo(() => heatmapView(report.heatmap, metric), [report.heatmap, metric]);
   const [hovered, setHovered] = useState(null);
   const [focusCell, setFocusCell] = useState(null);
-  const cells = report.heatmap.cells;
+  const snapshotTime = useMemo(() => {
+    const value = new Date(data?.generatedAt || Date.now());
+    return Number.isFinite(value.getTime()) ? value : new Date();
+  }, [data]);
+  const weekStartMs = addLocalWeeks(localWeekStart(snapshotTime), weekOffset).getTime();
+  const weekEndMs = localWeekEnd(weekStartMs).getTime();
+  const firstWeekMs = useMemo(() => firstDataWeekStart((data?.buckets || []).map((bucket) => bucket.bucketStart))?.getTime() || null, [data]);
+  const weekHeatmap = useMemo(() => {
+    if (mode !== 'week' || !data) return null;
+    const inWeek = (value) => {
+      const time = new Date(value).getTime();
+      return Number.isFinite(time) && time >= weekStartMs && time < weekEndMs;
+    };
+    return buildHeatmap(
+      (data.buckets || []).filter((bucket) => inWeek(bucket.bucketStart)),
+      (data.activityHours || []).filter((hour) => inWeek(hour.hourStart)),
+    );
+  }, [mode, data, weekStartMs, weekEndMs]);
+  const activeHeatmap = mode === 'week' && weekHeatmap ? weekHeatmap : report.heatmap;
+  const view = useMemo(() => heatmapView(activeHeatmap, metric), [activeHeatmap, metric]);
+  const cells = activeHeatmap.cells;
+  const changeMode = (value) => { setMode(value); storeHeatMode('kbu.usage.heat-mode.v1', value); setHovered(null); setFocusCell(null); };
+  const changeWeek = (offset) => { setWeekOffset(offset); setHovered(null); setFocusCell(null); };
   let firstObserved = null;
   for (let day = 0; day < cells.length && !firstObserved; day += 1) {
     const hour = cells[day].findIndex((cell) => cell.observed);
@@ -278,7 +303,8 @@ export function ActivityHeatmap({ report, zh, metric, onMetric }) {
   const timezone = `GMT${offset >= 0 ? '+' : ''}${Number.isInteger(offset) ? offset : offset.toFixed(1)}`;
   return <div className="activity-layout" id="activity">
     <section className="panel heatmap-panel" onMouseLeave={() => setHovered(null)}>
-      <header className="panel-header"><div><h2>{zh ? '分时活跃' : 'Activity by hour'}</h2><p>{zh ? '星期 × 本地小时 · 新版 Collector 精确到小时' : 'Weekday × local hour · exact hourly facts from current collectors'}</p></div><MetricTabs zh={zh} active={metric} onChange={onMetric} prompts controlsId={metricPanelId}/></header>
+      <header className="panel-header"><div><h2>{zh ? '分时活跃' : 'Activity by hour'}</h2><p>{mode === 'week' ? (zh ? `${weekLabel(weekStartMs, zh)} · 单周实际用量` : `${weekLabel(weekStartMs, zh)} · single-week actuals`) : (zh ? '聚合 · 星期 × 本地小时 · 窗口跟随顶部筛选器' : 'Aggregate · weekday × local hour · window follows the filter bar')}</p></div><MetricTabs zh={zh} active={metric} onChange={onMetric} prompts controlsId={metricPanelId}/></header>
+      <div className="heatmap-controls"><HeatModeTabs mode={mode} onChange={changeMode} zh={zh} label={zh ? '热图模式' : 'Heatmap mode'}/>{mode === 'week' ? <WeekPager label={weekLabel(weekStartMs, zh)} canPrev={firstWeekMs != null && weekStartMs > firstWeekMs} canNext={weekOffset < 0} onPrev={() => changeWeek(weekOffset - 1)} onNext={() => changeWeek(weekOffset + 1)} onCurrent={() => changeWeek(0)} showCurrent={weekOffset < 0} zh={zh} ariaLabel={zh ? '选择周' : 'Choose week'}/> : <span className="heat-mode-note">{zh ? '聚合所选范围内的星期 × 小时' : 'Aggregates weekday × hour across the selected range'}</span>}</div>
       <div className="heatmap-scroll" id={metricPanelId} role="tabpanel" aria-labelledby={`${metricPanelId}-${metric}-tab`} tabIndex={0}><div className="heatmap-grid">{report.heatmap.cells.map((row, day) => <div className="heatmap-row" key={weekdays[day]}><span>{weekdayShort[day]}</span><div>{row.map((cell, hour) => {
         const value = metric === 'cost' ? cell.costMicros : metric === 'duration' ? cell.activeSeconds : metric === 'prompts' ? cell.userMessageCount : cell.totalTokens;
         const level = value > 0 && view.max ? Math.max(1, Math.ceil((value / view.max) * 6)) : 0;

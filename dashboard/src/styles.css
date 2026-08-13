@@ -1198,6 +1198,28 @@ body.drawer-open { overflow: hidden; }
   .streak-value span { grid-column: 3; margin: 0; }
 }
 
+/* v5 · heatmap dual mode (聚合 aggregate vs 单周 single week) */
+.heatmap-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 22px 0; }
+.benefit-heat-controls { padding: 10px 20px 0; }
+.heat-mode-tabs { display: inline-flex; align-items: center; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: var(--card); }
+.heat-mode-tabs button { min-height: 32px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--grey); font: 500 9px/1 'JetBrains Mono', monospace; cursor: pointer; }
+.heat-mode-tabs button:hover { color: var(--paper); }
+.heat-mode-tabs button.active { background: var(--paper); color: var(--bg); }
+.heat-mode-note { color: var(--grey-soft); font: 500 8.5px/1.4 'JetBrains Mono', monospace; }
+.heat-week-pager { display: inline-flex; align-items: center; gap: 8px; }
+.heat-week-pager > button { min-width: 32px; min-height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--paper); cursor: pointer; }
+.heat-week-pager > button:hover:not(:disabled) { border-color: var(--line-strong); background: var(--hover); }
+.heat-week-pager > button:disabled { opacity: .35; cursor: default; }
+.heat-week-pager > b { color: var(--paper); font: 500 10px/1 'JetBrains Mono', monospace; white-space: nowrap; }
+.heat-week-pager .heat-week-current { width: auto; padding: 0 10px; border-color: transparent; color: var(--blue); font: 500 9px/1 'JetBrains Mono', monospace; }
+.heat-week-pager .heat-week-current:hover:not(:disabled) { border-color: transparent; background: color-mix(in srgb, var(--blue) 8%, transparent); }
+
+@media (max-width: 900px) {
+  .heatmap-controls { flex-wrap: wrap; padding-inline: 14px; }
+  .benefit-heat-controls { padding-inline: 12px; }
+  .heat-week-pager { flex-wrap: wrap; }
+}
+
 /* v4 · persistent filters and benefit evidence drilldown */
 .filter-bar {
   position: sticky; z-index: 65; top: 56px; isolation: isolate;

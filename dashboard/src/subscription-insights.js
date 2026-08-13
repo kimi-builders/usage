@@ -245,26 +245,29 @@ export function nearestBenefitObservation(records, observedAt) {
 
 // Activity and distribution views may choose a local evidence window without
 // changing quota, value, capacity, or decision signals built from full history.
-export function buildSubscriptionViewUsage(snapshot, sourceIds, range = 'all', { now = null } = {}) {
+export function buildSubscriptionViewUsage(snapshot, sourceIds, range = 'all', { now = null, windowStart = null, windowEnd = null } = {}) {
   const normalized = normalizedBenefitRange(range);
   const sources = new Set(Array.isArray(sourceIds) ? sourceIds : []);
   const allBuckets = (Array.isArray(snapshot?.buckets) ? snapshot.buckets : [])
     .filter((bucket) => sources.has(bucket.source));
   const referenceAt = benefitReferenceTime(snapshot, now, allBuckets);
+  // A custom window (single-week mode) wins over the rolling range windows.
+  const custom = Number.isFinite(windowStart) && Number.isFinite(windowEnd) && windowEnd > windowStart;
   const days = normalized === '30d' ? 30 : normalized === '90d' ? 90 : null;
-  const start = days == null || !Number.isFinite(referenceAt)
+  const start = custom ? windowStart : days == null || !Number.isFinite(referenceAt)
     ? null
     : referenceAt - days * DAY_SECONDS * 1_000;
-  const buckets = normalized === 'all' ? allBuckets : allBuckets.filter((bucket) => {
+  const end = custom ? windowEnd : referenceAt;
+  const buckets = !custom && normalized === 'all' ? allBuckets : allBuckets.filter((bucket) => {
     const time = timestamp(bucket.bucketStart);
     if (time == null) return false;
-    return start != null && time >= start && time <= referenceAt;
+    return start != null && time >= start && time <= end;
   });
   return {
     range: normalized,
     sources: [...sources],
     evidenceStart: start == null ? null : new Date(start).toISOString(),
-    evidenceEnd: Number.isFinite(referenceAt) ? new Date(referenceAt).toISOString() : null,
+    evidenceEnd: Number.isFinite(end) ? new Date(end).toISOString() : null,
     bucketCount: buckets.length,
     totals: sumBuckets(buckets),
     activity: providerActivity(buckets),

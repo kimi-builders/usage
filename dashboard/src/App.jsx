@@ -390,7 +390,7 @@ export function App() {
       <SubscriptionPulse data={limitData} usageData={data} settings={limitSettings} loading={limitLoading} error={limitError} onRetry={() => loadLimits(true)} onOpen={(event) => navigateSection(event, '#subscriptions')} onSettings={openLimitSettings} zh={zh}/>
       {dimensionFiltersActive ? <p className="metric-scope-note">{zh ? '会话与时长指标无法按模型或推理强度拆分，仍显示当前 Agent 范围。' : 'Sessions and time cannot be split by model or effort; the current Agent scope is shown.'}</p> : null}
 
-      <DailyTrend report={report} zh={zh} metric={trendMetric} onMetric={setTrendMetric} currency={currency}/><WeeklyTrend report={report} zh={zh} metric={trendMetric} currency={currency}/><ActivityHeatmap report={report} zh={zh} metric={heatMetric} onMetric={setHeatMetric} currency={currency}/>
+      <DailyTrend report={report} zh={zh} metric={trendMetric} onMetric={setTrendMetric} currency={currency}/><WeeklyTrend report={report} zh={zh} metric={trendMetric} currency={currency}/><ActivityHeatmap report={report} data={data} zh={zh} metric={heatMetric} onMetric={setHeatMetric} currency={currency}/>
       <p className="section-eyebrow">{zh ? '分布 · 独立切换 TOKEN / 费用' : 'BREAKDOWN · SWITCH TOKENS / COST'}</p><section className="distribution-grid" id="distribution"><DistributionCard type="source" rows={report.sourceRows} zh={zh} currency={currency}/><DistributionCard type="model" rows={report.modelRows} zh={zh} currency={currency}/><DistributionCard type="project" rows={report.projectRows} zh={zh} currency={currency}/><DistributionCard type="device" rows={report.deviceRows} zh={zh} currency={currency}/></section>
       <RecordsSection report={report} zh={zh} currency={currency} device={device}/>
       </>}

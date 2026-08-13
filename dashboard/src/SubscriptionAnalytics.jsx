@@ -3,6 +3,8 @@ import { Activity, BarChart3, CircleAlert, Clock3, FileText, LayoutDashboard, Sh
 import { CHART_COLORS, CONSUMPTION_PALETTE } from './chart-colors.js';
 import { compact, percent, pluralUnit } from './format.js';
 import { ProviderSelect } from './provider-select.jsx';
+import { HeatModeTabs, WeekPager, storedHeatMode, storeHeatMode } from './heat-controls.jsx';
+import { addLocalWeeks, firstDataWeekStart, localWeekEnd, localWeekStart, weekLabel } from './week.js';
 import {
   BENEFIT_VIEW_RANGES, buildSubscriptionViewUsage, filterBenefitUsageRecords,
   localEvidenceDayKey, nearestBenefitObservation,
@@ -378,7 +380,21 @@ export function BenefitTrendView({ provider, zh, onDrilldown }) {
 
 export function BenefitActivityView({ provider, usageData, zh }) {
   const [range, setRange] = useState(() => storedBenefitRange('activity'));
-  const viewUsage = useMemo(() => buildSubscriptionViewUsage(usageData, provider.sources, range), [usageData, provider.sources, range]);
+  const [mode, setMode] = useState(() => storedHeatMode('kbu.benefit.heat-mode.v1'));
+  const [weekOffset, setWeekOffset] = useState(0);
+  const snapshotTime = useMemo(() => {
+    const value = new Date(usageData?.generatedAt || Date.now());
+    return Number.isFinite(value.getTime()) ? value : new Date();
+  }, [usageData]);
+  const weekStartMs = addLocalWeeks(localWeekStart(snapshotTime), weekOffset).getTime();
+  const weekEndMs = localWeekEnd(weekStartMs).getTime();
+  const firstWeekMs = useMemo(() => {
+    const sources = new Set(provider.sources);
+    return firstDataWeekStart((usageData?.buckets || []).filter((bucket) => sources.has(bucket.source)).map((bucket) => bucket.bucketStart))?.getTime() || null;
+  }, [usageData, provider.sources]);
+  const viewUsage = useMemo(() => (mode === 'week'
+    ? buildSubscriptionViewUsage(usageData, provider.sources, 'all', { windowStart: weekStartMs, windowEnd: weekEndMs })
+    : buildSubscriptionViewUsage(usageData, provider.sources, range)), [mode, usageData, provider.sources, range, weekStartMs, weekEndMs]);
   const cells = viewUsage.activity || [];
   const heatCellRefs = useRef(new Map());
   const [hovered, setHovered] = useState(null);
@@ -402,6 +418,8 @@ export function BenefitActivityView({ provider, usageData, zh }) {
     setHovered(null);
     setFocusCell(null);
   };
+  const changeMode = (value) => { setMode(value); storeHeatMode('kbu.benefit.heat-mode.v1', value); setHovered(null); setFocusCell(null); };
+  const changeWeek = (offset) => { setWeekOffset(offset); setHovered(null); setFocusCell(null); };
   const onHeatmapKeyDown = (event, day, hour) => {
     let next = null;
     const rowLength = cells[day]?.length || 0;
@@ -435,7 +453,8 @@ export function BenefitActivityView({ provider, usageData, zh }) {
 
   return <section className="benefit-view-stack" {...panelProps}>
     <section className="panel benefit-activity-panel" onMouseLeave={() => setHovered(null)}>
-      <header className="panel-header benefit-view-header"><div><h2><Activity size={15}/>{zh ? '使用节奏' : 'Usage rhythm'}</h2><p>{zh ? `${benefitRangeLabel(range, true)} · 只使用已归因到该订阅的本机 Token · 星期 × 本地小时` : `${benefitRangeLabel(range, false)} · only local Tokens attributed to this benefit · weekday × local hour`}</p></div><div className="benefit-view-actions"><span className="evidence-badge"><ShieldCheck size={11}/>{zh ? '本机证据' : 'Local evidence'}</span><BenefitRangeControl value={range} onChange={changeRange} zh={zh} label={zh ? '使用节奏证据范围' : 'Usage rhythm evidence range'}/></div></header>
+      <header className="panel-header benefit-view-header"><div><h2><Activity size={15}/>{zh ? '使用节奏' : 'Usage rhythm'}</h2><p>{mode === 'week' ? (zh ? `${weekLabel(weekStartMs, zh)} · 单周实际用量 · 只使用已归因到该订阅的本机 Token` : `${weekLabel(weekStartMs, zh)} · single-week actuals · only local Tokens attributed to this benefit`) : (zh ? `聚合 · ${benefitRangeLabel(range, true)} · 只使用已归因到该订阅的本机 Token · 星期 × 本地小时` : `Aggregate · ${benefitRangeLabel(range, false)} · only local Tokens attributed to this benefit · weekday × local hour`)}</p></div><div className="benefit-view-actions"><span className="evidence-badge"><ShieldCheck size={11}/>{zh ? '本机证据' : 'Local evidence'}</span><HeatModeTabs mode={mode} onChange={changeMode} zh={zh} label={zh ? '节奏图模式' : 'Rhythm mode'}/></div></header>
+      <div className="heatmap-controls benefit-heat-controls">{mode === 'week' ? <WeekPager label={weekLabel(weekStartMs, zh)} canPrev={firstWeekMs != null && weekStartMs > firstWeekMs} canNext={weekOffset < 0} onPrev={() => changeWeek(weekOffset - 1)} onNext={() => changeWeek(weekOffset + 1)} onCurrent={() => changeWeek(0)} showCurrent={weekOffset < 0} zh={zh} ariaLabel={zh ? '选择周' : 'Choose week'}/> : <BenefitRangeControl value={range} onChange={changeRange} zh={zh} label={zh ? '使用节奏证据范围' : 'Usage rhythm evidence range'}/>}</div>
       <div className="benefit-heatmap"><div className="benefit-heat-grid">{cells.map((row, day) => <div className="benefit-heat-row" key={day}><span>{weekdays[day]}</span><div>{row.map((cell, hour) => {
         const slot = `${weekdays[day]} ${String(hour).padStart(2,'0')}:00`;
         if (!cell.observed) {
@@ -466,7 +485,7 @@ export function BenefitActivityView({ provider, usageData, zh }) {
       </aside> : null}
       <footer className="benefit-heat-footer"><span>{zh ? '少' : 'Less'} {[1,2,3,4,5,6].map((level) => <i data-level={level} key={level}/>)} {zh ? '多' : 'More'}</span><span><i className="is-observed-zero" data-level="0"/> {zh ? '已观测 0' : 'Observed 0'}　<i className="is-unobserved"/> {zh ? '未观测' : 'Not observed'}</span><span>{zh ? '悬停或聚焦查看本机证据' : 'Hover or focus for local evidence'}</span></footer>
     </section>
-    <section className="benefit-kpi-row"><article><span>{zh ? '活跃星期' : 'ACTIVE WEEKDAYS'}</span><strong>{activeDays} / 7</strong><small>{benefitRangeLabel(range, zh)}</small></article><article><span>{zh ? '峰值时段' : 'PEAK SLOT'}</span><strong>{peak?.totalTokens ? `${weekdays[peak.day]} ${String(peak.hour).padStart(2,'0')}:00` : '—'}</strong><small>{peak?.totalTokens ? `${compact(peak.totalTokens)} Token` : (zh ? '没有非零观测' : 'No nonzero observation')}</small></article><article><span>{zh ? '额度撞线证据' : 'LIMIT EVENTS'}</span><strong>{provider.decisionSignals.some((signal) => signal.code === 'exhausted') ? (zh ? '发现' : 'Found') : (zh ? '未发现' : 'None')}</strong><small>{zh ? '仅供应商返回的额度事实 · 全量' : 'provider-reported facts only · all history'}</small></article><article><span>{zh ? '节奏覆盖范围' : 'RHYTHM COVERAGE'}</span><strong>{compact(viewUsage.totals.totalTokens)}</strong><small>{zh ? '当前窗口已归因本机 Token' : 'attributed local Tokens in this window'}</small></article></section>
+    <section className="benefit-kpi-row"><article><span>{zh ? '活跃星期' : 'ACTIVE WEEKDAYS'}</span><strong>{activeDays} / 7</strong><small>{mode === 'week' ? weekLabel(weekStartMs, zh) : benefitRangeLabel(range, zh)}</small></article><article><span>{zh ? '峰值时段' : 'PEAK SLOT'}</span><strong>{peak?.totalTokens ? `${weekdays[peak.day]} ${String(peak.hour).padStart(2,'0')}:00` : '—'}</strong><small>{peak?.totalTokens ? `${compact(peak.totalTokens)} Token` : (zh ? '没有非零观测' : 'No nonzero observation')}</small></article><article><span>{zh ? '额度撞线证据' : 'LIMIT EVENTS'}</span><strong>{provider.decisionSignals.some((signal) => signal.code === 'exhausted') ? (zh ? '发现' : 'Found') : (zh ? '未发现' : 'None')}</strong><small>{zh ? '仅供应商返回的额度事实 · 全量' : 'provider-reported facts only · all history'}</small></article><article><span>{zh ? '节奏覆盖范围' : 'RHYTHM COVERAGE'}</span><strong>{compact(viewUsage.totals.totalTokens)}</strong><small>{zh ? '当前窗口已归因本机 Token' : 'attributed local Tokens in this window'}</small></article></section>
   </section>;
 }
 

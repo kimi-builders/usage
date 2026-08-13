@@ -241,7 +241,7 @@ function buildSeries(buckets, activityHours, range, start, end) {
   });
 }
 
-function buildHeatmap(buckets, activityHours) {
+export function buildHeatmap(buckets, activityHours) {
   const cells = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({
     totalTokens: 0,
     costMicros: 0,
