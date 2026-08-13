@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, BarChart3, CircleAlert, Clock3, FileText, LayoutDashboard, ShieldCheck } from 'lucide-react';
+import { Activity, BarChart3, ChevronLeft, ChevronRight, CircleAlert, Clock3, FileText, LayoutDashboard, ShieldCheck } from 'lucide-react';
 import { CHART_COLORS, CONSUMPTION_PALETTE } from './chart-colors.js';
 import { compact, displayDollars, percent, pluralUnit } from './format.js';
 import { ProviderSelect } from './provider-select.jsx';
@@ -497,7 +497,7 @@ function MixCard({ title, rows, zh, semantic = false }) {
     const suppliedShare = finiteNumber(row.share);
     const share = Math.max(0, Math.min(1, suppliedShare ?? (total ? row.totalTokens / total : 0)));
     const color = semantic ? TOKEN_MIX_COLORS[row.id] : CONSUMPTION_PALETTE[index % CONSUMPTION_PALETTE.length];
-    return <article key={row.id} style={{ '--mix-color': color }}><span>{String(index + 1).padStart(2,'0')}</span><div><b title={row.label}>{row.label}</b><i><em style={{ width: share > 0 ? `${Math.max(2, share * 100)}%` : '0%' }}/></i></div><strong>{compact(row.totalTokens)}<small>{percent(share)}</small></strong></article>;
+    return <article key={row.id} style={{ '--mix-color': color }}><span>{String(index + 1).padStart(2,'0')}</span><div><b title={row.label}>{row.label}</b><i><em style={{ width: share > 0 ? `${Math.max(2, share * 100)}%` : '0%' }}/></i></div><strong>{compact(row.totalTokens)}<small> · {percent(share)}</small></strong></article>;
   }) : <p>{zh ? '当前没有可归因记录' : 'No attributable records yet'}</p>}</div></section>;
 }
 
@@ -562,6 +562,17 @@ export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh, 
   const focusKey = kind === 'quota' ? quotaTarget?.key || null : drilldown?.kind === 'usage' ? usageRows[0]?.key || null : null;
   const shown = kind === 'quota' ? rows.length : usageRows.length;
   const total = kind === 'quota' ? provider.observationLog.length : (drilldown?.kind === 'usage' ? dayUsageRows.length : rangeUsageRows.length);
+  const [page, setPage] = useState(1);
+  const activeRows = kind === 'quota' ? rows : usageRows;
+  const pageCount = Math.max(1, Math.ceil(activeRows.length / 25));
+  const currentPage = Math.min(page, pageCount);
+  useEffect(() => { setPage(1); }, [kind, usageRange, drilldown, provider.id]);
+  useEffect(() => {
+    if (!focusKey) return;
+    const index = activeRows.findIndex((row) => row.key === focusKey);
+    if (index >= 0) setPage(Math.floor(index / 25) + 1);
+  }, [focusKey]);
+  const pageRows = activeRows.slice((currentPage - 1) * 25, currentPage * 25);
   const quotaColumns = zh ? ['时间', '窗口', '官方已用', '本机 TOKEN', '覆盖率', '重置'] : ['Observed', 'Window', 'Official used', 'Local Tokens', 'Coverage', 'Reset'];
   const usageColumns = zh ? ['时间', '模型', 'TOKEN', '请求', '推理强度', 'API 等价价值'] : ['Time', 'Model', 'Tokens', 'Requests', 'Reasoning', 'API equivalent'];
   const panelProps = providerPanelProps(provider);
@@ -572,7 +583,7 @@ export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh, 
     {kind === 'quota' ? (rows.length ? <RecordsTable
       label={zh ? `${provider.label}额度观测明细` : `${provider.label} quota observation log`}
       columns={quotaColumns}
-      rows={rows}
+      rows={pageRows}
       focusKey={focusKey}
       renderCells={(row, columns) => {
         const localObserved = row.localObserved ?? finiteNumber(row.localCoverage) > 0;
@@ -588,7 +599,7 @@ export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh, 
     /> : <EmptyEvidence zh={zh} title={zh ? '还没有额度观测记录' : 'No quota observations yet'} body={provider.quotaObservation?.state === 'unavailable' ? (zh ? '该账户当前不提供稳定的可读额度；可切换到“本机用量”查看已归因 Token。' : 'This account exposes no stable quota; switch to Local usage for attributed Tokens.') : (zh ? '点击“刷新额度”后，从首个成功的脱敏快照开始积累。' : 'Refresh quotas to begin with the first successful sanitized snapshot.')}/>) : (usageRows.length ? <RecordsTable
       label={zh ? `${provider.label}本机用量明细` : `${provider.label} local usage log`}
       columns={usageColumns}
-      rows={usageRows}
+      rows={pageRows}
       rowClassName="benefit-usage"
       focusKey={focusKey}
       renderCells={(row, columns) => <>
@@ -600,6 +611,7 @@ export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh, 
         {recordCell(money(row.costMicros / 1e6, currency), columns[5], 5, { className: 'evidence-derived' })}
       </>}
     /> : <EmptyEvidence zh={zh} title={zh ? '还没有该账户的本机用量' : 'No local usage for this account'} body={zh ? '供应商额度与本机日志相互独立；有额度不等于这台设备已经产生 Token。' : 'Provider quota and local logs are independent; having a quota does not mean this device produced Tokens.'}/>)}
+    {activeRows.length > 25 ? <footer className="pagination benefit-records-pagination"><span>{zh ? `显示 ${(currentPage - 1) * 25 + (pageRows.length ? 1 : 0)}–${(currentPage - 1) * 25 + pageRows.length}，共 ${activeRows.length} 组` : `Showing ${(currentPage - 1) * 25 + (pageRows.length ? 1 : 0)}–${(currentPage - 1) * 25 + pageRows.length} of ${activeRows.length}`}</span><div><button type="button" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} aria-label={zh ? '上一页' : 'Previous page'}><ChevronLeft size={15}/></button><b>{currentPage} / {pageCount}</b><button type="button" disabled={currentPage >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))} aria-label={zh ? '下一页' : 'Next page'}><ChevronRight size={15}/></button></div></footer> : null}
     <footer><Clock3 size={13}/><span>{kind === 'quota' ? (zh ? '额度历史由本地服务管理并按时间降采样；重复读取缓存不会追加相同快照。' : 'Quota history is backend-owned and downsampled over time; cached reads do not append duplicates.') : (zh ? '本机用量按原始事实桶展示；完整路径与对话内容从不进入页面。' : 'Local usage uses raw fact buckets; full paths and conversation content never enter the page.')}</span></footer>
   </section>;
 }

@@ -1352,3 +1352,28 @@ body.drawer-open { overflow: hidden; }
 /* v6.1.1 · 观测明细字号压过 .subscription-center 类型阶梯(9px),与明细表同读感 */
 .subscription-center .benefit-records-row { font-size: 10.5px; }
 .subscription-center .benefit-records-head { font-size: 9px; }
+
+/* ============================================================
+   v6.2 · 明细左缘留白/默认不横滚 + 分布卡数值双列 + 观测明细分页
+   ============================================================ */
+.records-scroll { padding-inline: 20px; }
+.records-panel table { min-width: 0; }
+.records-panel th, .records-panel td { padding-right: 12px; }
+.records-panel td small { max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+
+/* 分布卡数值:主值「量 · 占比」+ 侧列另一指标(站点 UsagePage DistributionCard 版式) */
+.distribution-value { display: flex; align-items: baseline; justify-content: flex-end; gap: 12px; text-align: right; }
+.distribution-value b { color: var(--paper); font: 600 11px/1 'JetBrains Mono', monospace; white-space: nowrap; }
+.distribution-value b small { color: var(--grey); font-weight: 500; }
+.distribution-value em { width: 96px; flex: 0 0 auto; overflow: hidden; color: var(--grey); font: 500 10px/1 'JetBrains Mono', monospace; font-style: normal; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+
+.benefit-records-pagination { border-top: 1px solid var(--line); }
+.benefit-records-panel > footer:last-child { border-top: 0; }
+
+@media (max-width: 900px) {
+  .records-scroll { padding-inline: 0; }
+}
+
+/* v6.3 · 消耗构成数值一行流(与分布卡同版式:主值 · 占比,不再堆叠) */
+.benefit-mix-card article strong { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; white-space: nowrap; }
+.benefit-mix-card article strong small { display: inline; margin: 0; color: var(--grey); }
