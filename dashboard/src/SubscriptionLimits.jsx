@@ -16,6 +16,7 @@ import {
 import { ToolGlyph } from './tool-glyphs.js';
 import { moveEnabledProvider, reorderEnabledProviders } from './provider-order.js';
 import { PageState } from './ui.jsx';
+import { ProviderSelect } from './provider-select.jsx';
 
 const SELECTED_BENEFIT_KEY = 'kbu.benefit.selected.v1';
 const OVERVIEW_PROVIDER_PANEL_ID = 'subscription-limit-panel';
@@ -327,6 +328,12 @@ function SubscriptionDecisionPanel({ provider, zh, onSettings }) {
   </section>;
 }
 
+// Credential sources that are local paths (~/…) truncate badly and expose config layout; show a generic label.
+function sourceDisplay(value, zh) {
+  if (!value) return '—';
+  return /[~\/\\]/.test(value) ? (zh ? '本机凭据' : 'Local credential') : value;
+}
+
 function ProviderCard({ provider, zh, onSettings }) {
   const now = useNow();
   const tone = PROVIDER_TONES[provider.id] || 'blue';
@@ -344,7 +351,7 @@ function ProviderCard({ provider, zh, onSettings }) {
       <div><dt>{zh ? '个人月均支出' : 'PERSONAL MONTHLY SPEND'}</dt><dd>{provider.subscription.isPaid ? (provider.subscription.monthlyPrice == null ? (zh ? '待填写' : 'Not set') : subscriptionMoney(provider.subscription.monthlyPrice, provider.subscription.currency, zh ? '/月' : '/mo')) : (zh ? '不计入' : 'Excluded')}</dd></div>
       <div><dt>{zh ? '近 30 天 API 等价价值' : '30D API EQUIVALENT'}</dt><dd>{subscriptionMoney(provider.recentTotals.costMicros / 1_000_000, 'usd')}</dd></div>
       <div><dt>{zh ? '更新' : 'Updated'}</dt><dd>{relativeUpdated(provider.updatedAt, now, zh)}</dd></div>
-      <div><dt>{zh ? '来源' : 'Source'}</dt><dd>{provider.source || '—'}</dd></div>
+      <div><dt>{zh ? '来源' : 'Source'}</dt><dd>{sourceDisplay(provider.source, zh)}</dd></div>
     </dl>
     {quotaUnavailable ? <section className="quota-unavailable-state"><div><Gauge size={22}/><span><b>{provider.quotaObservation?.state === 'historical' ? (zh ? '当前额度不可读，仅保留历史' : 'Current quota unavailable; history retained') : (zh ? '官方额度暂不可观测' : 'Official quota is not observable')}</b><small>{provider.quotaObservation.bestEffort ? (zh ? '该平台或当前账户不一定提供稳定额度数据' : 'This platform or account may not expose stable quota data') : (zh ? '当前没有取得可验证的额度窗口' : 'No verifiable quota window is available')}</small></span></div><p>{provider.status === 'error' ? (provider.error?.message || (zh ? '额度查询失败。' : 'Quota request failed.')) : (zh ? '供应商没有返回可验证的额度比例。' : 'The provider did not return a verifiable quota ratio.')} {zh ? `这不代表免费、无限或未使用；本机 ${compact(provider.lifetimeTotals.totalTokens)} Token 仍参与价值与工作负载分析。` : `This does not mean free, unlimited, or unused; ${compact(provider.lifetimeTotals.totalTokens)} local Tokens still contribute to value and workload analysis.`}</p>{provider.status === 'error' ? <button type="button" className="ghost-btn" onClick={onSettings}>{zh ? '检查连接（可选）' : 'Check connection (optional)'}</button> : null}</section> : <div className="limit-window-list">{currentWindows.map((window) => <WindowRow window={window} tone={tone} now={now} zh={zh} key={window.id}/>)}</div>}
     <ModelScenario provider={provider} zh={zh}/>
@@ -370,23 +377,12 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
   const insights = useMemo(() => buildSubscriptionInsights(usageData, data, { settings }), [usageData, data, settings]);
   const providers = insights.providers;
   const [selected, setSelected] = useState(() => localStorage.getItem(SELECTED_BENEFIT_KEY) || '');
-  const overviewTabs = useRef(new Map());
-  const overviewTablist = useRef(null);
   useEffect(() => {
     if (!providers.some((provider) => provider.id === selected)) setSelected(providers[0]?.id || '');
   }, [providers, selected]);
   useEffect(() => {
     if (selected) localStorage.setItem(SELECTED_BENEFIT_KEY, selected);
   }, [selected]);
-  useEffect(() => {
-    const node = overviewTabs.current.get(selected);
-    const scroller = overviewTablist.current;
-    if (!node || !scroller) return;
-    const left = node.offsetLeft;
-    const right = left + node.offsetWidth;
-    if (left < scroller.scrollLeft) scroller.scrollLeft = left;
-    else if (right > scroller.scrollLeft + scroller.clientWidth) scroller.scrollLeft = right - scroller.clientWidth;
-  }, [selected, providers.length]);
   const active = providers.find((provider) => provider.id === selected) || providers[0];
   if (loading && !data) return <section className="panel limits-panel limits-panel--loading" id="subscriptions"><div><h2>{zh ? '正在读取订阅中心' : 'Loading Subscription Center'}</h2><p>{zh ? '未启用供应商时不会发起外部网络请求。' : 'No external requests are made until a provider is enabled.'}</p></div></section>;
   if (error && !data) return <PageState className="panel limits-panel" kind="error" title={zh ? '权益数据读取失败' : 'Could not load benefit data'} body={error} action={<button className="primary-btn" type="button" onClick={() => onRefresh(true)}><RefreshCw size={14}/>{zh ? '重新读取' : 'Try again'}</button>}/>;
@@ -413,7 +409,7 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
     <section className="panel limits-panel">
     <header className="panel-header limits-header"><div><h2>{zh ? '账户权益、官方额度与 Token 容量' : 'Benefits, official quotas & token capacity'}</h2><p>{zh ? '额度可观测时显示供应商事实；不可观测时只分析本机 Token，不猜测剩余额度' : 'Provider facts appear when observable; otherwise local Tokens remain without a guessed balance'}</p></div><div className="limits-actions"><span>{insights.summary.quotaObservableProviders}/{providers.length} {zh ? '额度可观测' : 'quota observable'}</span><button className="icon-btn" type="button" onClick={onSettings} aria-label={zh ? '账户权益设置' : 'Account benefit settings'}><Settings2 size={16}/></button><button className="icon-btn" type="button" onClick={() => onRefresh(true)} disabled={loading} aria-label={zh ? '刷新订阅额度' : 'Refresh subscription quotas'}><RefreshCw className={loading ? 'spin' : ''} size={16}/></button></div></header>
     {error ? <div className="limits-banner">{error}</div> : null}
-    <nav ref={overviewTablist} className="provider-tabs" role="tablist" aria-orientation="horizontal" aria-label={zh ? '账户权益平台' : 'Account benefit providers'}>{providers.map((provider, index) => { const isActive = provider.id === active?.id; const needsAttention = provider.status === 'error' && !provider.quotaObservation?.bestEffort; return <button ref={(node) => { if (node) overviewTabs.current.set(provider.id, node); else overviewTabs.current.delete(provider.id); }} type="button" role="tab" id={overviewProviderTabId(provider.id)} aria-selected={isActive} aria-controls={OVERVIEW_PROVIDER_PANEL_ID} tabIndex={isActive ? 0 : -1} className={isActive ? 'active' : ''} data-tone={PROVIDER_TONES[provider.id]} onClick={() => setSelected(provider.id)} onKeyDown={(event) => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? providers.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + providers.length) % providers.length; setSelected(providers[nextIndex].id); event.currentTarget.parentElement?.querySelectorAll('[role="tab"]')[nextIndex]?.focus(); }} key={provider.id}><ProviderIcon id={provider.id} size={16}/><span>{provider.label}</span>{needsAttention ? <small>{zh ? '需处理' : 'Issue'}</small> : provider.quotaObservation?.state === 'unavailable' ? <small>{zh ? '仅本机' : 'Local only'}</small> : null}</button>; })}</nav>
+    <div className="provider-tabs"><ProviderSelect providers={providers} activeId={active?.id} onChange={setSelected} zh={zh} ariaLabel={zh ? '账户权益平台' : 'Account benefit providers'} tabIdFor={overviewProviderTabId} controlsId={OVERVIEW_PROVIDER_PANEL_ID} renderIcon={(id, size) => <ProviderIcon id={id} size={size}/>} statusFor={(provider) => (provider.status === 'error' && !provider.quotaObservation?.bestEffort) ? { label: zh ? '需处理' : 'Issue', tone: 'red' } : provider.quotaObservation?.state === 'unavailable' ? { label: zh ? '仅本机' : 'Local only', tone: 'amber' } : null}/></div>
     <div className="limit-card-stage" id={OVERVIEW_PROVIDER_PANEL_ID} role="tabpanel" aria-labelledby={active ? overviewProviderTabId(active.id) : undefined} tabIndex={0}>{active ? <ProviderCard provider={active} zh={zh} onSettings={onSettings}/> : <div className="limit-card-empty">{zh ? '没有已启用的供应商' : 'No providers enabled'}</div>}</div>
     <footer className="limits-privacy"><ShieldCheck size={13}/><span>{zh ? '凭据只在本地服务进程使用；Token 估算只读取本机统计，不进入导出文件或社区同步。' : 'Credentials stay in the local server process; token estimates use local statistics only and never enter exports or community sync.'}</span>{settings?.refreshMinutes ? <small>{zh ? `额度缓存 ${settings.refreshMinutes} 分钟` : `${settings.refreshMinutes}m quota cache`}</small> : null}</footer>
     </section>

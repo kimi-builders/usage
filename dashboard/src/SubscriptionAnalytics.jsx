@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Activity, BarChart3, CircleAlert, Clock3, FileText, LayoutDashboard, ShieldCheck } from 'lucide-react';
 import { CHART_COLORS, CONSUMPTION_PALETTE } from './chart-colors.js';
 import { compact, percent, pluralUnit } from './format.js';
-import { ToolGlyph } from './tool-glyphs.js';
+import { ProviderSelect } from './provider-select.jsx';
 
 const CHART_LEFT = 42;
 const CHART_RIGHT = 880;
@@ -76,13 +76,14 @@ function TokenBreakdown({ row, zh, combineInput = false }) {
   return <div className="trend-tooltip-breakdown">{tokenBreakdownRows(row, zh, combineInput).map(([label, value, color]) => <span key={label}><i style={{ background: color }}/><em>{label}</em><b>{compact(value)}</b></span>)}</div>;
 }
 
-function tooltipLeft(event, viewport) {
+// Dock the tooltip to the side opposite the pointer so it never covers the
+// bars the reader is sweeping toward next.
+function tooltipLeft(event, viewport, tipWidth) {
   if (!viewport) return 8;
   const container = viewport.getBoundingClientRect();
   const target = event.currentTarget.getBoundingClientRect();
   const center = target.left + target.width / 2 - container.left;
-  const maxLeft = Math.max(8, container.width - 252);
-  return Math.max(8, Math.min(maxLeft, center - 122));
+  return center < container.width / 2 ? Math.max(8, container.width - tipWidth - 8) : 8;
 }
 
 function localTrendFacts(item, zh) {
@@ -123,54 +124,12 @@ function EmptyEvidence({ title, body, zh }) {
 }
 
 export function BenefitProviderPicker({ providers, active, onChange, zh }) {
-  const tabs = useRef([]);
-  const activeIndex = providers.findIndex((provider) => provider.id === active?.id);
-
-  useEffect(() => {
-    const node = tabs.current[activeIndex];
-    const scroller = node?.parentElement;
-    if (!node || !scroller) return;
-    const left = node.offsetLeft;
-    const right = left + node.offsetWidth;
-    if (left < scroller.scrollLeft) scroller.scrollLeft = left;
-    else if (right > scroller.scrollLeft + scroller.clientWidth) scroller.scrollLeft = right - scroller.clientWidth;
-  }, [activeIndex]);
-
-  function moveFocus(event, index) {
-    let nextIndex = null;
-    if (event.key === 'ArrowRight') nextIndex = (index + 1) % providers.length;
-    if (event.key === 'ArrowLeft') nextIndex = (index - 1 + providers.length) % providers.length;
-    if (event.key === 'Home') nextIndex = 0;
-    if (event.key === 'End') nextIndex = providers.length - 1;
-    if (nextIndex == null || !providers[nextIndex]) return;
-    event.preventDefault();
-    onChange(providers[nextIndex].id);
-    tabs.current[nextIndex]?.focus();
-  }
-
   return <section className="benefit-provider-picker">
     <div><span>{zh ? '分析账户' : 'ANALYSIS ACCOUNT'}</span><b>{zh ? '以下页面只分析当前订阅' : 'The pages below analyze one benefit at a time'}</b></div>
-    <div role="tablist" aria-orientation="horizontal" aria-label={zh ? '选择权益账户' : 'Choose benefit account'}>
-      {providers.map((provider, index) => {
-        const selected = provider.id === active?.id;
-        return <button
-          type="button"
-          role="tab"
-          id={providerTabId(provider.id)}
-          aria-controls={PROVIDER_PANEL_ID}
-          aria-selected={selected}
-          tabIndex={selected || (activeIndex < 0 && index === 0) ? 0 : -1}
-          className={selected ? 'active' : ''}
-          onClick={() => onChange(provider.id)}
-          onKeyDown={(event) => moveFocus(event, index)}
-          ref={(node) => { tabs.current[index] = node; }}
-          key={provider.id}
-        >
-          <ToolGlyph id={provider.id} size={15}/>
-          <span>{provider.label}</span>
-          {provider.quotaObservation?.state !== 'current' ? <small>{zh ? '仅本机' : 'Local only'}</small> : null}
-        </button>;
-      })}
+    <div>
+      <ProviderSelect providers={providers} activeId={active?.id} onChange={onChange} zh={zh}
+        ariaLabel={zh ? '选择权益账户' : 'Choose benefit account'} tabIdFor={providerTabId} controlsId={PROVIDER_PANEL_ID}
+        statusFor={(provider) => (provider.quotaObservation?.state !== 'current' ? { label: zh ? '仅本机' : 'Local only', tone: 'amber' } : null)}/>
     </div>
   </section>;
 }
@@ -323,7 +282,7 @@ export function BenefitTrendView({ provider, zh }) {
   const panelProps = providerPanelProps(provider);
   const activateTooltip = (event, value) => setActiveTooltip({
     ...value,
-    left: tooltipLeft(event, tooltipHost.current),
+    left: tooltipLeft(event, tooltipHost.current, 258),
   });
 
   return <section className="benefit-view-stack" {...panelProps}>
@@ -422,7 +381,7 @@ export function BenefitActivityView({ provider, zh }) {
   return <section className="benefit-view-stack" {...panelProps}>
     <section className="panel benefit-activity-panel" onMouseLeave={() => setHovered(null)}>
       <header className="panel-header"><div><h2><Activity size={15}/>{zh ? '使用节奏' : 'Usage rhythm'}</h2><p>{zh ? '星期 × 本地小时 · 只使用已归因到该订阅的本机 Token' : 'Weekday × local hour · only local Tokens attributed to this benefit'}</p></div><span className="evidence-badge"><ShieldCheck size={11}/>{zh ? '本机证据' : 'Local evidence'}</span></header>
-      <div className="benefit-heatmap"><div className="benefit-heat-hours">{Array.from({ length: 24 }, (_, hour) => <span key={hour}>{hour % 3 === 0 ? String(hour).padStart(2, '0') : ''}</span>)}</div>{cells.map((row, day) => <div className="benefit-heat-row" key={day}><span>{weekdays[day]}</span><div>{row.map((cell, hour) => {
+      <div className="benefit-heatmap"><div className="benefit-heat-grid">{cells.map((row, day) => <div className="benefit-heat-row" key={day}><span>{weekdays[day]}</span><div>{row.map((cell, hour) => {
         const slot = `${weekdays[day]} ${String(hour).padStart(2,'0')}:00`;
         if (!cell.observed) {
           const unavailable = zh ? `${slot} · 未观测` : `${slot} · Not observed`;
@@ -444,8 +403,8 @@ export function BenefitActivityView({ provider, zh }) {
           onBlur={() => setHovered(null)}
           key={hour}
         />;
-      })}</div></div>)}</div>
-      {hovered && selectedCell ? <aside className="heatmap-tooltip benefit-heat-tooltip" role="tooltip">
+      })}</div></div>)}<div className="benefit-heat-hours">{Array.from({ length: 24 }, (_, hour) => <span key={hour}>{hour % 3 === 0 ? String(hour).padStart(2, '0') : ''}</span>)}</div></div></div>
+      {hovered && selectedCell ? <aside className="heatmap-tooltip benefit-heat-tooltip" data-dock={hovered.hour < 12 ? 'r' : 'l'} role="tooltip">
         <header><strong>{weekdays[hovered.day]} {String(hovered.hour).padStart(2, '0')}:00</strong><span>{compact(selectedCell.totalTokens)} tokens</span><small>{zh ? '命中率' : 'hit'} {cacheHit(selectedCell)}</small></header>
         {tokenBreakdownRows(selectedCell, zh, true).map(([label, value, color]) => <div key={label}><span><i style={{ background: color }}/>{label}</span><b>{compact(value)}</b></div>)}
         <footer>{zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} {money(selectedCell.costMicros / 1e6)} · {Number(selectedCell.requestCount || 0).toLocaleString()} {requestUnit(selectedCell.requestCount || 0, zh)} · {zh ? '本机归因事实' : 'local attributed facts'}</footer>

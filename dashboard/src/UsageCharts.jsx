@@ -72,12 +72,14 @@ function labelIndexes(length, target = 9) {
   return result;
 }
 
-function tooltipLeft(event, viewport) {
+// Dock the tooltip to the side opposite the pointer so it never covers the
+// bars the reader is sweeping toward next.
+function tooltipLeft(event, viewport, tipWidth = 244) {
   if (!viewport) return 8;
   const container = viewport.getBoundingClientRect();
   const target = event.currentTarget.getBoundingClientRect();
   const center = target.left + target.width / 2 - container.left;
-  return Math.max(8, Math.min(container.width - 252, center - 122));
+  return center < container.width / 2 ? Math.max(8, container.width - tipWidth - 8) : 8;
 }
 
 function TokenBreakdown({ row, zh }) {
@@ -175,7 +177,7 @@ function TrendCore({ rows, metric, zh, average = true, plotHeight = 192, tooltip
           return <g key={row.key}>{row.totalTokens <= 0 ? <rect x={x} y={cursor - 1} width={barWidth} height="1" className="trend-empty-bar"/> : null}{segments.map(([value, fill], segment) => {
             if (value <= 0) return null;
             const barHeight = value / max * plotHeight; cursor -= barHeight;
-            return <rect key={segment} x={x} y={cursor} width={barWidth} height={Math.max(barHeight, 1.5)} rx="1" fill={fill}/>;
+            return <rect key={segment} x={x} y={cursor} width={barWidth} height={Math.max(barHeight, 1.5)} rx="1" style={{ fill }}/>;
           })}</g>;
         })}
         {averagePath ? <path d={averagePath} className="trend-average-line"/> : null}
@@ -283,9 +285,9 @@ export function ActivityHeatmap({ report, zh, metric, onMetric }) {
         const title = `${weekdays[day]} ${String(hour).padStart(2, '0')}:00 · ${compact(cell.totalTokens)} tokens · ${costText(cell.costMicros)} · ${duration(cell.activeSeconds, zh)} · ${cell.userMessageCount} ${zh ? '条用户消息' : 'user messages'} · ${zh ? '输入' : 'input'} ${compact(cell.inputTokens + cell.cacheWriteInputTokens)} · ${zh ? '缓存读' : 'cache'} ${compact(cell.cacheReadInputTokens)} · ${zh ? '输出' : 'output'} ${compact(cell.outputTokens)} · ${zh ? '推理' : 'reasoning'} ${compact(cell.reasoningOutputTokens)}`;
         const peak = view.peak?.day === day && view.peak?.hour === hour && value > 0;
         if (!cell.observed) return <i key={hour} className="heatmap-missing" aria-hidden="true"/>;
-        return <button ref={(node) => { const key = `${day}-${hour}`; if (node) heatCellRefs.current.set(key, node); else heatCellRefs.current.delete(key); }} type="button" key={hour} tabIndex={rovingCell?.day === day && rovingCell?.hour === hour ? 0 : -1} data-level={level} data-peak={peak ? 'true' : undefined} title={title} aria-label={title} onKeyDown={(event) => onHeatmapKeyDown(event, day, hour)} onMouseEnter={() => setHovered({ day, hour })} onFocus={() => { setFocusCell({ day, hour }); setHovered({ day, hour }); }} onBlur={() => setHovered(null)}/>;
+        return <button ref={(node) => { const key = `${day}-${hour}`; if (node) heatCellRefs.current.set(key, node); else heatCellRefs.current.delete(key); }} type="button" key={hour} tabIndex={rovingCell?.day === day && rovingCell?.hour === hour ? 0 : -1} data-level={level} data-peak={peak ? 'true' : undefined} aria-label={title} onKeyDown={(event) => onHeatmapKeyDown(event, day, hour)} onMouseEnter={() => setHovered({ day, hour })} onFocus={() => { setFocusCell({ day, hour }); setHovered({ day, hour }); }} onBlur={() => setHovered(null)}/>;
       })}</div></div>)}<div/><div className="heatmap-hours">{Array.from({ length: 24 }, (_, hour) => <span key={hour}>{hour % 3 === 0 ? String(hour).padStart(2, '0') : ''}</span>)}</div></div></div>
-      {hovered && selectedCell ? <aside className="heatmap-tooltip" role="tooltip">
+      {hovered && selectedCell ? <aside className="heatmap-tooltip" data-dock={hovered.hour < 12 ? 'r' : 'l'} role="tooltip">
         <header><strong>{weekdays[hovered.day]} {String(hovered.hour).padStart(2, '0')}:00</strong><span>{compact(selectedCell.totalTokens)} tokens</span><small>{zh ? '命中率' : 'hit'} {selectedHit == null ? '—' : percent(selectedHit)}</small></header>
         <div><span><i style={{ background: COLORS.input }}/>{zh ? '输入（含缓存写）' : 'Input + cache write'}</span><b>{compact(selectedCell.inputTokens + selectedCell.cacheWriteInputTokens)}</b></div>
         <div><span><i style={{ background: COLORS.cache }}/>{zh ? '缓存读' : 'Cache read'}</span><b>{compact(selectedCell.cacheReadInputTokens)}</b></div>
