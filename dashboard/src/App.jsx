@@ -232,7 +232,11 @@ export function App() {
         setActiveSection((current) => current === lockedTarget ? current : lockedTarget);
         return;
       }
-      const marker = window.scrollY + 88;
+      // The reading line follows the sections' scroll-margin-top, which is already
+      // calibrated to clear the sticky topbar + filter bar; a fixed offset goes stale.
+      const probe = document.getElementById('trend');
+      const marginTop = probe ? Number.parseFloat(getComputedStyle(probe).scrollMarginTop) : Number.NaN;
+      const marker = window.scrollY + (Number.isFinite(marginTop) ? marginTop + 8 : 88);
       let next = 'top';
       for (const id of USAGE_SECTION_IDS) {
         const section = document.getElementById(id);

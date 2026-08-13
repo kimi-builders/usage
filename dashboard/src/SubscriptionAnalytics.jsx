@@ -237,9 +237,14 @@ function quotaTrendLabel(point, zh) {
 function QuotaLine({ points, zh, onActivate, onDeactivate, onDrilldown }) {
   if (!points.length) return null;
   const path = points.map((point, index) => `${index ? 'L' : 'M'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
+  // Dense 15-minute observations overlap into an ambiguous strip on a 30-day chart;
+  // the line keeps every point, the interactive dots are thinned to ~48 and always
+  // include the latest observation (the most likely drilldown target).
+  const dotStep = Math.max(1, Math.ceil(points.length / 48));
+  const dots = points.filter((_, index) => index % dotStep === 0 || index === points.length - 1);
   return <g data-evidence="official">
     {points.length > 1 ? <path className="benefit-quota-line" d={path}/> : null}
-    {points.map((point, index) => {
+    {dots.map((point, index) => {
       const label = quotaTrendLabel(point, zh);
       return <circle
         className="benefit-quota-point"
@@ -529,9 +534,12 @@ export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh }
   const dayUsageRows = drilldown?.kind === 'usage' && drilldown.date
     ? rangeUsageRows.filter((row) => localEvidenceDayKey(row.observedAt) === drilldown.date)
     : rangeUsageRows;
-  const rows = allQuotaRows.slice(0, 100);
-  const usageRows = dayUsageRows.slice(0, 100).map((row) => ({ ...row, key: row.id }));
   const quotaTarget = drilldown?.kind === 'quota' ? nearestBenefitObservation(allQuotaRows, drilldown.observedAt) : null;
+  const baseRows = allQuotaRows.slice(0, 100);
+  // A drilled observation older than the first 100 rows would silently lose its
+  // highlight; append it (log is time-descending, so order holds).
+  const rows = quotaTarget && !baseRows.some((row) => row.key === quotaTarget.key) ? [...baseRows, quotaTarget] : baseRows;
+  const usageRows = dayUsageRows.slice(0, 100).map((row) => ({ ...row, key: row.id }));
   const focusKey = kind === 'quota' ? quotaTarget?.key || null : drilldown?.kind === 'usage' ? usageRows[0]?.key || null : null;
   const shown = kind === 'quota' ? rows.length : usageRows.length;
   const total = kind === 'quota' ? provider.observationLog.length : (drilldown?.kind === 'usage' ? dayUsageRows.length : rangeUsageRows.length);
