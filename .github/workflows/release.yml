@@ -97,7 +97,10 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       - name: Publish reviewed npm artifact
-        run: npm publish "${{ steps.pack.outputs.tarball }}" --access public --provenance
+        # npm 12 treats an unprefixed `release/*.tgz` as a GitHub shorthand.
+        # The explicit relative prefix guarantees that the reviewed local
+        # tarball—and not a remotely resolved package—is what gets published.
+        run: npm publish "./${{ steps.pack.outputs.tarball }}" --access public --provenance
         env:
           # Required only for the first publication, before npm has a package
           # settings page on which to configure the trusted publisher. Remove
