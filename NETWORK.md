@@ -7,7 +7,7 @@ removed with the CLI at any time.
 
 | Command | Network | Purpose |
 | --- | --- | --- |
-| `help`, `status`, `sources` | No | Local configuration and capability display |
+| no arguments, `help`, `status`, `sources` | No | Local help, configuration, and capability display |
 | `inspect --dry-run` | No | Show local roots and parser results |
 | `doctor [--json]` | No | Redacted local compatibility report |
 | `reset --local` | No | Remove local sync checkpoints |

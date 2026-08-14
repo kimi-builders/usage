@@ -14,7 +14,7 @@ import { LimitSettingsDialog, SubscriptionCenter, SubscriptionPulse } from './Su
 import { SyncDialog } from './SyncDialog.jsx';
 import { analyzeBudget, analyzeMilestones, analyzeSpikes } from './usage-insights.js';
 import { BudgetDialog, readBudget, storeBudget, UsageInsightAlerts, UsageInsightSummary } from './UsageInsights.jsx';
-import { compact, delta, displayMoney, duration, integer, percent } from './format.js';
+import { compact, delta, DISPLAY_CURRENCIES, DISPLAY_FX_AS_OF, displayMoney, duration, integer, percent } from './format.js';
 import { isBenefitSection, isStandaloneSection, sectionFromHash, titleForSection, USAGE_SECTION_IDS } from './navigation.js';
 import { Button, PageState } from './ui.jsx';
 
@@ -22,13 +22,13 @@ const COPY = {
   zh: {
     title: '用量中心', subtitle: 'Kimi-first，多 Agent 兼容。这里只读取 Token、时间与计数，不读取对话内容、完整路径或供应商凭据。',
     method: '计算说明', export: '导出', share: '分享用量', refresh: '重新扫描', sync: '同步数据', local: '本地私有', lastSync: '最近扫描',
-    cost: 'API 等价价值（USD）', tokens: '总 Token', hit: '缓存命中率', peak: '峰值 TOKEN', active: '活跃时长', engaged: '投入时长', sessions: '会话数',
+    cost: 'API 等价价值', tokens: '总 Token', hit: '缓存命中率', peak: '峰值 TOKEN', active: '活跃时长', engaged: '投入时长', sessions: '会话数',
     messages: '总消息数', userMessages: '用户消息', avg: '平均耗时', requests: '请求数', lifetime: '累计 TOKEN', reasoning: '推理', good: '良好',
   },
   en: {
     title: 'Usage Center', subtitle: 'Kimi-first, multi-agent ready. Only token, timing, and count metrics are read—never conversations, full paths, or provider credentials.',
     method: 'Calculation notes', export: 'Export', share: 'Share usage', refresh: 'Rescan', sync: 'Sync data', local: 'Local private', lastSync: 'Last scanned',
-    cost: 'API-equivalent value (USD)', tokens: 'Total tokens', hit: 'Cache hit rate', peak: 'Peak tokens', active: 'Active time', engaged: 'Engaged time', sessions: 'Sessions',
+    cost: 'API-equivalent value', tokens: 'Total tokens', hit: 'Cache hit rate', peak: 'Peak tokens', active: 'Active time', engaged: 'Engaged time', sessions: 'Sessions',
     messages: 'Messages', userMessages: 'User messages', avg: 'Avg active', requests: 'Requests', lifetime: 'Lifetime tokens', reasoning: 'Reasoning', good: 'Good',
   },
 };
@@ -350,6 +350,13 @@ export function App() {
   const inputSide = report.totals.inputTokens + report.totals.cacheWriteInputTokens;
   const dimensionFiltersActive = ['models', 'efforts'].some((key) => filters[key].length);
   const lastSeries = report.series.reduce((best, item) => item.totalTokens > (best?.totalTokens || 0) ? item : best, null);
+  const displayCurrency = DISPLAY_CURRENCIES[currency] || DISPLAY_CURRENCIES.usd;
+  const costLabel = report.pricingCoverage < .9995
+    ? (zh ? `已定价 API 等价价值（${displayCurrency.label}）` : `Priced API-equivalent value (${displayCurrency.label})`)
+    : `${t.cost} (${displayCurrency.label})`;
+  const costBasis = currency === 'cny'
+    ? (zh ? `标准 API 美元价格 · 按静态汇率 1 USD = ¥${displayCurrency.rate} 换算 · ${DISPLAY_FX_AS_OF}` : `Standard API USD prices · static FX 1 USD = ¥${displayCurrency.rate} · ${DISPLAY_FX_AS_OF}`)
+    : (zh ? '标准 API 美元价格，不是账单' : 'Standard API USD pricing, not a bill');
   const subscriptionPage = isBenefitSection(activeSection);
   const sourcesPage = activeSection === 'sources';
   const subscriptionView = activeSection === 'subscriptions' ? 'overview' : activeSection.replace('subscription-', '');
@@ -375,7 +382,7 @@ export function App() {
       <UsageInsightAlerts budget={budgetInsight} spikes={spikeInsight} milestones={milestoneInsight} zh={zh} currency={currency} onEditBudget={() => setDialog('budget')}/>
 
       <section className="hero-grid">
-        <HeroCard zh={zh} label={report.pricingCoverage < .9995 ? (zh ? '已定价 API 等价价值（USD）' : 'Priced API-equivalent value (USD)') : t.cost} value={displayMoney(report.totals.costMicros, currency)} previousValue={displayMoney(previous?.totals.costMicros || 0, currency)} deltaValue={delta(report.totals.costMicros, previous?.totals.costMicros)} onHelp={() => setDialog('method')}>{zh ? `标准 API 价格，不是账单 · 覆盖 ${percent(report.pricingCoverage)} Token · ${compact(report.totals.unpricedTokens)} 未定价` : `Standard API pricing, not a bill · ${percent(report.pricingCoverage)} coverage · ${compact(report.totals.unpricedTokens)} unpriced`}</HeroCard>
+        <HeroCard zh={zh} label={costLabel} value={displayMoney(report.totals.costMicros, currency)} previousValue={displayMoney(previous?.totals.costMicros || 0, currency)} deltaValue={delta(report.totals.costMicros, previous?.totals.costMicros)} onHelp={() => setDialog('method')}>{`${costBasis} · ${zh ? `覆盖 ${percent(report.pricingCoverage)} Token · ${compact(report.totals.unpricedTokens)} 未定价` : `${percent(report.pricingCoverage)} coverage · ${compact(report.totals.unpricedTokens)} unpriced`}`}</HeroCard>
         <HeroCard zh={zh} label={t.tokens} value={compact(report.totals.totalTokens)} previousValue={compact(previous?.totals.totalTokens || 0)} deltaValue={delta(report.totals.totalTokens, previous?.totals.totalTokens)} onHelp={() => setDialog('method')}>{zh ? `输入 ${compact(inputSide)} · 输出 ${compact(report.totals.outputTokens)} · 缓存读 ${compact(report.totals.cacheReadInputTokens)}` : `Input ${compact(inputSide)} · Output ${compact(report.totals.outputTokens)} · Cache ${compact(report.totals.cacheReadInputTokens)}`}</HeroCard>
         <HeroCard zh={zh} label={t.hit} value={report.cacheHitRate == null ? '—' : percent(report.cacheHitRate)} tone="hero-card--green">
           {report.cacheHitRate != null ? <MetricHint className="quality-hint" text={zh ? `缓存命中率 = 缓存读 ÷（输入 + 缓存写 + 缓存读）。当前 ${percent(report.cacheHitRate)}；85% 以上为“良好”，60%–85% 为“一般”，低于 60% 为“偏低”。命中率越高，通常意味着重复上下文的 API 等价成本越低。` : `Cache hit rate = cache read ÷ (input + cache write + cache read). Current: ${percent(report.cacheHitRate)}. Good is ≥85%, Fair is 60–85%, Low is <60%. A higher rate usually lowers API-equivalent cost for repeated context.`}><span className="quality"><i/>{report.cacheHitRate >= .85 ? t.good : report.cacheHitRate >= .6 ? (zh ? '一般' : 'Fair') : (zh ? '偏低' : 'Low')}</span></MetricHint> : null}

@@ -53,6 +53,7 @@ test('local dashboard requires capability cookie and rejects hostile Host/Origin
     assert.deepEqual(JSON.parse(data.body), { loads: 1 });
     assert.equal(data.headers['cache-control'], 'no-store');
     assert.match(data.headers['content-security-policy'], /frame-ancestors 'none'/);
+    assert.match(data.headers['content-security-policy'], /font-src 'self'(?:;|$)/);
 
     const refreshed = await http(local.port, '/api/snapshot?refresh=1', { Cookie: cookie });
     assert.deepEqual(JSON.parse(refreshed.body), { loads: 2 });

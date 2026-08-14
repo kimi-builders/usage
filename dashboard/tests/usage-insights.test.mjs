@@ -90,7 +90,7 @@ test('local day and hour boundaries do not follow UTC date boundaries', () => {
   assert.equal(result.hourly[0].hour, 0);
 });
 
-test('session spikes use a separate 5M floor and stable signature', () => {
+test('session-shaped token fields are ignored until the snapshot has an exact session-token contract', () => {
   const sessions = baseline().map((row, index) => ({
     id: `old-${index}`,
     source: 'codex',
@@ -99,17 +99,8 @@ test('session spikes use a separate 5M floor and stable signature', () => {
   }));
   sessions.push({ id: 'runaway', source: 'claude-code', project: 'app', lastMessageAt: localTime(12, 11).toISOString(), totalTokens: 5_000_001 });
   const result = analyzeSpikes({ buckets: baseline(), sessions }, localTime(12, 18));
-  assert.equal(result.sessions.length, 1);
-  assert.equal(result.sessions[0].threshold, 5_000_000);
-  assert.equal(result.sessions[0].signature, spikeSignature(result.sessions[0]));
-});
-
-test('session detection does not invent a baseline when historical session totals are absent', () => {
-  const result = analyzeSpikes({
-    buckets: baseline(),
-    sessions: [{ id: 'new-schema-only', source: 'codex', lastMessageAt: localTime(12, 11).toISOString(), totalTokens: 9_000_000 }],
-  }, localTime(12, 18));
-  assert.deepEqual(result.sessions, []);
+  assert.equal('sessions' in result, false);
+  assert.equal(spikeSignature({ kind: 'session', dateKey: '2026-08-12', hour: 11 }), '');
 });
 
 test('spike detection is quiet for an empty history and signatures deduplicate an hour', () => {

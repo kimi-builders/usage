@@ -110,8 +110,7 @@ function attribution(buckets) {
 
 export function spikeSignature(spike) {
   if (!spike) return '';
-  if (spike.kind === 'hour') return `hour:${spike.dateKey}:${pad(spike.hour)}`;
-  return `session:${spike.dateKey}:${spike.source || 'unknown'}:${spike.sessionKey || spike.totalTokens}`;
+  return spike.kind === 'hour' ? `hour:${spike.dateKey}:${pad(spike.hour)}` : '';
 }
 
 export function analyzeSpikes(data, now = new Date()) {
@@ -141,7 +140,7 @@ export function analyzeSpikes(data, now = new Date()) {
 
   const sampleDays = baselineDays.size;
   if (sampleDays < 7) {
-    return { status: 'building', sampleDays, requiredDays: 7, hourlyP95: 0, sessionP95: 0, hourly: [], sessions: [] };
+    return { status: 'building', sampleDays, requiredDays: 7, hourlyP95: 0, hourly: [] };
   }
 
   const hourlyP95 = percentile95([...hourlyGroups.values()]);
@@ -158,30 +157,7 @@ export function analyzeSpikes(data, now = new Date()) {
     return { ...spike, signature: spikeSignature(spike) };
   }).sort((left, right) => right.totalTokens - left.totalTokens);
 
-  const baselineSessions = [];
-  const todaySessions = [];
-  for (const session of data?.sessions || []) {
-    const time = validDate(session?.lastMessageAt);
-    const totalTokens = Math.max(0, finite(session?.totalTokens));
-    if (!time || !totalTokens || time > currentTime) continue;
-    if (time >= baselineStart && time < todayStart) baselineSessions.push(totalTokens);
-    else if (time >= todayStart) todaySessions.push({ session, time, totalTokens });
-  }
-  const sessionP95 = percentile95(baselineSessions);
-  const sessionThreshold = Math.max(3 * sessionP95, 5_000_000);
-  const sessions = baselineSessions.length ? todaySessions.filter(({ totalTokens }) => totalTokens > sessionThreshold).map(({ session, time, totalTokens }, index) => {
-    const spike = {
-      kind: 'session', dateKey: localDateKey(time), hour: time.getHours(), totalTokens,
-      source: session.source || null, project: session.project || null,
-      sessionKey: session.id || session.sessionId || `${pad(time.getHours())}-${index}`,
-      ratio: sessionP95 > 0 ? totalTokens / sessionP95 : null,
-      baselineP95: sessionP95,
-      threshold: sessionThreshold,
-    };
-    return { ...spike, signature: spikeSignature(spike) };
-  }).sort((left, right) => right.totalTokens - left.totalTokens) : [];
-
-  return { status: 'ready', sampleDays, requiredDays: 7, hourlyP95, sessionP95, hourlyThreshold, sessionThreshold, hourly, sessions };
+  return { status: 'ready', sampleDays, requiredDays: 7, hourlyP95, hourlyThreshold, hourly };
 }
 
 export function milestoneSignature(value) {

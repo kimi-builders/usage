@@ -1,7 +1,15 @@
 # Publishing checklist
 
-Publishing is intentionally separate from implementation. None of the commands
-below publish unless the final `npm publish` command is explicitly run.
+Public releases are produced only by `.github/workflows/release.yml`. The
+workflow runs on GitHub-hosted runners, requests an OIDC identity, verifies the
+supported platform matrix, preserves CycloneDX SBOMs and the reviewed tarball,
+then publishes through npm Trusted Publishing with provenance. It has no npm
+write token.
+
+Before the first release, configure `@kimi-builders/usage` on npmjs.com with a
+GitHub Actions trusted publisher for repository `kimi-builders/usage`, workflow
+filename `release.yml`, and the `npm publish` action. The repository URL in
+`package.json` must match that GitHub repository exactly.
 
 ## Before a release
 
@@ -27,15 +35,14 @@ below publish unless the final `npm publish` command is explicitly run.
 
 ## Publish
 
-For the scoped public package, the registry command is:
+1. Push the reviewed release commit to `main` and wait for CI to pass.
+2. Create a GitHub release whose tag is exactly `v<package.json version>`.
+3. Publishing the GitHub release starts the protected npm workflow. Review its
+   platform gates, package audit, SBOM artifacts, and npm provenance result.
 
-```bash
-npm publish --access public
-```
-
-The package's `prepublishOnly` hook runs `release:check` again and blocks the
-publish on failure. CI may add npm provenance when its identity and registry
-configuration support it.
+Do not publish public versions from a developer workstation. `prepublishOnly`
+remains a final local safeguard, but it is not a replacement for the CI release
+identity or the cross-platform gates.
 
 ## After a release
 

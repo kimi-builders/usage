@@ -42,7 +42,7 @@ jobs:
       - name: Prepare sanitized test report
         run: node -e "require('node:fs').mkdirSync('reports',{recursive:true})"
       - name: Run Collector and Provider contracts
-        run: npm test -- --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/collector.xml
+        run: npm run test:collector -- --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/collector.xml
       - name: Retain failed test report
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -76,4 +76,3 @@ jobs:
         run: npm run check:markdown
       - name: Audit npm package contents
         run: npm run audit:package
-

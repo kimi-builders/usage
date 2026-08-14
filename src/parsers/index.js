@@ -44,7 +44,7 @@ export const parsers = Object.fromEntries(sourceRegistry.map((source) => [source
 
 export function roundToHalfHour(date) {
   const value = new Date(date);
-  value.setMinutes(value.getMinutes() < 30 ? 0 : 30, 0, 0);
+  value.setUTCMinutes(value.getUTCMinutes() < 30 ? 0 : 30, 0, 0);
   return value;
 }
 
