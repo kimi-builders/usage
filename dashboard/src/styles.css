@@ -166,7 +166,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .change { color: var(--grey); font: 500 10px/1 'JetBrains Mono', monospace; }
 .change.up { color: var(--green); }
 .change.down { color: var(--red); }
-.metric-hint { position: relative; display: inline-flex; align-items: center; min-width: 0; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 5px; outline: none; background: transparent; color: inherit; cursor: help; }
+.metric-hint { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; margin: -6px; padding: 6px; border: 0; border-radius: 5px; outline: none; background: transparent; color: inherit; cursor: help; }
 .metric-hint:focus-visible { box-shadow: 0 0 0 2px var(--blue); }
 .metric-hint-popover { position: absolute; z-index: 80; right: 0; bottom: calc(100% + 10px); width: min(310px, 78vw); padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 9px; background: color-mix(in srgb, var(--card) 95%, #000); color: var(--paper); box-shadow: 0 14px 36px rgba(0,0,0,.34); font: 500 9px/1.65 'JetBrains Mono', monospace; letter-spacing: 0; text-align: left; white-space: normal; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(4px); transition: opacity .14s ease, transform .14s ease, visibility .14s; }
 .metric-hint-popover::after { content: ''; position: absolute; right: 14px; top: 100%; border: 6px solid transparent; border-top-color: var(--line-strong); }
@@ -375,6 +375,8 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .method-copy article:last-child { border-bottom: 0; }
 .method-copy b { font-size: 11px; }
 .method-copy p { margin: 7px 0 0; color: var(--grey); font-size: 10px; line-height: 1.75; }
+.method-grid article > a { display: inline-flex; margin-top: 8px; color: var(--blue); font: 500 8px/1.4 'JetBrains Mono', monospace; text-decoration: none; }
+.method-grid article > a:hover, .method-grid article > a:focus-visible { text-decoration: underline; }
 .share-layout { display: grid; grid-template-columns: minmax(0, 1.14fr) minmax(300px,.86fr); max-height: calc(100vh - 168px); }
 .poster-preview { position: relative; min-height: 600px; display: grid; place-items: center; overflow: hidden; padding: 16px; border-right: 1px solid var(--line); background: #090a0b; }
 .poster-preview img { max-width: 100%; max-height: calc(100vh - 200px); object-fit: contain; box-shadow: 0 18px 50px rgba(0,0,0,.5); }

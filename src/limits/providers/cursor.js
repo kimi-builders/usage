@@ -7,6 +7,7 @@ const USAGE_URL = 'https://cursor.com/api/usage-summary';
 const PROFILE_URL = 'https://cursor.com/api/auth/me';
 
 function numeric(value) {
+  if (value == null || (typeof value === 'string' && !value.trim())) return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -15,7 +16,7 @@ function creditWindow(value, id, label, resetsAt, { percent } = {}) {
   if (!value || value.enabled === false) return null;
   const usedCents = numeric(value.used) ?? 0;
   const limitCents = numeric(value.limit);
-  let usedPercent = asPercent(percent);
+  let usedPercent = percent == null ? null : asPercent(percent);
   if (usedPercent == null && limitCents != null && limitCents > 0) usedPercent = asPercent(usedCents / limitCents * 100);
   if (usedPercent == null) return null;
   return {
@@ -24,23 +25,41 @@ function creditWindow(value, id, label, resetsAt, { percent } = {}) {
   };
 }
 
+function percentWindow(id, label, value, resetsAt) {
+  const numericValue = numeric(value);
+  const usedPercent = numericValue == null ? null : asPercent(numericValue);
+  if (usedPercent == null) return null;
+  return {
+    id,
+    label,
+    usedPercent,
+    remainingPercent: 100 - usedPercent,
+    resetsAt,
+    value: null,
+    limit: null,
+    unit: null,
+  };
+}
+
 export function parseCursorUsage(payload, identity = {}, { now = new Date() } = {}) {
   const plan = payload?.individualUsage?.plan;
   const overall = payload?.individualUsage?.overall;
   const pooled = payload?.teamUsage?.pooled;
-  const lanePercents = [numeric(plan?.autoPercentUsed), numeric(plan?.apiPercentUsed)]
-    .filter((value) => value != null);
-  const rawPlanPercent = numeric(plan?.totalPercentUsed)
-    ?? (lanePercents.length ? lanePercents.reduce((sum, value) => sum + value, 0) / lanePercents.length : null);
   const resetsAt = asDate(payload?.billingCycleEnd);
-  const primary = creditWindow(plan, 'plan', '套餐 Credits', resetsAt, { percent: rawPlanPercent })
+  const primary = creditWindow(plan, 'plan', '套餐 Credits', resetsAt, {
+    percent: numeric(plan?.totalPercentUsed),
+  })
     || creditWindow(overall, 'overall', '个人额度', resetsAt)
     || creditWindow(pooled, 'pooled', '团队共享额度', resetsAt);
+  const lanes = primary ? [] : [
+    percentWindow('plan-auto', 'Auto Credits', plan?.autoPercentUsed, resetsAt),
+    percentWindow('plan-api', 'API Credits', plan?.apiPercentUsed, resetsAt),
+  ].filter(Boolean);
   const onDemand = creditWindow(
     payload?.individualUsage?.onDemand || payload?.teamUsage?.onDemand,
     'on-demand', '按需用量', resetsAt,
   );
-  const windows = [primary, onDemand].filter(Boolean);
+  const windows = [primary, ...lanes, onDemand].filter(Boolean);
   return {
     id: 'cursor', label: 'Cursor', status: windows.length ? 'ok' : 'empty',
     account: identity.email || null, plan: payload?.membershipType || null,

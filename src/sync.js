@@ -14,6 +14,16 @@ import {
 
 const BUCKET_BATCH = 500;
 const SESSION_BATCH = 200;
+const ADDITIVE_BUCKET_FIELDS = [
+  'inputTokens',
+  'cacheWriteInputTokens',
+  'cacheWrite5mInputTokens',
+  'cacheWrite1hInputTokens',
+  'cacheReadInputTokens',
+  'outputTokens',
+  'reasoningOutputTokens',
+  'requestCount',
+];
 
 export { collectAll } from './local/snapshot.js';
 
@@ -66,14 +76,73 @@ export function chunkBucketChanges(changes, maxSize = BUCKET_BATCH) {
   return chunks;
 }
 
+function wireBucketKey(bucket) {
+  return [
+    bucket.source,
+    bucket.model,
+    bucket.modelProvider || '',
+    bucket.reasoningEffort || '',
+    bucket.agentVersion || '',
+    bucket.contextTier || '',
+    bucket.processingTier || '',
+    bucket.project || '',
+    bucket.bucketStart,
+  ].join('|');
+}
+
+function addBucketValue(total, value, field) {
+  const next = total + Number(value || 0);
+  if (!Number.isSafeInteger(next) || next < 0) {
+    throw new Error(`${field} aggregate exceeds JavaScript's safe integer range`);
+  }
+  return next;
+}
+
+function mergeMeasurement(left, right) {
+  if (left === right) return left;
+  if (left === 'credit' && right === 'credit') return 'credit';
+  return 'estimated';
+}
+
+/* Project labels are part of the local bucket grain but disappear from the
+ * privacy-preserving wire contract. Merge only after applying privacy, using
+ * the server's final natural key, so two private projects cannot overwrite one
+ * another or make the checkpoint alternate forever. */
+export function mergeWireBuckets(buckets) {
+  const merged = new Map();
+  for (const bucket of buckets) {
+    const key = wireBucketKey(bucket);
+    const current = merged.get(key);
+    if (!current) {
+      merged.set(key, { ...bucket });
+      continue;
+    }
+    for (const field of ADDITIVE_BUCKET_FIELDS) {
+      const hasValue = current[field] !== undefined || bucket[field] !== undefined;
+      if (hasValue) current[field] = addBucketValue(current[field], bucket[field], field);
+    }
+    if (current.creditUnits !== undefined || bucket.creditUnits !== undefined) {
+      const creditUnits = Number(current.creditUnits || 0) + Number(bucket.creditUnits || 0);
+      if (!Number.isFinite(creditUnits) || creditUnits < 0) {
+        throw new Error('creditUnits aggregate must be a finite non-negative number');
+      }
+      current.creditUnits = creditUnits;
+    }
+    current.measurement = mergeMeasurement(current.measurement, bucket.measurement);
+    if (current.modelCanonical !== bucket.modelCanonical) delete current.modelCanonical;
+  }
+  return [...merged.values()];
+}
+
 export function applyPrivacy(result, uploadProject) {
   const hide = (item) => {
     const copy = { ...item };
     if (!uploadProject) delete copy.project;
     return copy;
   };
+  const buckets = result.buckets.map(hide);
   return {
-    buckets: result.buckets.map(hide),
+    buckets: uploadProject ? buckets : mergeWireBuckets(buckets),
     sessions: result.sessions.map(hide),
   };
 }

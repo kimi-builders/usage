@@ -35,9 +35,9 @@ const EXPECTED = [
   { id: 'antigravity', tier: 'stable' },
   { id: 'copilot-cli', tier: 'stable' },
   { id: 'roo-code', tier: 'stable' },
-  { id: 'pi-coding-agent', tier: 'stable' },
-  { id: 'zcode', tier: 'stable' },
-  { id: 'workbuddy', tier: 'stable' },
+  { id: 'pi-coding-agent', tier: 'beta' },
+  { id: 'zcode', tier: 'beta' },
+  { id: 'workbuddy', tier: 'beta' },
   { id: 'cursor', tier: 'explicit-opt-in' },
 ];
 

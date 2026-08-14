@@ -14,7 +14,7 @@ import { LimitSettingsDialog, SubscriptionCenter, SubscriptionPulse } from './Su
 import { SyncDialog } from './SyncDialog.jsx';
 import { analyzeBudget, analyzeMilestones, analyzeSpikes } from './usage-insights.js';
 import { BudgetDialog, readBudget, storeBudget, UsageInsightAlerts, UsageInsightSummary } from './UsageInsights.jsx';
-import { compact, delta, DISPLAY_CURRENCIES, DISPLAY_FX_AS_OF, displayMoney, duration, integer, percent } from './format.js';
+import { compact, delta, DISPLAY_CURRENCIES, DISPLAY_FX_AS_OF, DISPLAY_FX_SOURCE, displayMoney, duration, integer, percent } from './format.js';
 import { isBenefitSection, isStandaloneSection, sectionFromHash, titleForSection, USAGE_SECTION_IDS } from './navigation.js';
 import { Button, PageState } from './ui.jsx';
 
@@ -355,7 +355,7 @@ export function App() {
     ? (zh ? `已定价 API 等价价值（${displayCurrency.label}）` : `Priced API-equivalent value (${displayCurrency.label})`)
     : `${t.cost} (${displayCurrency.label})`;
   const costBasis = currency === 'cny'
-    ? (zh ? `标准 API 美元价格 · 按静态汇率 1 USD = ¥${displayCurrency.rate} 换算 · ${DISPLAY_FX_AS_OF}` : `Standard API USD prices · static FX 1 USD = ¥${displayCurrency.rate} · ${DISPLAY_FX_AS_OF}`)
+    ? (zh ? `标准 API 美元价格 · 1 USD = ¥${displayCurrency.rate} · ${DISPLAY_FX_SOURCE} · ${DISPLAY_FX_AS_OF}` : `Standard API USD prices · 1 USD = ¥${displayCurrency.rate} · ${DISPLAY_FX_SOURCE} · ${DISPLAY_FX_AS_OF}`)
     : (zh ? '标准 API 美元价格，不是账单' : 'Standard API USD pricing, not a bill');
   const subscriptionPage = isBenefitSection(activeSection);
   const sourcesPage = activeSection === 'sources';

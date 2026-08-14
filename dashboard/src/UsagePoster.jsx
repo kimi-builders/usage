@@ -1,6 +1,7 @@
 import { forwardRef } from 'react';
 import { compact, duration, money, percent, sourceLabel } from './format.js';
 import { ToolGlyph } from './tool-glyphs.js';
+import { localDateKey } from './usage-insights.js';
 
 const RANGE_LABELS = {
   today: ['今天', 'TODAY'], '24h': ['近 24 小时', '24H'], '7d': ['近 7 天', '7D'],
@@ -82,7 +83,7 @@ function PosterHeatmap({ report }) {
 function ContributionCalendar({ report, range }) {
   const groups = new Map();
   for (const bucket of report.buckets) {
-    const key = new Date(bucket.bucketStart).toISOString().slice(0, 10);
+    const key = localDateKey(bucket.bucketStart);
     groups.set(key, (groups.get(key) || 0) + (bucket.totalTokens || 0));
   }
   const values = [...groups.values()];
@@ -93,7 +94,7 @@ function ContributionCalendar({ report, range }) {
   cursor.setHours(0, 0, 0, 0);
   cursor.setDate(cursor.getDate() - (weeks * 7 - 1));
   for (let i = 0; i < weeks * 7; i += 1) {
-    const key = cursor.toISOString().slice(0, 10);
+    const key = localDateKey(cursor);
     days.push({ key, value: groups.get(key) || 0 });
     cursor.setDate(cursor.getDate() + 1);
   }

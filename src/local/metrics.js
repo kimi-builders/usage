@@ -15,17 +15,24 @@ function addSafe(total, value, field) {
 }
 
 function activityRange(buckets, sessions) {
-  const starts = [
-    ...buckets.map((bucket) => Date.parse(bucket.bucketStart)),
-    ...sessions.map((session) => Date.parse(session.firstMessageAt)),
-  ].filter(Number.isFinite);
-  const ends = [
-    ...buckets.map((bucket) => Date.parse(bucket.bucketStart) + 30 * 60 * 1000),
-    ...sessions.map((session) => Date.parse(session.lastMessageAt)),
-  ].filter(Number.isFinite);
+  let first = Infinity;
+  let last = -Infinity;
+  for (const bucket of buckets) {
+    const start = Date.parse(bucket.bucketStart);
+    if (!Number.isFinite(start)) continue;
+    if (start < first) first = start;
+    const end = start + 30 * 60 * 1000;
+    if (end > last) last = end;
+  }
+  for (const session of sessions) {
+    const start = Date.parse(session.firstMessageAt);
+    const end = Date.parse(session.lastMessageAt);
+    if (Number.isFinite(start) && start < first) first = start;
+    if (Number.isFinite(end) && end > last) last = end;
+  }
   return {
-    firstActivityAt: starts.length > 0 ? new Date(Math.min(...starts)).toISOString() : null,
-    lastActivityAt: ends.length > 0 ? new Date(Math.max(...ends)).toISOString() : null,
+    firstActivityAt: Number.isFinite(first) ? new Date(first).toISOString() : null,
+    lastActivityAt: Number.isFinite(last) ? new Date(last).toISOString() : null,
   };
 }
 

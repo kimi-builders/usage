@@ -158,6 +158,18 @@ test('local metric contract keeps token categories exclusive and price-independe
   assert.equal('estimatedCost' in summary, false);
 });
 
+test('local metric activity range handles large histories without argument spreading', () => {
+  const bucket = validBucket();
+  const buckets = Array(150_000).fill(bucket);
+  const summary = summarizeUsage({ buckets, sessions: [] });
+  assert.equal(summary.bucketCount, 150_000);
+  assert.equal(summary.firstActivityAt, bucket.bucketStart);
+  assert.equal(
+    summary.lastActivityAt,
+    new Date(Date.parse(bucket.bucketStart) + 30 * 60 * 1000).toISOString(),
+  );
+});
+
 test('snapshot module has no network-client dependency', () => {
   const source = readFileSync(new URL('../src/local/snapshot.js', import.meta.url), 'utf8');
   assert.equal(/from\s+['"]\.\.\/api\.js['"]/.test(source), false);

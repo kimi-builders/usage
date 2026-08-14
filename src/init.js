@@ -2,15 +2,23 @@ import { execFile } from 'node:child_process';
 import { platform } from 'node:os';
 import { createSessionSalt, loadConfig, saveConfig } from './config.js';
 import { fetchSettings, pollDeviceToken, requestDeviceCode } from './api.js';
+import { normalizeCommunityUrl } from './community-url.js';
 import { deviceDisplayName } from './device-info.js';
 import { runSync } from './sync.js';
 
+export function browserCommand(url, currentPlatform = platform()) {
+  if (currentPlatform === 'darwin') return ['open', [url]];
+  if (currentPlatform === 'win32') return ['cmd', ['/c', 'start', '', url]];
+  return ['xdg-open', [url]];
+}
+
 function openBrowser(url) {
-  const command = { darwin: 'open', linux: 'xdg-open', win32: 'start' }[platform()] || 'xdg-open';
-  execFile(command, [url], () => {});
+  const [command, args] = browserCommand(url);
+  execFile(command, args, () => {});
 }
 
 export async function runInit({ apiUrl = 'https://kimi.builders', manualKey } = {}) {
+  const normalizedApiUrl = normalizeCommunityUrl(apiUrl);
   const existing = loadConfig();
   const sessionSalt = existing?.sessionSalt || createSessionSalt();
   let apiKey = manualKey;
@@ -19,7 +27,7 @@ export async function runInit({ apiUrl = 'https://kimi.builders', manualKey } = 
     throw new Error('API Key 必须是 kbu_ 开头的设备 Key。');
   }
   if (!apiKey) {
-    const authorization = await requestDeviceCode(apiUrl, {
+    const authorization = await requestDeviceCode(normalizedApiUrl, {
       clientName: '@kimi-builders/usage',
       deviceName: deviceDisplayName(),
       platform: platform(),
@@ -32,7 +40,7 @@ export async function runInit({ apiUrl = 'https://kimi.builders', manualKey } = 
     let interval = authorization.interval || 5;
     while (Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, interval * 1000));
-      const result = await pollDeviceToken(apiUrl, authorization.deviceCode);
+      const result = await pollDeviceToken(normalizedApiUrl, authorization.deviceCode);
       if (result.apiKey) {
         apiKey = result.apiKey;
         deviceId = result.deviceId;
@@ -46,8 +54,8 @@ export async function runInit({ apiUrl = 'https://kimi.builders', manualKey } = 
     }
     if (!apiKey) throw new Error('验证码已过期。');
   }
-  await fetchSettings(apiUrl, apiKey);
-  saveConfig({ ...existing, apiUrl, apiKey, deviceId, sessionSalt });
+  await fetchSettings(normalizedApiUrl, apiKey);
+  saveConfig({ ...existing, apiUrl: normalizedApiUrl, apiKey, deviceId, sessionSalt });
   console.log(`设备已连接，配置保存到 owner-only 文件。Key 前缀：${apiKey.slice(0, 12)}…`);
   await runSync();
 }

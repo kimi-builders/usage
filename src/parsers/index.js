@@ -13,8 +13,8 @@ import { parse as parseZcode, roots as zcodeRoots } from './zcode.js';
 import { parse as parseWorkbuddy, roots as workbuddyRoots } from './workbuddy.js';
 import { canonicalModelId } from '../model-meta.js';
 
-// Multi-source registry. Tiers: core (always on), stable (on), beta (opt-in,
-// not yet collected), disabled (kept for reference, never collected).
+// Multi-source registry. Tiers: core (always on), stable (on), beta (on with
+// an explicit compatibility caveat), explicit-opt-in (configured by user).
 // `roots()` returns the absolute dirs the source would scan right now (only
 // dirs that exist) — an empty list means "not installed" and the collector
 // marks the source skipped without calling parse.
@@ -27,16 +27,16 @@ export const sourceRegistry = [
   { id: 'antigravity', tier: 'stable', parse: parseAntigravity, roots: antigravityRoots },
   { id: 'copilot-cli', tier: 'stable', parse: parseCopilotCli, roots: copilotCliRoots },
   { id: 'roo-code', tier: 'stable', parse: parseRooCode, roots: rooCodeRoots },
-  { id: 'pi-coding-agent', tier: 'stable', parse: parsePiCodingAgent, roots: piCodingAgentRoots },
-  { id: 'zcode', tier: 'stable', parse: parseZcode, roots: zcodeRoots },
-  { id: 'workbuddy', tier: 'stable', parse: parseWorkbuddy, roots: workbuddyRoots },
+  { id: 'pi-coding-agent', tier: 'beta', parse: parsePiCodingAgent, roots: piCodingAgentRoots },
+  { id: 'zcode', tier: 'beta', parse: parseZcode, roots: zcodeRoots },
+  { id: 'workbuddy', tier: 'beta', parse: parseWorkbuddy, roots: workbuddyRoots },
   { id: 'cursor', tier: 'explicit-opt-in', parse: parseCursor, roots: cursorRoots },
 ];
 
 export function enabledSources(optionalSourceIds = []) {
   const optional = new Set(optionalSourceIds);
   return sourceRegistry.filter((source) =>
-    source.tier === 'core' || source.tier === 'stable' || optional.has(source.id));
+    ['core', 'stable', 'beta'].includes(source.tier) || optional.has(source.id));
 }
 
 // Back-compat id → parse map, built from the registry.

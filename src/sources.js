@@ -1,6 +1,6 @@
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadConfig, saveConfig } from './config.js';
+import { createSessionSalt, loadConfig, saveConfig } from './config.js';
 import { sourceRegistry } from './parsers/index.js';
 
 function option(args, name) {
@@ -12,7 +12,7 @@ function option(args, name) {
 }
 
 export function runSources(args = []) {
-  const config = loadConfig();
+  const config = loadConfig() || {};
   const action = args[0] || 'list';
   const sourceId = args[1];
   const optional = sourceRegistry.filter((source) => source.tier === 'explicit-opt-in');
@@ -23,12 +23,12 @@ export function runSources(args = []) {
     for (const source of sourceRegistry) {
       const status = source.tier === 'explicit-opt-in'
         ? enabled.has(source.id) ? '已启用（显式）' : '未启用（显式）'
+        : source.tier === 'beta' ? '自动启用（Beta）'
         : '自动启用';
       console.log(`  ${source.id.padEnd(16)} ${status}`);
     }
     return;
   }
-  if (!config?.apiKey) throw new Error('尚未连接设备，请先运行 init。');
   const source = optional.find((item) => item.id === sourceId);
   if (!source) throw new Error(`可显式配置的数据源不存在: ${sourceId || '(missing)'}`);
 
@@ -44,14 +44,24 @@ export function runSources(args = []) {
       sourceOptions.cursor = { csvPath };
     }
     enabled.add(sourceId);
-    saveConfig({ ...config, enabledSources: [...enabled].sort(), sourceOptions });
+    saveConfig({
+      ...config,
+      sessionSalt: config.sessionSalt || createSessionSalt(),
+      enabledSources: [...enabled].sort(),
+      sourceOptions,
+    });
     console.log(`已启用 ${sourceId}。`);
     return;
   }
   if (action === 'disable') {
     enabled.delete(sourceId);
     delete sourceOptions[sourceId];
-    saveConfig({ ...config, enabledSources: [...enabled].sort(), sourceOptions });
+    saveConfig({
+      ...config,
+      sessionSalt: config.sessionSalt || createSessionSalt(),
+      enabledSources: [...enabled].sort(),
+      sourceOptions,
+    });
     console.log(`已停用 ${sourceId}；远端历史数据未删除。`);
     return;
   }

@@ -69,13 +69,15 @@ export function sourceLabel(source) {
   return SOURCE_LABELS[source] || source;
 }
 
-/* 展示层币种(静态汇率,手工维护;与站点 kimi.builders 的
-   src/lib/usage/pricing.ts 中 USAGE_DISPLAY_CURRENCIES / USAGE_FX_AS_OF 保持同步;
-   只影响展示,不改美元存储与估费口径)。 */
-export const DISPLAY_FX_AS_OF = '2026-08-08';
+/* 展示层币种。CNY/USD 由同日 ECB EUR 参考价交叉计算：
+   CNY per EUR ÷ USD per EUR。只影响展示，不改美元存储与估费口径；
+   ECB 明确说明参考汇率仅供信息用途，不应视为交易价格。 */
+export const DISPLAY_FX_AS_OF = '2026-08-13';
+export const DISPLAY_FX_SOURCE = 'ECB reference rates · CNY/EUR ÷ USD/EUR';
+export const DISPLAY_FX_SOURCE_URL = 'https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html';
 export const DISPLAY_CURRENCIES = {
   usd: { rate: 1, symbol: '$', label: 'USD' },
-  cny: { rate: 7.16, symbol: '¥', label: 'CNY' },
+  cny: { rate: 6.743, symbol: '¥', label: 'CNY' },
 };
 
 export function displayMoney(micros, currency = 'usd', digits = 2) {

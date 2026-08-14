@@ -1,11 +1,12 @@
 import { gzipSync } from 'node:zlib';
+import { normalizeCommunityUrl } from './community-url.js';
 
 const RETRIES = 3;
 
 async function jsonRequest(apiUrl, path, { method = 'GET', apiKey, body, gzip = false } = {}) {
   const raw = body === undefined ? undefined : Buffer.from(JSON.stringify(body));
   const payload = raw && gzip ? gzipSync(raw) : raw;
-  const response = await fetch(new URL(path, apiUrl), {
+  const response = await fetch(new URL(path, normalizeCommunityUrl(apiUrl)), {
     method,
     headers: {
       Accept: 'application/json',
@@ -83,4 +84,3 @@ export function deleteCurrentDeviceData(apiUrl, apiKey) {
 export function encodeIngestBody(payload) {
   return gzipSync(Buffer.from(JSON.stringify(payload)));
 }
-

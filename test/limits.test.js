@@ -135,6 +135,42 @@ test('maps Cursor plan credits and on-demand allowance from cents', () => {
   assert.equal(result.windows[1].remainingPercent, 87.5);
 });
 
+test('Cursor derives a missing total from amount facts instead of averaging unrelated lanes', () => {
+  const result = parseCursorUsage({
+    billingCycleEnd: '2026-09-01T00:00:00Z',
+    individualUsage: {
+      plan: {
+        enabled: true,
+        used: 10,
+        limit: 100,
+        autoPercentUsed: 10,
+        apiPercentUsed: 90,
+      },
+    },
+  }, {}, { now: NOW });
+  assert.equal(result.windows.length, 1);
+  assert.equal(result.windows[0].id, 'plan');
+  assert.equal(result.windows[0].usedPercent, 10);
+  assert.equal(result.windows[0].value, 0.1);
+  assert.equal(result.windows[0].limit, 1);
+});
+
+test('Cursor keeps lane percentages separate when no total amount fact exists', () => {
+  const result = parseCursorUsage({
+    billingCycleEnd: '2026-09-01T00:00:00Z',
+    individualUsage: {
+      plan: { enabled: true, autoPercentUsed: 10, apiPercentUsed: 90 },
+    },
+  }, {}, { now: NOW });
+  assert.deepEqual(
+    result.windows.map(({ id, usedPercent, value, limit }) => ({ id, usedPercent, value, limit })),
+    [
+      { id: 'plan-auto', usedPercent: 10, value: null, limit: null },
+      { id: 'plan-api', usedPercent: 90, value: null, limit: null },
+    ],
+  );
+});
+
 test('maps GitHub Copilot premium and chat quotas without fake unlimited bars', () => {
   const result = parseCopilotUsage({
     copilot_plan: 'pro', quota_reset_date: '2026-09-01T00:00:00Z',
