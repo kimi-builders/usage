@@ -29,8 +29,8 @@ access token as a bootstrap credential:
 ## Before a release
 
 1. Use a clean release branch and review `git status`.
-2. Confirm the public version in `package.json` and update the matching release
-   notes (for `0.4.0`: `docs/RELEASE_NOTES_0.4.0.md`).
+2. Confirm the public version in `package.json` and update the matching
+   `docs/RELEASE_NOTES_<version>.md` release notes.
 3. Run the complete local gate:
 
    ```bash
@@ -67,11 +67,11 @@ Then pack the exact candidate, install that tarball into a separate empty
 directory, and check only local/offline entry points:
 
 ```bash
-npm pack --ignore-scripts --pack-destination /tmp/kbu-usage-release-artifact
+TARBALL="$(npm pack --ignore-scripts --silent --pack-destination /tmp/kbu-usage-release-artifact)"
 mkdir -p /tmp/kbu-usage-install-smoke
 cd /tmp/kbu-usage-install-smoke
 npm init -y
-npm install --ignore-scripts /tmp/kbu-usage-release-artifact/kimi.builders-usage-0.4.0.tgz
+npm install --ignore-scripts "/tmp/kbu-usage-release-artifact/$TARBALL"
 ./node_modules/.bin/kbu-usage --version
 ./node_modules/.bin/kbu-usage doctor --json
 ```

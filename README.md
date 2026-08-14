@@ -2,90 +2,120 @@
 
 [简体中文](./README.md) · [English](./README.en.md)
 
-开源、本地优先的 AI Coding 用量中心。一次扫描即可在浏览器里查看多个 Agent 的
-Token、费用估算、活跃时间、模型与项目分布；不登录、不联网也能完整使用本地看板。
+[![npm version](https://img.shields.io/npm/v/%40kimi.builders%2Fusage)](https://www.npmjs.com/package/@kimi.builders/usage)
+[![CI](https://github.com/kimi-builders/usage/actions/workflows/ci.yml/badge.svg)](https://github.com/kimi-builders/usage/actions/workflows/ci.yml)
+[![MIT License](https://img.shields.io/github/license/kimi-builders/usage)](./LICENSE)
 
-当你愿意连接社区时，同一个 Collector 还能把脱敏后的聚合数据同步到
-[kimi.builders/usage](https://kimi.builders/usage)，用于跨设备分析、公开档案和排行榜。
-本地分析与社区同步是两个独立能力：**打开看板不会自动上传数据。**
+**把散落在不同 AI Coding Agent 里的本地用量，汇总成一张真正可分析的看板。**
 
-## 你能得到什么
+Kimi Builders Usage 会读取 Kimi Code、Claude Code、Codex、OpenCode 等工具已经保存在
+你电脑上的日志，统一展示 Token、标准 API 费用估算、活跃时间、模型、项目和订阅额度。
+本地看板无需账号、默认不联网；社区同步是独立的可选能力。
 
-- 一个完整的本地 Web 看板：今天、24H、7D、30D、90D 与全部历史。
-- 多 Agent 统一口径：输入、缓存写、缓存读、输出、推理、请求和会话。
-- 趋势、自然周对比、分时活跃、分布、明细、CSV/JSON 导出与分享海报。
-- 模型规范化、推理强度、Agent 版本、终端与操作系统信息（来源可提供时）。
-- 按标准 API 价格估算的费用、定价覆盖率与未定价提示；它不是订阅账单。
-- 可选的订阅中心：额度历史、消耗节奏、Token 容量与订阅价值观察；以及可选的手动或后台社区同步。
+## 3 分钟开始
 
-**项目状态：** `0.4.0` 是首个公开 Beta。核心产品、三平台 CI、Provider
-contract test、npm provenance 发布流程和本地发布门禁均已建立；仍会把日志格式覆盖有限的
-来源明确标为 Beta，而不是把兼容性猜测包装成稳定承诺。
-[查看 Roadmap](./docs/ROADMAP.md) · [参与开发](./CONTRIBUTING.md) ·
-[反馈问题](./SUPPORT.md) · [0.4.0 发布说明](./docs/RELEASE_NOTES_0.4.0.md) ·
-[全部文档](./docs/README.md)
-
-## 实际界面
-
-下面的截图和海报直接由本项目读取本机 Agent 日志后生成，不是设计稿或模拟数据。
-
-### 本地看板
-
-![用量中心总览](./docs/assets/screenshots/dashboard-overview.png)
-
-![每日趋势、自然周趋势与分时活跃](./docs/assets/screenshots/dashboard-trends.png)
-
-### 权益中心
-
-![账户权益、官方额度与本机 Token 容量](./docs/assets/screenshots/dashboard-benefits.png)
-
-### 分享用量
-
-海报只包含适合公开展示的用量洞察，不包含项目、设备、路径或对话内容，也不会放置别人
-无法访问的本地二维码。你可以选择自己的头像；图片会自动居中裁成方形并只保存在当前
-浏览器，不会上传到社区或第三方服务。
-
-<p align="center">
-  <img src="./docs/assets/screenshots/kimi-builders-usage-24h.png" alt="近 24 小时用量海报" width="48%">
-  <img src="./docs/assets/screenshots/kimi-builders-usage-30d.png" alt="近 30 天用量海报" width="48%">
-</p>
-
-## 开始使用
-
-### npm / npx
-
-需要 [Node.js 20+](https://nodejs.org/)。无需全局安装：
+需要 [Node.js 20+](https://nodejs.org/)，无需安装桌面应用或全局 npm 包：
 
 ```bash
 npx @kimi.builders/usage@latest dashboard
 ```
 
-它会扫描本机数据，启动仅监听 `127.0.0.1` 的私有看板，并打开一次性授权地址。按
-`Ctrl+C` 或关闭运行命令的终端即可停止服务。首次执行 `npx` 时，npm 会下载经过
-provenance 签名的公开包；Collector 没有 postinstall，也不会因此扫描或上传数据。
+第一次运行时：
 
-### 从源码运行
+1. npm 会询问是否下载 `@kimi.builders/usage`，输入 `y`；安装过程不会扫描或上传数据。
+2. Collector 扫描本机 Agent 日志，启动只监听 `127.0.0.1` 的私有服务，并自动打开看板。
+3. 使用完按 `Ctrl+C` 停止。下次仍运行同一条命令即可。
 
-需要 [Node.js 20+](https://nodejs.org/)。
+> **默认只在本机工作。** 打开看板和点击“重新扫描”都不会同步社区；只有你主动运行
+> `init`、`sync`、点击“同步数据”或安装后台同步后，才会发送脱敏聚合数据。
 
-```bash
-git clone https://github.com/kimi-builders/usage.git
-cd usage
-npm run setup
-npm run dev
-```
-
-`npm run setup` 只在第一次运行时安装看板开发依赖。`npm run dev` 会启动本地 API、
-Vite 看板并自动打开浏览器，不需要分别运行两个终端。
-
-如果不想自动打开浏览器：
+如果看板没有识别到某个工具，先运行完全离线的检查：
 
 ```bash
-npm run dev -- --no-open
+npx @kimi.builders/usage@latest inspect --dry-run
 ```
 
-下文统一使用 `npx @kimi.builders/usage …` 写法。在源码目录体验时，将命令前缀替换为
-`node ./bin/kbu-usage.js …` 即可。
+[查看支持来源](#支持的本地用量来源) ·
+[兼容矩阵与已知限制](./docs/SOURCE_COMPATIBILITY.md) ·
+[排查问题](./SUPPORT.md)
+
+### 让 Agent 帮你完成
+
+不熟悉终端也没关系。复制下面的提示词发给 Codex、Claude Code、Kimi Code 或其他能操作
+本机终端的 Agent，它会检查环境、扫描来源并启动看板：
+
+```text
+Read https://github.com/kimi-builders/usage/blob/main/README.md and follow its
+current instructions to set up and launch Kimi Builders Usage on this computer.
+
+Requirements:
+1. Prefer the published package and npx; do not clone the repository or install
+   anything globally unless there is a concrete reason.
+2. Check `node --version` first. Node.js 20+ is required. If Node is missing or
+   too old, explain the safest installation option for this OS and ask before
+   installing or upgrading it.
+3. Run `npx @kimi.builders/usage@latest inspect --dry-run` and summarize which
+   Agent sources were detected. Do not expose full local paths, credentials,
+   session identifiers, or conversation content in your response.
+4. Run `npx @kimi.builders/usage@latest dashboard`, keep the process running,
+   and open the authorized local dashboard URL. If automatic opening fails,
+   tell me to copy the URL directly from my terminal; do not paste its capability
+   token into chat.
+5. This request is local-only. Do not run `init`, `sync`, `daemon`, enable quota
+   providers, upload data, or change privacy settings unless I explicitly ask.
+6. If a command fails, diagnose the real error, apply only the smallest safe
+   fix, retry it, and finish with a short summary of what is running and how I
+   can stop or restart it.
+```
+
+如果你已经决定连接社区并同步，可以改用下面这个提示词。它会在设备授权时停下来让你
+确认，不会擅自安装持续同步服务：
+
+```text
+Read these documents and follow their current instructions:
+- https://github.com/kimi-builders/usage/blob/main/README.md
+- https://github.com/kimi-builders/usage/blob/main/PRIVACY.md
+- https://github.com/kimi-builders/usage/blob/main/NETWORK.md
+
+Help me connect Kimi Builders Usage to kimi.builders and perform one sync.
+Check Node.js 20+ and run the offline dry-run first. Then check the existing
+connection with `npx @kimi.builders/usage@latest status`. If this device is not
+connected, run `npx @kimi.builders/usage@latest init`, open the device approval
+page, and pause so I can review and approve it. After approval, complete one
+`npx @kimi.builders/usage@latest sync`, verify the final status, and launch the
+local dashboard. Never print or copy API keys, cookies, credentials, full local
+paths, session identifiers, or conversation content. Do not install, restart,
+or remove the background daemon unless I explicitly approve that separate step.
+```
+
+![用量中心总览](./docs/assets/screenshots/dashboard-overview.png)
+
+## 先看重点
+
+| 你可能关心的问题 | 答案 |
+| --- | --- |
+| 会上传对话或代码吗？ | 不会。Token 看板默认纯本地，也不会读取 prompt、response 或文件内容。 |
+| 必须注册社区账号吗？ | 不需要。本地看板和本地订阅分析可独立使用。 |
+| 支持哪些 Agent？ | 内置 11 个自动扫描来源，Cursor CSV 可显式启用；详见下方兼容表。 |
+| 费用是真实账单吗？ | 不是。费用按标准 API 价格估算，并明确显示定价覆盖率和未定价 Token。 |
+| 支持哪些系统？ | macOS、Linux、Windows；需要 Node.js 20 或更高版本。 |
+
+## 按你的需求继续
+
+**只想看本地用量：** 到这里已经完成，不需要 `init`。
+
+**想看订阅额度：** 在本地看板进入“权益中心 → 权益设置”，只启用你使用的平台。额度查询
+默认关闭，不会因为打开 Token 看板而访问供应商。
+
+**想同步到社区或跨设备查看：** 主动连接一次，再选择手动或后台同步：
+
+```bash
+npx @kimi.builders/usage@latest init
+npx @kimi.builders/usage@latest sync
+```
+
+社区只接收脱敏后的聚合记录，项目名默认不上传。完整步骤见
+[连接与同步社区](#连接与同步社区可选)。
 
 ## 三种能力，三个明确边界
 
@@ -95,8 +125,55 @@ npm run dev -- --no-open
 | 订阅额度 | 否，需逐平台启用 | 供应商本机登录或手动凭据 | 本机直连所选供应商 |
 | 社区同步 | 否，需主动连接 | kimi.builders | 脱敏后的聚合数据 |
 
-云端不能主动读取你的电脑。只有运行 `sync`、点击“同步数据”，或明确安装后台服务后，
-本机 Collector 才会向社区发送数据。完整网络目标见 [NETWORK.md](./NETWORK.md)。
+云端不能主动读取你的电脑。完整网络目标和触发条件见 [NETWORK.md](./NETWORK.md)。
+
+## 你能得到什么
+
+- 今天、24H、7D、30D、90D 与全部历史的完整本地 Web 看板。
+- 输入、缓存写、缓存读、输出、推理、请求和会话的跨 Agent 统一口径。
+- 趋势、自然周对比、分时活跃、分布、明细、CSV/JSON 导出与分享海报。
+- 模型规范化、推理强度、Agent 版本、终端与操作系统信息（来源可提供时）。
+- 标准 API 费用估算、定价覆盖率和未定价提示，不把估算伪装成订阅账单。
+- 可选的订阅中心：额度历史、消耗节奏、Token 容量和订阅价值观察。
+
+## 更多界面
+
+截图和海报均由真实本机 Agent 日志生成，不是设计稿或模拟数据。
+
+![每日趋势、自然周趋势与分时活跃](./docs/assets/screenshots/dashboard-trends.png)
+
+![账户权益、官方额度与本机 Token 容量](./docs/assets/screenshots/dashboard-benefits.png)
+
+分享海报不会包含项目、设备、路径或对话内容，也不会放置外部无法访问的本地二维码。
+自定义头像只保存在当前浏览器，不会上传到社区或第三方服务。
+
+<p align="center">
+  <img src="./docs/assets/screenshots/kimi-builders-usage-24h.png" alt="近 24 小时用量海报" width="48%">
+  <img src="./docs/assets/screenshots/kimi-builders-usage-30d.png" alt="近 30 天用量海报" width="48%">
+</p>
+
+**项目状态：** 当前是公开 Beta。稳定来源经过跨平台 fixture 与 contract test；日志格式
+覆盖有限的来源会明确标为 Beta。[Roadmap](./docs/ROADMAP.md) ·
+[发布说明](./docs/RELEASE_NOTES_0.4.1.md) · [全部文档](./docs/README.md)
+
+## 从源码运行
+
+```bash
+git clone https://github.com/kimi-builders/usage.git
+cd usage
+npm run setup
+npm run dev
+```
+
+`npm run setup` 只在第一次安装看板开发依赖。`npm run dev` 会同时启动本地 API 和 Vite
+看板，不需要两个终端。下文使用 `npx @kimi.builders/usage …`；源码目录中可替换为
+`node ./bin/kbu-usage.js …`。
+
+如果不想自动打开浏览器：
+
+```bash
+npm run dev -- --no-open
+```
 
 ## 本地看板
 

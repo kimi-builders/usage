@@ -2,15 +2,143 @@
 
 [简体中文](./README.md) · [English](./README.en.md)
 
-An open-source, local-first usage center for AI coding agents. One scan gives
-you a private browser dashboard for tokens, standard-API cost estimates, active
-time, models, and projects across multiple agents. The complete local dashboard
-works without an account or a network connection.
+[![npm version](https://img.shields.io/npm/v/%40kimi.builders%2Fusage)](https://www.npmjs.com/package/@kimi.builders/usage)
+[![CI](https://github.com/kimi-builders/usage/actions/workflows/ci.yml/badge.svg)](https://github.com/kimi-builders/usage/actions/workflows/ci.yml)
+[![MIT License](https://img.shields.io/github/license/kimi-builders/usage)](./LICENSE)
 
-If you choose to connect the community, the same Collector can send redacted
-aggregates to [kimi.builders/usage](https://kimi.builders/usage) for multi-device
-analysis, public profiles, and leaderboards. Local analytics and community sync
-are separate capabilities: **opening the dashboard never uploads data.**
+**Turn usage scattered across AI coding agents into one dashboard you can
+actually analyze.**
+
+Kimi Builders Usage reads logs that Kimi Code, Claude Code, Codex, OpenCode,
+and other tools already keep on your computer. It combines tokens, standard-API
+cost estimates, active time, models, projects, and subscription limits. The
+local dashboard needs no account and stays offline by default; community sync
+is a separate opt-in capability.
+
+## Start in 3 minutes
+
+[Node.js 20+](https://nodejs.org/) is required. No desktop app or global npm
+install is needed:
+
+```bash
+npx @kimi.builders/usage@latest dashboard
+```
+
+On the first run:
+
+1. npm asks to download `@kimi.builders/usage`; enter `y`. Installation does
+   not scan or upload anything.
+2. The Collector scans local agent logs, starts a private service bound only to
+   `127.0.0.1`, and opens the dashboard.
+3. Press `Ctrl+C` when finished. Run the same command next time.
+
+> **Local is the default.** Opening the dashboard and pressing “Rescan” never
+> sync the community. Data is sent only after you explicitly run `init` or
+> `sync`, press “Sync data”, or install background sync.
+
+If an agent is missing from the dashboard, run this fully offline check first:
+
+```bash
+npx @kimi.builders/usage@latest inspect --dry-run
+```
+
+[Supported sources](#supported-local-usage-sources) ·
+[Compatibility and known limitations](./docs/SOURCE_COMPATIBILITY.md) ·
+[Troubleshooting](./SUPPORT.md)
+
+### Let an agent do it for you
+
+Copy this prompt into Codex, Claude Code, Kimi Code, or another agent that can
+operate your local terminal. It will check the environment, inspect sources,
+and start the dashboard:
+
+```text
+Read https://github.com/kimi-builders/usage/blob/main/README.md and follow its
+current instructions to set up and launch Kimi Builders Usage on this computer.
+
+Requirements:
+1. Prefer the published package and npx; do not clone the repository or install
+   anything globally unless there is a concrete reason.
+2. Check `node --version` first. Node.js 20+ is required. If Node is missing or
+   too old, explain the safest installation option for this OS and ask before
+   installing or upgrading it.
+3. Run `npx @kimi.builders/usage@latest inspect --dry-run` and summarize which
+   Agent sources were detected. Do not expose full local paths, credentials,
+   session identifiers, or conversation content in your response.
+4. Run `npx @kimi.builders/usage@latest dashboard`, keep the process running,
+   and open the authorized local dashboard URL. If automatic opening fails,
+   tell me to copy the URL directly from my terminal; do not paste its capability
+   token into chat.
+5. This request is local-only. Do not run `init`, `sync`, `daemon`, enable quota
+   providers, upload data, or change privacy settings unless I explicitly ask.
+6. If a command fails, diagnose the real error, apply only the smallest safe
+   fix, retry it, and finish with a short summary of what is running and how I
+   can stop or restart it.
+```
+
+If you have decided to connect and sync the community, use this prompt instead.
+The agent must pause for your device approval and must not install continuous
+background sync on its own:
+
+```text
+Read these documents and follow their current instructions:
+- https://github.com/kimi-builders/usage/blob/main/README.md
+- https://github.com/kimi-builders/usage/blob/main/PRIVACY.md
+- https://github.com/kimi-builders/usage/blob/main/NETWORK.md
+
+Help me connect Kimi Builders Usage to kimi.builders and perform one sync.
+Check Node.js 20+ and run the offline dry-run first. Then check the existing
+connection with `npx @kimi.builders/usage@latest status`. If this device is not
+connected, run `npx @kimi.builders/usage@latest init`, open the device approval
+page, and pause so I can review and approve it. After approval, complete one
+`npx @kimi.builders/usage@latest sync`, verify the final status, and launch the
+local dashboard. Never print or copy API keys, cookies, credentials, full local
+paths, session identifiers, or conversation content. Do not install, restart,
+or remove the background daemon unless I explicitly approve that separate step.
+```
+
+![Usage Center overview](./docs/assets/screenshots/dashboard-overview.png)
+
+## The short answers
+
+| Question | Answer |
+| --- | --- |
+| Does it upload conversations or code? | No. The Token dashboard is local by default and does not read prompts, responses, or file contents. |
+| Is a community account required? | No. Local usage and subscription analysis work independently. |
+| Which agents are supported? | Eleven sources are auto-scanned; Cursor CSV is an explicit opt-in. See the matrix below. |
+| Are the costs real bills? | No. They are standard-API estimates with visible pricing coverage and unpriced Tokens. |
+| Which systems are supported? | macOS, Linux, and Windows with Node.js 20 or newer. |
+
+## Choose what you need
+
+**Local usage only:** you are already done. Do not run `init`.
+
+**Subscription limits:** open “Benefit Center → Benefit settings” in the local
+dashboard and enable only the providers you use. Limit queries are off by
+default and never run merely because you opened the Token dashboard.
+
+**Community or multi-device history:** connect once, then sync manually or in
+the background:
+
+```bash
+npx @kimi.builders/usage@latest init
+npx @kimi.builders/usage@latest sync
+```
+
+The community receives redacted aggregate records only. Project upload is off
+by default. See [community sync](#connect-and-sync-the-community-optional) for
+the complete flow.
+
+## Three capabilities, three explicit boundaries
+
+| Capability | Network by default | Account required | Data destination |
+| --- | --- | --- | --- |
+| Local Token dashboard | No | No | Local memory and browser only |
+| Subscription limits | No; opt in per provider | Existing provider login or manual credential | Directly from this machine to the selected provider |
+| Community sync | No; explicit connection required | kimi.builders | Redacted aggregates |
+
+The cloud cannot pull files from your computer. See [NETWORK.md](./NETWORK.md)
+for every network target and trigger.
 
 ## What you get
 
@@ -21,64 +149,35 @@ are separate capabilities: **opening the dashboard never uploads data.**
   CSV/JSON exports, and share posters.
 - Canonical model identity, reasoning effort, agent version, terminal, and OS
   facts when the source provides them.
-- Standard API price estimates with pricing coverage and unpriced-token
-  disclosure. These estimates are not subscription bills.
+- Standard API estimates with pricing coverage and unpriced-token disclosure,
+  never presented as subscription bills.
 - An optional Subscription Center for quota history, burn pace, token capacity,
-  and value observations, plus optional manual or background community sync.
+  and subscription-value observations.
 
-**Project status:** `0.4.0` is the first public beta.
-The core product, three-platform CI, provider contract tests, npm provenance
-workflow, and local release gates are in place. Sources with limited log-format
-evidence remain explicitly labelled Beta instead of being presented as stable.
-[Roadmap](./docs/ROADMAP.md) · [Contributing](./CONTRIBUTING.md) ·
-[Support](./SUPPORT.md) · [0.4.0 release notes](./docs/RELEASE_NOTES_0.4.0.md) ·
-[All docs](./docs/README.md)
+## More of the product
 
-## Real product screenshots
-
-These screenshots and posters are generated from real local Agent logs by this
-project. They are not mockups or seeded demo data.
-
-### Local dashboard
-
-![Usage Center overview](./docs/assets/screenshots/dashboard-overview.png)
+Every screenshot and poster below was generated from real local agent logs, not
+mockups or seeded demo data.
 
 ![Daily trend, natural-week trend, and hourly activity](./docs/assets/screenshots/dashboard-trends.png)
 
-### Benefit Center
-
 ![Account benefits, official quotas, and local token capacity](./docs/assets/screenshots/dashboard-benefits.png)
 
-### Share usage
-
-Posters contain only usage insights suitable for sharing. They exclude projects,
-devices, paths, conversation content, and unreachable localhost QR codes. You can
-choose a custom avatar; it is center-cropped and stored only in the current browser,
-never uploaded to the community or a third party.
+Share posters exclude projects, devices, paths, and conversation content. They
+also omit unreachable localhost QR codes. A custom avatar stays in the current
+browser and is never uploaded to the community or a third party.
 
 <p align="center">
   <img src="./docs/assets/screenshots/kimi-builders-usage-24h.png" alt="Last 24 hours usage poster" width="48%">
   <img src="./docs/assets/screenshots/kimi-builders-usage-30d.png" alt="Last 30 days usage poster" width="48%">
 </p>
 
-## Getting started
+**Project status:** public Beta. Stable sources are covered by cross-platform
+fixtures and contract tests; sources with limited log-format evidence remain
+explicitly labelled Beta. [Roadmap](./docs/ROADMAP.md) ·
+[Release notes](./docs/RELEASE_NOTES_0.4.1.md) · [All docs](./docs/README.md)
 
-### npm / npx
-
-[Node.js 20+](https://nodejs.org/) is required. No global install is needed:
-
-```bash
-npx @kimi.builders/usage@latest dashboard
-```
-
-This scans local data, starts a private server bound only to `127.0.0.1`, and
-opens a one-time authorized URL. Press `Ctrl+C` or close the terminal to stop
-it. On first use, `npx` downloads the public provenance-attested package. The
-Collector has no postinstall script and does not scan or upload during install.
-
-### Run from source
-
-[Node.js 20+](https://nodejs.org/) is required.
+## Run from source
 
 ```bash
 git clone https://github.com/kimi-builders/usage.git
@@ -88,29 +187,15 @@ npm run dev
 ```
 
 `npm run setup` installs dashboard development dependencies once. `npm run dev`
-starts the local API and Vite dashboard, then opens the authorized browser URL.
-You do not need two terminals.
+starts the local API and Vite dashboard together; a second terminal is not
+needed. Examples below use `npx @kimi.builders/usage …`; in a checkout, replace
+that prefix with `node ./bin/kbu-usage.js …`.
 
 To keep the browser closed:
 
 ```bash
 npm run dev -- --no-open
 ```
-
-The examples below use the `npx @kimi.builders/usage …` form. In a source
-checkout, replace that prefix with `node ./bin/kbu-usage.js …`.
-
-## Three capabilities, three explicit boundaries
-
-| Capability | Network by default | Account required | Data destination |
-| --- | --- | --- | --- |
-| Local token dashboard | No | No | Local memory and browser only |
-| Subscription limits | No; opt in per provider | Existing provider login or manual credential | Directly from this machine to the selected provider |
-| Community sync | No; explicit connection required | kimi.builders | Redacted aggregates |
-
-The cloud cannot pull files from your computer. The Collector sends community
-data only when you run `sync`, press “Sync data”, or explicitly install the
-background service. See [NETWORK.md](./NETWORK.md) for every network target.
 
 ## Local dashboard
 

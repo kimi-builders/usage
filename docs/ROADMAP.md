@@ -1,6 +1,6 @@
 # 开发路线与计划
 
-> 当前版本：`0.4.0`（首个公开 Beta）
+> 当前版本：`0.4.1`（公开 Beta 补丁版本）
 >
 > 路线图表达优先级与验收标准，不承诺发布日期。供应商事实、本机观测、用户申报目标和
 > 带前提的派生估计必须继续保持独立。
@@ -55,7 +55,7 @@ GitHub Release 配置均已确认；首发完成后立即迁移到 npm Trusted P
 - [x] 从干净 checkout 运行 `npm run release:check`。
 - [x] 审查实际 `.tgz`，从空临时目录安装并验证 `--version`、`doctor` 和本地 dashboard 启动。
 - [x] 配置一次性首发凭据，确认 GitHub remote、默认分支和 Release workflow 权限。
-- [ ] 创建 `v0.4.0` GitHub Release；由 CI 发布，不从开发机运行 `npm publish`。
+- [x] 创建 `v0.4.0` GitHub Release；由 CI 发布，不从开发机运行 `npm publish`。
 
 ## 发布后 P0：兼容反馈与快速修复
 
