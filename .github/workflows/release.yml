@@ -84,5 +84,11 @@ jobs:
           path: release/
           if-no-files-found: error
           retention-days: 90
-      - name: Publish through npm Trusted Publishing
+      - name: Publish reviewed npm artifact
         run: npm publish "${{ steps.pack.outputs.tarball }}" --access public --provenance
+        env:
+          # Required only for the first publication, before npm has a package
+          # settings page on which to configure the trusted publisher. Remove
+          # this repository secret immediately after the bootstrap release;
+          # npm then authenticates this same step exclusively through OIDC.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_FIRST_PUBLISH_TOKEN }}

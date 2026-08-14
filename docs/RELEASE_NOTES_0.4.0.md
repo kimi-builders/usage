@@ -29,7 +29,8 @@
 
 - GitHub Actions 覆盖 Ubuntu Node 20/22/24、macOS Node 22/24 和 Windows Node 22/24。
 - Provider 使用脱敏成功/异常 fixture 运行 contract test，不在 CI 请求真实账户。
-- 发布由 GitHub Release 触发 npm Trusted Publishing，并生成 provenance、SBOM 和受审 tarball。
+- 发布由 GitHub Release 触发；首发使用一次性短期凭据建立包，随后切换到 npm Trusted
+  Publishing。工作流生成 provenance、SBOM 和受审 tarball。
 - 发布门禁包含 Collector 测试、Dashboard 构建与测试、Markdown 链接检查和 `npm pack` 审计。
 
 ## 已知边界
