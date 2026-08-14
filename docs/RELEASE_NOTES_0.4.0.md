@@ -48,13 +48,13 @@
 直接使用最新版本：
 
 ```bash
-npx @kimi-builders/usage@latest dashboard
+npx @kimi.builders/usage@latest dashboard
 ```
 
 已经安装后台同步的用户升级后应刷新调度器记录的运行路径：
 
 ```bash
-npx @kimi-builders/usage@latest daemon restart
+npx @kimi.builders/usage@latest daemon restart
 ```
 
 该命令不会删除本地历史、社区连接或远端数据。完整命令、隐私与网络边界见项目 README、

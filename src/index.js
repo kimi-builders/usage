@@ -10,24 +10,24 @@ function option(args, name) {
 
 function printHelp() {
   console.log(`
-@kimi-builders/usage
+@kimi.builders/usage
 
-  npx @kimi-builders/usage init [--api-url URL]
-  npx @kimi-builders/usage sync
-  npx @kimi-builders/usage daemon install [--interval 15]
-  npx @kimi-builders/usage daemon status [--json]
-  npx @kimi-builders/usage daemon restart [--interval 15]
-  npx @kimi-builders/usage daemon uninstall
-  npx @kimi-builders/usage inspect --dry-run
-  npx @kimi-builders/usage doctor [--json]
-  npx @kimi-builders/usage dashboard [--no-open] [--port 43120]
-  npx @kimi-builders/usage summary [--days 7]
-  npx @kimi-builders/usage status
-  npx @kimi-builders/usage sources list
-  npx @kimi-builders/usage sources enable cursor --csv PATH
-  npx @kimi-builders/usage sources disable cursor
-  npx @kimi-builders/usage reset --local
-  npx @kimi-builders/usage --version
+  npx @kimi.builders/usage init [--api-url URL]
+  npx @kimi.builders/usage sync
+  npx @kimi.builders/usage daemon install [--interval 15]
+  npx @kimi.builders/usage daemon status [--json]
+  npx @kimi.builders/usage daemon restart [--interval 15]
+  npx @kimi.builders/usage daemon uninstall
+  npx @kimi.builders/usage inspect --dry-run
+  npx @kimi.builders/usage doctor [--json]
+  npx @kimi.builders/usage dashboard [--no-open] [--port 43120]
+  npx @kimi.builders/usage summary [--days 7]
+  npx @kimi.builders/usage status
+  npx @kimi.builders/usage sources list
+  npx @kimi.builders/usage sources enable cursor --csv PATH
+  npx @kimi.builders/usage sources disable cursor
+  npx @kimi.builders/usage reset --local
+  npx @kimi.builders/usage --version
 `);
 }
 

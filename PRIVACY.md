@@ -1,6 +1,6 @@
 # Privacy
 
-`@kimi-builders/usage` is local-first. Reading and analysing local Agent logs does
+`@kimi.builders/usage` is local-first. Reading and analysing local Agent logs does
 not require a Kimi Builders account and does not require network access.
 
 ## Data boundaries

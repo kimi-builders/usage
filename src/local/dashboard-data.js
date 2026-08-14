@@ -96,7 +96,7 @@ export function createDashboardData(snapshot, {
     schemaVersion: 1,
     generatedAt: snapshot.generatedAt,
     locality: snapshot.locality,
-    device: { ...device, collector: { name: '@kimi-builders/usage', version: COLLECTOR_VERSION } },
+    device: { ...device, collector: { name: '@kimi.builders/usage', version: COLLECTOR_VERSION } },
     agentVersions,
     community: {
       connected: Boolean(config?.apiKey && config?.sessionSalt),

@@ -28,7 +28,7 @@ export async function runInit({ apiUrl = 'https://kimi.builders', manualKey } = 
   }
   if (!apiKey) {
     const authorization = await requestDeviceCode(normalizedApiUrl, {
-      clientName: '@kimi-builders/usage',
+      clientName: '@kimi.builders/usage',
       deviceName: deviceDisplayName(),
       platform: platform(),
       surface: 'cli',

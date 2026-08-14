@@ -1,5 +1,5 @@
 {
-  "name": "@kimi-builders/usage",
+  "name": "@kimi.builders/usage",
   "version": "0.4.0",
   "description": "Local-first usage analytics and optional sync for AI coding agents",
   "type": "module",

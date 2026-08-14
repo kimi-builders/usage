@@ -158,7 +158,7 @@ export async function runLocalSyncAction(payload = {}) {
   const action = String(payload.action || '');
   const config = loadConfig();
   if (!config?.apiKey || !config?.sessionSalt) {
-    throw Object.assign(new Error('尚未连接社区，请先运行 `npx @kimi-builders/usage init`。'), {
+    throw Object.assign(new Error('尚未连接社区，请先运行 `npx @kimi.builders/usage init`。'), {
       statusCode: 409, code: 'not_connected',
     });
   }

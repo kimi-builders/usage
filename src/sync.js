@@ -150,7 +150,7 @@ export function applyPrivacy(result, uploadProject) {
 export async function runSync({ quiet = false, surface = 'cli' } = {}) {
   const config = loadConfig();
   if (!config?.apiKey || !config?.sessionSalt) {
-    throw new Error('尚未连接设备，请先运行 `npx @kimi-builders/usage init`。');
+    throw new Error('尚未连接设备，请先运行 `npx @kimi.builders/usage init`。');
   }
   const settings = await fetchSettings(config.apiUrl, config.apiKey);
   if (typeof settings.uploadProject !== 'boolean') {

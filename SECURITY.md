@@ -16,7 +16,7 @@ reporting when it is enabled.
 Useful redacted diagnostics (review aggregate counts before sharing):
 
 ```bash
-npx @kimi-builders/usage doctor --json
+npx @kimi.builders/usage doctor --json
 ```
 
 Please include the Collector version, operating system family, affected source,

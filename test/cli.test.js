@@ -12,7 +12,7 @@ test('running without a command is local-only help, never init or sync', async (
     console.log = original;
   }
   const output = messages.join('\n');
-  assert.match(output, /@kimi-builders\/usage/);
+  assert.match(output, /@kimi\.builders\/usage/);
   assert.match(output, /usage init/);
   assert.match(output, /usage sync/);
 });

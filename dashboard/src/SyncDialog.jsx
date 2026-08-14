@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { Dialog } from './UsageDialogs.jsx';
 
-const PACKAGE = '@kimi-builders/usage';
+const PACKAGE = '@kimi.builders/usage';
 const INTERVALS = [5, 15, 30, 60];
 
 async function copyText(value) {

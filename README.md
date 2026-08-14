@@ -57,7 +57,7 @@ contract test、npm provenance 发布流程和本地发布门禁均已建立；�
 需要 [Node.js 20+](https://nodejs.org/)。无需全局安装：
 
 ```bash
-npx @kimi-builders/usage@latest dashboard
+npx @kimi.builders/usage@latest dashboard
 ```
 
 它会扫描本机数据，启动仅监听 `127.0.0.1` 的私有看板，并打开一次性授权地址。按
@@ -84,7 +84,7 @@ Vite 看板并自动打开浏览器，不需要分别运行两个终端。
 npm run dev -- --no-open
 ```
 
-下文统一使用 `npx @kimi-builders/usage …` 写法。在源码目录体验时，将命令前缀替换为
+下文统一使用 `npx @kimi.builders/usage …` 写法。在源码目录体验时，将命令前缀替换为
 `node ./bin/kbu-usage.js …` 即可。
 
 ## 三种能力，三个明确边界
@@ -101,7 +101,7 @@ npm run dev -- --no-open
 ## 本地看板
 
 ```bash
-npx @kimi-builders/usage dashboard
+npx @kimi.builders/usage dashboard
 ```
 
 看板每次启动都会生成新的浏览器访问令牌，并拒绝非本机 Host、Origin 和未授权请求。
@@ -139,9 +139,9 @@ npx @kimi-builders/usage dashboard
 原有的同步 checkpoint。可先运行以下命令检查环境，全程不联网：
 
 ```bash
-npx @kimi-builders/usage inspect --dry-run
-npx @kimi-builders/usage doctor
-npx @kimi-builders/usage sources list
+npx @kimi.builders/usage inspect --dry-run
+npx @kimi.builders/usage doctor
+npx @kimi.builders/usage sources list
 ```
 
 `doctor --json` 适合附在 Issue 中：它不包含路径、项目、模型、会话 ID 或时间明细，
@@ -150,8 +150,8 @@ npx @kimi-builders/usage sources list
 Cursor 是当前唯一需要显式启用的用量来源：
 
 ```bash
-npx @kimi-builders/usage sources enable cursor --csv /path/to/usage.csv
-npx @kimi-builders/usage sources disable cursor
+npx @kimi.builders/usage sources enable cursor --csv /path/to/usage.csv
+npx @kimi.builders/usage sources disable cursor
 ```
 
 Cursor 的本地来源配置不依赖社区账号或 `init`。启用命令只保存本机 CSV 路径，不会联网，
@@ -186,7 +186,7 @@ Antigravity、OpenCode、Qoder、Warp、JetBrains AI 与 Windsurf。不同平台
 首次连接：
 
 ```bash
-npx @kimi-builders/usage init
+npx @kimi.builders/usage init
 ```
 
 终端会显示设备码并打开社区授权页。授权后，设备得到一枚可单独撤销的 `kbu_` Key。
@@ -195,16 +195,16 @@ npx @kimi-builders/usage init
 单次同步：
 
 ```bash
-npx @kimi-builders/usage sync
+npx @kimi.builders/usage sync
 ```
 
 持续同步：
 
 ```bash
-npx @kimi-builders/usage daemon install --interval 15
-npx @kimi-builders/usage daemon status
-npx @kimi-builders/usage daemon restart
-npx @kimi-builders/usage daemon uninstall
+npx @kimi.builders/usage daemon install --interval 15
+npx @kimi.builders/usage daemon status
+npx @kimi.builders/usage daemon restart
+npx @kimi.builders/usage daemon uninstall
 ```
 
 后台服务以当前用户身份运行，不需要管理员权限：macOS 使用 `launchd`，Linux 使用 user
@@ -215,8 +215,8 @@ npx @kimi-builders/usage daemon uninstall
 删除了某台设备的数据，并希望重新上传本机仍保留的历史：
 
 ```bash
-npx @kimi-builders/usage reset --local
-npx @kimi-builders/usage sync
+npx @kimi.builders/usage reset --local
+npx @kimi.builders/usage sync
 ```
 
 ## 常用命令

@@ -68,7 +68,7 @@ never uploaded to the community or a third party.
 [Node.js 20+](https://nodejs.org/) is required. No global install is needed:
 
 ```bash
-npx @kimi-builders/usage@latest dashboard
+npx @kimi.builders/usage@latest dashboard
 ```
 
 This scans local data, starts a private server bound only to `127.0.0.1`, and
@@ -97,7 +97,7 @@ To keep the browser closed:
 npm run dev -- --no-open
 ```
 
-The examples below use the `npx @kimi-builders/usage …` form. In a source
+The examples below use the `npx @kimi.builders/usage …` form. In a source
 checkout, replace that prefix with `node ./bin/kbu-usage.js …`.
 
 ## Three capabilities, three explicit boundaries
@@ -115,7 +115,7 @@ background service. See [NETWORK.md](./NETWORK.md) for every network target.
 ## Local dashboard
 
 ```bash
-npx @kimi-builders/usage dashboard
+npx @kimi.builders/usage dashboard
 ```
 
 Every launch creates a new browser capability token. The server rejects
@@ -157,9 +157,9 @@ blocks another source and never clears that source's previous sync checkpoint.
 These diagnostics stay offline:
 
 ```bash
-npx @kimi-builders/usage inspect --dry-run
-npx @kimi-builders/usage doctor
-npx @kimi-builders/usage sources list
+npx @kimi.builders/usage inspect --dry-run
+npx @kimi.builders/usage doctor
+npx @kimi.builders/usage sources list
 ```
 
 `doctor --json` is designed for issue reports. It excludes paths, projects,
@@ -169,8 +169,8 @@ redacted parser errors. Review it before sharing.
 Cursor is currently the only usage source that requires explicit configuration:
 
 ```bash
-npx @kimi-builders/usage sources enable cursor --csv /path/to/usage.csv
-npx @kimi-builders/usage sources disable cursor
+npx @kimi.builders/usage sources enable cursor --csv /path/to/usage.csv
+npx @kimi.builders/usage sources disable cursor
 ```
 
 Local Cursor source settings do not require a community account or `init`. The
@@ -215,7 +215,7 @@ fields are documented in [PRIVACY.md](./PRIVACY.md).
 Connect the device once:
 
 ```bash
-npx @kimi-builders/usage init
+npx @kimi.builders/usage init
 ```
 
 The terminal shows a device code and opens the community approval page. After
@@ -225,16 +225,16 @@ upload is off by default; when disabled, the JSON payload has no `project` field
 Run one sync:
 
 ```bash
-npx @kimi-builders/usage sync
+npx @kimi.builders/usage sync
 ```
 
 Or install continuous per-user sync:
 
 ```bash
-npx @kimi-builders/usage daemon install --interval 15
-npx @kimi-builders/usage daemon status
-npx @kimi-builders/usage daemon restart
-npx @kimi-builders/usage daemon uninstall
+npx @kimi.builders/usage daemon install --interval 15
+npx @kimi.builders/usage daemon status
+npx @kimi.builders/usage daemon restart
+npx @kimi.builders/usage daemon uninstall
 ```
 
 The service needs no administrator privileges. It uses `launchd` on macOS,
@@ -247,8 +247,8 @@ concurrency lock. Repeated runs do not duplicate counts. If you delete a device'
 remote history and want to upload the local history again:
 
 ```bash
-npx @kimi-builders/usage reset --local
-npx @kimi-builders/usage sync
+npx @kimi.builders/usage reset --local
+npx @kimi.builders/usage sync
 ```
 
 ## Command reference
