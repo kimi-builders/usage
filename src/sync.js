@@ -91,7 +91,9 @@ function wireBucketKey(bucket) {
 }
 
 function addBucketValue(total, value, field) {
-  const next = total + Number(value || 0);
+  const left = Number(total ?? 0);
+  const right = Number(value ?? 0);
+  const next = left + right;
   if (!Number.isSafeInteger(next) || next < 0) {
     throw new Error(`${field} aggregate exceeds JavaScript's safe integer range`);
   }

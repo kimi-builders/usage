@@ -51,6 +51,26 @@ test('private sync merges projects at the final wire grain before checkpointing'
   assert.equal(state[bucketKey(repeated.buckets[0])], contentHash(repeated.buckets[0]));
 });
 
+test('private sync treats an omitted optional cache TTL partition as zero', () => {
+  const withoutFiveMinute = bucket('community', 10);
+  delete withoutFiveMinute.cacheWrite5mInputTokens;
+  const withFiveMinute = bucket('collector', 20, {
+    cacheWriteInputTokens: 7,
+    cacheWrite5mInputTokens: 6,
+  });
+
+  const result = applyPrivacy({
+    // Keep the omitted value first: this is the ordering that previously made
+    // undefined + a later TTL value fail before upload validation could run.
+    buckets: [withoutFiveMinute, withFiveMinute],
+    sessions: [],
+  }, false);
+
+  assert.equal(result.buckets.length, 1);
+  assert.equal(result.buckets[0].cacheWriteInputTokens, 9);
+  assert.equal(result.buckets[0].cacheWrite5mInputTokens, 6);
+});
+
 test('public sync preserves project buckets and private merging never combines metadata variants', () => {
   const publicResult = applyPrivacy({
     buckets: [bucket('community', 10), bucket('collector', 20)],
