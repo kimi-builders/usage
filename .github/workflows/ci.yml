@@ -68,10 +68,10 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Install Dashboard dependencies
         run: npm ci --prefix dashboard --ignore-scripts --no-audit --no-fund
-      - name: Test Dashboard
-        run: npm run dashboard:test
       - name: Build Dashboard
         run: npm run dashboard:build
+      - name: Test Dashboard
+        run: npm run dashboard:test
       - name: Check Markdown links
         run: npm run check:markdown
       - name: Audit npm package contents
