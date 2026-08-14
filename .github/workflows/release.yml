@@ -3,12 +3,18 @@ name: Release npm package
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing v-prefixed release tag to recover
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: npm-release-${{ github.ref }}
+  group: npm-release-${{ github.event.release.tag_name || inputs.release_tag }}
   cancel-in-progress: false
 
 jobs:
@@ -30,6 +36,8 @@ jobs:
     steps:
       - name: Check out release source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.release_tag }}
       - name: Set up Node.js
         uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
         with:
@@ -51,6 +59,8 @@ jobs:
     steps:
       - name: Check out release source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.release_tag }}
       - name: Set up Node.js and npm registry
         uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
         with:
@@ -60,7 +70,9 @@ jobs:
       - name: Use an OIDC-capable npm CLI
         run: npm install --global npm@12.0.1 --ignore-scripts --no-audit --no-fund
       - name: Verify release tag matches package version
-        run: node -e "const version=require('./package.json').version; if (process.env.GITHUB_REF_NAME !== 'v'+version) throw new Error('release tag must be v'+version)"
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: node -e "const version=require('./package.json').version; if (process.env.RELEASE_TAG !== 'v'+version) throw new Error('release tag must be v'+version)"
       - name: Install Collector package
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Install Dashboard dependencies
@@ -80,7 +92,7 @@ jobs:
       - name: Upload release evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: npm-release-${{ github.ref_name }}
+          name: npm-release-${{ github.event.release.tag_name || inputs.release_tag }}
           path: release/
           if-no-files-found: error
           retention-days: 90
