@@ -18,7 +18,7 @@ Token、费用估算、活跃时间、模型与项目分布；不登录、不联
 - 按标准 API 价格估算的费用、定价覆盖率与未定价提示；它不是订阅账单。
 - 可选的订阅中心：额度历史、消耗节奏、Token 容量与订阅价值观察；以及可选的手动或后台社区同步。
 
-**项目状态：** `0.4.0` 是首个公开 Beta 的发布候选。核心产品、三平台 CI、Provider
+**项目状态：** `0.4.0` 是首个公开 Beta。核心产品、三平台 CI、Provider
 contract test、npm provenance 发布流程和本地发布门禁均已建立；仍会把日志格式覆盖有限的
 来源明确标为 Beta，而不是把兼容性猜测包装成稳定承诺。
 [查看 Roadmap](./docs/ROADMAP.md) · [参与开发](./CONTRIBUTING.md) ·
@@ -52,7 +52,7 @@ contract test、npm provenance 发布流程和本地发布门禁均已建立；�
 
 ## 开始使用
 
-### npm / npx（0.4.0 公开发布后）
+### npm / npx
 
 需要 [Node.js 20+](https://nodejs.org/)。无需全局安装：
 

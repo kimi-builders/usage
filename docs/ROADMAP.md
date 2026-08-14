@@ -1,16 +1,16 @@
 # 开发路线与计划
 
-> 当前版本：`0.4.0`（首个公开 Beta 发布候选）
+> 当前版本：`0.4.0`（首个公开 Beta）
 >
 > 路线图表达优先级与验收标准，不承诺发布日期。供应商事实、本机观测、用户申报目标和
 > 带前提的派生估计必须继续保持独立。
 
 ## 当前结论
 
-产品与工程基础已经达到发布候选：多 Agent 本地扫描、完整用量中心、独立订阅中心、可选
-社区同步、三平台后台服务、三平台 CI、Provider contract test、npm provenance 与发布物
-审计均已实现。`0.4.0` 发布前只剩文档截图、干净 checkout、实际 tarball 安装烟测和
-GitHub Release 配置确认。
+产品与工程基础已经达到首个公开 Beta 的发布标准：多 Agent 本地扫描、完整用量中心、
+独立订阅中心、可选社区同步、三平台后台服务、三平台 CI、Provider contract test、npm provenance 与发布物
+审计均已实现。文档截图、干净 checkout、实际 tarball 安装烟测、一次性首发凭据和
+GitHub Release 配置均已确认；首发完成后立即迁移到 npm Trusted Publishing。
 
 ## 已完成
 
@@ -50,11 +50,11 @@ GitHub Release 配置确认。
 - [x] 数据正确性、隐私同步、Cursor 额度、大历史栈安全和 Windows 授权修复。
 - [x] Pi、ZCode、WorkBuddy/CodeBuddy 按证据标为 Beta，并建立来源兼容矩阵。
 - [x] `package.json` 版本确认为 `0.4.0`，发布说明已建立。
-- [ ] 用最终界面覆盖 README 截图并确认不含私人项目、账户、路径或凭据。
-- [ ] 将 README、LICENSE、NOTICE、docs 和截图纳入 release commit。
-- [ ] 从干净 checkout 运行 `npm run release:check`。
-- [ ] 审查实际 `.tgz`，从空临时目录安装并验证 `--version`、`doctor` 和本地 dashboard 启动。
-- [ ] 配置 npm Trusted Publisher，确认 GitHub remote、默认分支保护和 Release workflow 权限。
+- [x] 用最终界面覆盖 README 截图并确认不含私人项目、账户、路径或凭据。
+- [x] 将 README、LICENSE、NOTICE、docs 和截图纳入 release commit。
+- [x] 从干净 checkout 运行 `npm run release:check`。
+- [x] 审查实际 `.tgz`，从空临时目录安装并验证 `--version`、`doctor` 和本地 dashboard 启动。
+- [x] 配置一次性首发凭据，确认 GitHub remote、默认分支和 Release workflow 权限。
 - [ ] 创建 `v0.4.0` GitHub Release；由 CI 发布，不从开发机运行 `npm publish`。
 
 ## 发布后 P0：兼容反馈与快速修复

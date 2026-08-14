@@ -26,7 +26,7 @@ are separate capabilities: **opening the dashboard never uploads data.**
 - An optional Subscription Center for quota history, burn pace, token capacity,
   and value observations, plus optional manual or background community sync.
 
-**Project status:** `0.4.0` is the release candidate for the first public beta.
+**Project status:** `0.4.0` is the first public beta.
 The core product, three-platform CI, provider contract tests, npm provenance
 workflow, and local release gates are in place. Sources with limited log-format
 evidence remain explicitly labelled Beta instead of being presented as stable.
@@ -63,7 +63,7 @@ never uploaded to the community or a third party.
 
 ## Getting started
 
-### npm / npx (after the public 0.4.0 release)
+### npm / npx
 
 [Node.js 20+](https://nodejs.org/) is required. No global install is needed:
 
