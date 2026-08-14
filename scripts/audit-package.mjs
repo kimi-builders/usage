@@ -21,7 +21,13 @@ try {
   const raw = execFileSync(npm, [
     'pack', '--dry-run', '--json', '--ignore-scripts', '--cache', cache,
   ], { cwd: root, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
-  const report = JSON.parse(raw)[0];
+  const parsed = JSON.parse(raw);
+  // npm <=11 returns an array, while npm >=12 keys the report by package name.
+  // Accept both shapes so the audited artifact stays identical across the
+  // supported release runners instead of coupling the gate to one npm major.
+  const report = Array.isArray(parsed)
+    ? parsed[0]
+    : parsed?.[manifest.name] ?? Object.values(parsed || {})[0];
   if (!report) fail('npm pack returned no report');
 
   const required = new Set([
@@ -54,4 +60,3 @@ try {
 } finally {
   rmSync(cache, { recursive: true, force: true });
 }
-
