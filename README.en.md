@@ -26,12 +26,13 @@ are separate capabilities: **opening the dashboard never uploads data.**
 - An optional Subscription Center for quota history, burn pace, token capacity,
   and value observations, plus optional manual or background community sync.
 
-**Project status:** `0.4.0` is currently a source-available beta. npm publication
-is intentionally deferred by the maintainer. Core product capabilities are in
-place; the next milestone focuses on cross-platform CI, a parser compatibility
-matrix, large-history performance, and provider-drift management.
+**Project status:** `0.4.0` is the release candidate for the first public beta.
+The core product, three-platform CI, provider contract tests, npm provenance
+workflow, and local release gates are in place. Sources with limited log-format
+evidence remain explicitly labelled Beta instead of being presented as stable.
 [Roadmap](./docs/ROADMAP.md) · [Contributing](./CONTRIBUTING.md) ·
-[Support](./SUPPORT.md) · [All docs](./docs/README.md)
+[Support](./SUPPORT.md) · [0.4.0 release notes](./docs/RELEASE_NOTES_0.4.0.md) ·
+[All docs](./docs/README.md)
 
 ## Real product screenshots
 
@@ -40,9 +41,13 @@ project. They are not mockups or seeded demo data.
 
 ### Local dashboard
 
-![Local dashboard overview and subscription limits](./docs/assets/screenshots/dashboard-overview.png)
+![Usage Center overview](./docs/assets/screenshots/dashboard-overview.png)
 
 ![Daily trend, natural-week trend, and hourly activity](./docs/assets/screenshots/dashboard-trends.png)
+
+### Benefit Center
+
+![Account benefits, official quotas, and local token capacity](./docs/assets/screenshots/dashboard-benefits.png)
 
 ### Share usage
 
@@ -52,13 +57,26 @@ choose a custom avatar; it is center-cropped and stored only in the current brow
 never uploaded to the community or a third party.
 
 <p align="center">
-  <img src="./docs/assets/screenshots/usage-poster-24h.png" alt="Last 24 hours usage poster" width="48%">
-  <img src="./docs/assets/screenshots/usage-poster-30d.png" alt="Last 30 days usage poster" width="48%">
+  <img src="./docs/assets/screenshots/kimi-builders-usage-24h.png" alt="Last 24 hours usage poster" width="48%">
+  <img src="./docs/assets/screenshots/kimi-builders-usage-30d.png" alt="Last 30 days usage poster" width="48%">
 </p>
 
 ## Getting started
 
-### Run from source (available now)
+### npm / npx (after the public 0.4.0 release)
+
+[Node.js 20+](https://nodejs.org/) is required. No global install is needed:
+
+```bash
+npx @kimi-builders/usage@latest dashboard
+```
+
+This scans local data, starts a private server bound only to `127.0.0.1`, and
+opens a one-time authorized URL. Press `Ctrl+C` or close the terminal to stop
+it. On first use, `npx` downloads the public provenance-attested package. The
+Collector has no postinstall script and does not scan or upload during install.
+
+### Run from source
 
 [Node.js 20+](https://nodejs.org/) is required.
 
@@ -79,20 +97,8 @@ To keep the browser closed:
 npm run dev -- --no-open
 ```
 
-### After the npm package is published
-
-The npm package has not been published yet. Once released, the normal entry
-point will be:
-
-```bash
-npx @kimi-builders/usage dashboard
-```
-
-It scans local data, starts a private server bound only to `127.0.0.1`, and
-opens a one-time authorized URL. Press `Ctrl+C` or close the terminal to stop it.
-
-The examples below use the future `npx @kimi-builders/usage …` form. In a source
-checkout, replace it with `node ./bin/kbu-usage.js …`.
+The examples below use the `npx @kimi-builders/usage …` form. In a source
+checkout, replace that prefix with `node ./bin/kbu-usage.js …`.
 
 ## Three capabilities, three explicit boundaries
 
@@ -141,6 +147,9 @@ See [Local Snapshot v1](./docs/LOCAL_SNAPSHOT_V1.md) for fields and formulas.
 | Antigravity | Stable | Offline SQLite stores from App 2.0 / `agy` CLI |
 | GitHub Copilot CLI | Stable | Local CLI session logs |
 | Roo Code | Stable | Local VS Code extension task data |
+| Pi Coding Agent | Beta | JSONL sessions such as `~/.pi/agent/sessions`; format coverage is still growing |
+| ZCode | Beta | Local SQLite session store; Node 20 may require a system `sqlite3` |
+| WorkBuddy / CodeBuddy | Beta | Local WorkBuddy/CodeBuddy project session store |
 | Cursor | Explicit opt-in | Usage CSV exported by Cursor Dashboard |
 
 Sources are parsed independently. A missing, damaged, or changed source never
@@ -164,9 +173,11 @@ npx @kimi-builders/usage sources enable cursor --csv /path/to/usage.csv
 npx @kimi-builders/usage sources disable cursor
 ```
 
-Cursor source settings currently share the community-device config file, so one
-`init` is required before those commands. Normal local scans still remain
-offline afterward.
+Local Cursor source settings do not require a community account or `init`. The
+enable command stores only the local CSV path; it neither accesses the network
+nor starts community sync. See the
+[source compatibility matrix](./docs/SOURCE_COMPATIBILITY.md) for maturity,
+limitations, and verification evidence.
 
 ## Subscription limits (optional)
 

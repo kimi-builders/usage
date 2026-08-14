@@ -6,9 +6,4 @@ coverage/
 .idea/
 dashboard/node_modules/
 dashboard/dist/
-
-docs/
-
-README.md
-NOTICE
-LICENSE
+.playwright-cli/

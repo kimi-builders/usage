@@ -2,8 +2,9 @@
 
 ## Supported versions
 
-Security fixes are applied to the latest released minor version. Until the npm
-package is published, the repository default branch is the only supported build.
+Security fixes are applied to the latest released minor version. During the
+`0.4.x` public beta, users should reproduce issues on the latest `0.4.x` patch or
+the repository default branch before reporting them.
 
 ## Reporting a vulnerability
 

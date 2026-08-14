@@ -1,0 +1,164 @@
+THIRD-PARTY NOTICES AND ACKNOWLEDGEMENTS
+
+This file distinguishes four different relationships:
+
+1. source code that was adapted;
+2. products and repositories used as direct research references;
+3. a first-party visual baseline shared with kimi.builders; and
+4. third-party packages or assets included in the built dashboard.
+
+Research reference does not by itself mean that source code was copied. Unless
+the "code adaptation" section says otherwise, the implementation in this
+repository was written for Kimi Builders Usage.
+
+
+CODE ADAPTATION
+===============
+
+@vibe-cafe/vibe-usage
+---------------------
+
+Project:  @vibe-cafe/vibe-usage
+Source:   https://github.com/vibe-cafe/vibe-usage
+License:  MIT, as declared by the upstream package and README
+Audited snapshot: a4967515b770264d61c53cab1a29752bfb31bce6
+
+The initial implementations and related tests/fixtures for parts of the parser
+layer were adapted from this project. The affected area includes shared parser
+aggregation patterns and source readers for Kimi Code, Claude Code, Codex,
+OpenCode, Gemini CLI, Antigravity, GitHub Copilot CLI, Cursor, and Roo Code,
+as well as later Pi Coding Agent, ZCode, and WorkBuddy compatibility work,
+including supporting SQLite utilities where applicable.
+
+The adapted code has since been substantially modified for this project,
+including exclusive cache-write/cache-read/reasoning counters, canonical model
+metadata, reasoning effort and Agent version dimensions, bounded activity-hour
+slices, installation-salted session identifiers, source-level failure isolation,
+and the kimi.builders v2 sync protocol.
+
+
+CodexBar provider integrations
+------------------------------
+
+Project:    CodexBar
+Source:     https://github.com/steipete/CodexBar
+License:    MIT
+Copyright:  Copyright (c) 2026 Peter Steinberger
+Audited snapshot: e5528d452d4f82cbd7e327246b9044e9c51d64e1
+
+Provider-specific endpoint knowledge, request shapes, response mapping, local
+credential discovery, and related test cases in the subscription-limit layer
+were adapted or reimplemented from CodexBar's provider integrations. This
+particularly applies to Codex, Claude, Cursor, GitHub Copilot, OpenCode, Qoder,
+Warp, Gemini, Antigravity, JetBrains AI, and Windsurf where the corresponding
+source exists upstream.
+
+The implementation here translates those provider facts into JavaScript and a
+different normalized quota contract, then adds a provider allowlist, loopback-
+only credential boundary, macOS Keychain handling, redacted browser responses,
+isolated refresh failures, and the Kimi Builders setup UI. No CodexBar binary is
+distributed in this package.
+
+
+DIRECT PRODUCT AND ENGINEERING REFERENCES
+=========================================
+
+Vibe Usage for macOS
+--------------------
+
+Project:  Vibe Usage
+Source:   https://github.com/vibe-cafe/vibe-usage-app
+License:  MIT, as declared by the upstream README
+Audited snapshot: 9c762033be1a1109019840495432930d873669ec
+
+Used as a product research reference for desktop-friendly usage presentation,
+manual/background sync language, common time ranges, subscription-limit
+placement, and the distinction between a quick status surface and a complete
+dashboard. No macOS application source is bundled in this package.
+
+
+Vibe Usage for Windows
+----------------------
+
+Project:  Vibe Usage for Windows
+Source:   https://github.com/vibe-cafe/vibe-usage-windows
+License:  MIT, as declared by the upstream README
+Audited snapshot: 928fc836a34a5152ca180722c9f4a0d2e7466fb7
+
+Used as a cross-platform research reference for per-user installation,
+background sync, system-tray lifecycle, packaged-runtime expectations, and
+Windows Task Scheduler behaviour. No Tauri, Rust, or Windows application source
+from that repository is bundled in this package.
+
+
+CodexBar also served as the product reference for broad provider coverage,
+quota-window terminology, reset countdowns, authentication choices, failure
+isolation, and setup guidance. Kimi Builders Usage intentionally understands
+CodexBar's local Antigravity credential location so a user can reuse an existing
+login. Its code relationship is recorded separately in the code-adaptation
+section above.
+
+
+FIRST-PARTY DESIGN BASELINE
+===========================
+
+kimi.builders Usage
+-------------------
+
+Product:  kimi.builders community usage dashboard
+Source:   https://kimi.builders/usage
+
+The local dashboard, responsive navigation, analytics hierarchy, calculation
+explanations, export flow, and poster system intentionally share a visual and
+product language with the Kimi Builders community page. This is a first-party
+baseline maintained by the same project, not a third-party attribution claim.
+The local implementation changes the identity, privacy, navigation, sharing,
+and sync behaviour wherever a private loopback product requires a different
+contract.
+
+
+BUNDLED PACKAGES AND ASSETS
+===========================
+
+The built local dashboard contains output from the following direct runtime
+dependencies. Their package versions are pinned in dashboard/package-lock.json.
+
+- LobeHub Icons / @lobehub/icons-static-svg (MIT)
+  https://github.com/lobehub/lobe-icons
+  Agent and provider brand SVGs used for identification.
+
+- JetBrains Mono via @fontsource/jetbrains-mono (SIL Open Font License 1.1)
+  https://github.com/JetBrains/JetBrainsMono
+  https://fontsource.org/fonts/jetbrains-mono
+
+- Lucide / lucide-react (ISC)
+  https://github.com/lucide-icons/lucide
+
+- html-to-image (MIT)
+  https://github.com/bubkoo/html-to-image
+
+- React and React DOM (MIT)
+  https://github.com/facebook/react
+
+Build-only dependencies and their complete transitive versions are recorded in
+dashboard/package-lock.json. Each dependency remains subject to its own license.
+Product names, service names, and logos are trademarks of their respective
+owners and are used only to identify compatible data sources or services.
+
+
+PROJECT-ORIGINAL SCOPE
+======================
+
+The local web dashboard and poster implementation, local HTTP capability-token
+security boundary, provider-agnostic quota orchestration and settings UI,
+standard-API price engine, device metadata, community authorization and sync
+runtime, background-service management, export UX, and Kimi Builders product
+integration were implemented for this project. Provider-specific quota protocol
+adaptations and the parser layer remain subject to the code-adaptation sections
+above.
+
+These notices record provenance and thanks. They do not imply affiliation,
+endorsement, joint ownership, or ongoing maintenance by any referenced project.
+The project as distributed is licensed under the MIT License in LICENSE; the
+upstream MIT terms continue to apply to the portions adapted from
+@vibe-cafe/vibe-usage, and bundled dependencies retain their own licenses.
