@@ -823,7 +823,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .pricing-match > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; }
 .pricing-match > header b, .pricing-match > header span { display: block; font-size: 10px; }.pricing-match > header div span, .pricing-match > header > span { margin-top: 5px; color: var(--grey); font-size: 8px; }
 .pricing-table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
-.pricing-match table { width: 100%; min-width: 650px; border-collapse: collapse; }.pricing-match th, .pricing-match td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; color: var(--grey); font: 500 8px/1.3 'JetBrains Mono', monospace; }.pricing-match th { color: var(--paper); }.pricing-match td:first-child { color: var(--paper); }.pricing-match td.priced { color: var(--green); }.pricing-match tr:last-child td { border-bottom: 0; }
+.pricing-match table { width: 100%; min-width: 760px; border-collapse: collapse; }.pricing-match th, .pricing-match td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; color: var(--grey); font: 500 8px/1.3 'JetBrains Mono', monospace; }.pricing-match th { color: var(--paper); }.pricing-match td:first-child { color: var(--paper); }.pricing-match td.priced { color: var(--green); }.pricing-match tr:last-child td { border-bottom: 0; }
 .method-privacy { padding: 16px 18px !important; border-bottom: 0 !important; }.dialog--method .dialog-actions { align-items: center; justify-content: space-between; }.dialog--method .dialog-actions > span { color: var(--grey); font-size: 8px; }
 
 .mobile-drawer-layer { display: none; }

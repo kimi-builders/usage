@@ -1,4 +1,4 @@
-export const LOCAL_PRICE_CATALOG_VERSION = '2026-08-13';
+export const LOCAL_PRICE_CATALOG_VERSION = '2026-08-14';
 
 const SOURCES = {
   openai: 'https://developers.openai.com/api/docs/pricing',
@@ -46,6 +46,8 @@ const claude = (pattern, input, cacheRead, output, options = {}) => entry(
   },
 );
 
+const rate = (value) => Number(value.toFixed(12));
+
 const gpt56 = (pattern, input, cacheWrite, cacheRead, output, options = {}) => [
   entry(pattern, input, cacheRead, output, {
     ...options,
@@ -54,19 +56,38 @@ const gpt56 = (pattern, input, cacheWrite, cacheRead, output, options = {}) => [
     cacheWrite5m: cacheWrite,
     sourceUrl: SOURCES.openai,
   }),
-  entry(pattern, input * 2, cacheRead * 2, output * 1.5, {
+  entry(pattern, rate(input * 2), rate(cacheRead * 2), rate(output * 1.5), {
     ...options,
     contextTier: 'long',
-    cacheWrite: cacheWrite * 2,
-    cacheWrite5m: cacheWrite * 2,
+    cacheWrite: rate(cacheWrite * 2),
+    cacheWrite5m: rate(cacheWrite * 2),
     sourceUrl: SOURCES.openai,
   }),
 ];
 
+const contextPrices = (pattern, short, long, options = {}) => [
+  entry(pattern, short.input, short.cacheRead, short.output, {
+    ...options,
+    contextTier: 'short',
+    cacheWrite: short.cacheWrite ?? null,
+  }),
+  entry(pattern, long.input, long.cacheRead, long.output, {
+    ...options,
+    contextTier: 'long',
+    cacheWrite: long.cacheWrite ?? null,
+  }),
+];
+
+const CURRENT_PRICE_START = '2026-08-14T00:00:00.000Z';
+
 export const LOCAL_PRICE_CATALOG = [
+  entry('grok-4.5', 2, 0.3, 6, { effectiveFrom: CURRENT_PRICE_START }),
   entry('kimi-k3', 3, 0.3, 15, { effectiveFrom: '2026-07-16T00:00:00.000Z', sourceUrl: SOURCES.kimi }),
   entry('kimi-k2.7-code', 0.95, 0.19, 4, { effectiveFrom: '2026-06-01T00:00:00.000Z', sourceUrl: SOURCES.kimi }),
-  entry('kimi-k2.6', 0.95, null, 4, { effectiveFrom: '2026-06-01T00:00:00.000Z', sourceUrl: SOURCES.kimi }),
+  entry('kimi-k2.6', 0.95, null, 4, {
+    effectiveFrom: '2026-06-01T00:00:00.000Z', effectiveTo: CURRENT_PRICE_START, sourceUrl: SOURCES.kimi,
+  }),
+  entry('kimi-k2.6', 0.95, 0.16, 4, { effectiveFrom: CURRENT_PRICE_START, sourceUrl: SOURCES.kimi }),
   entry('kimi-k2.5', 0.6, null, 3, { effectiveFrom: '2026-06-01T00:00:00.000Z', sourceUrl: SOURCES.kimi }),
   entry('kimi-k2-thinking', 1.15, null, 8, { effectiveFrom: '2025-11-06T00:00:00.000Z', sourceUrl: SOURCES.kimi }),
   entry('kimi-k2-turbo', 1.15, null, 8, { effectiveFrom: '2025-08-01T00:00:00.000Z', sourceUrl: SOURCES.kimi }),
@@ -107,9 +128,34 @@ export const LOCAL_PRICE_CATALOG = [
   entry('gpt-5.1', 1.25, 0.125, 10, { effectiveFrom: '2026-02-01T00:00:00.000Z', sourceUrl: SOURCES.openai }),
   entry('gpt-5-codex', 1.25, 0.125, 10, { effectiveFrom: '2025-09-15T00:00:00.000Z', sourceUrl: SOURCES.openai }),
   entry('gpt-5', 1.25, 0.125, 10, { effectiveFrom: '2025-08-07T00:00:00.000Z', sourceUrl: SOURCES.openai }),
+  entry('glm-5.3', 1.4, 0.26, 4.4, { effectiveFrom: CURRENT_PRICE_START, sourceUrl: SOURCES.zai }),
   entry('glm-5.2', 1.4, 0.26, 4.4, { effectiveFrom: '2026-06-13T00:00:00.000Z', sourceUrl: SOURCES.zai }),
   entry('glm-5.1', 1.4, 0.26, 4.4, { effectiveFrom: '2026-01-01T00:00:00.000Z', sourceUrl: SOURCES.zai }),
-  entry('minimax-m3', 0.6, null, 2.4, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.minimax }),
+  entry('mimo-v2.5-pro', 0.435, 0.003625, 0.87, { effectiveFrom: CURRENT_PRICE_START }),
+  entry('mimo-v2.5', 0.14, 0.0028, 0.28, { effectiveFrom: CURRENT_PRICE_START }),
+  entry('minimax-m3', 0.6, null, 2.4, {
+    effectiveFrom: '2026-05-01T00:00:00.000Z', effectiveTo: CURRENT_PRICE_START, sourceUrl: SOURCES.minimax,
+  }),
+  entry('minimax-m3', 0.3, 0.06, 1.2, { effectiveFrom: CURRENT_PRICE_START, sourceUrl: SOURCES.minimax }),
+  entry('minimax-m2.7', 0.3, 0.06, 1.2, {
+    effectiveFrom: CURRENT_PRICE_START, cacheWrite: 0.375, sourceUrl: SOURCES.minimax,
+  }),
+  entry('minimax-m2.5', 0.3, 0.06, 1.2, {
+    effectiveFrom: CURRENT_PRICE_START, cacheWrite: 0.375, sourceUrl: SOURCES.minimax,
+  }),
+  entry('qwen3.8-max', 2, 0.25, 6, { effectiveFrom: CURRENT_PRICE_START, cacheWrite: 2.5 }),
+  entry('qwen3.7-max', 2.5, 0.5, 7.5, { effectiveFrom: CURRENT_PRICE_START, cacheWrite: 3.125 }),
+  ...contextPrices('qwen3.7-plus',
+    { input: 0.4, cacheRead: 0.04, cacheWrite: 0.5, output: 1.6 },
+    { input: 1.2, cacheRead: 0.12, cacheWrite: 1.5, output: 4.8 },
+    { effectiveFrom: CURRENT_PRICE_START }),
+  ...contextPrices('qwen3.6-plus',
+    { input: 0.5, cacheRead: 0.05, cacheWrite: 0.625, output: 3 },
+    { input: 2, cacheRead: 0.2, cacheWrite: 2.5, output: 6 },
+    { effectiveFrom: CURRENT_PRICE_START }),
+  entry('deepseek-v4-pro', 0.435, 0.003625, 0.87, { effectiveFrom: CURRENT_PRICE_START }),
+  entry('deepseek-v4-flash', 0.14, 0.0028, 0.28, { effectiveFrom: CURRENT_PRICE_START }),
+  entry('hy3', 0.14, 0.035, 0.58, { effectiveFrom: CURRENT_PRICE_START }),
   entry('gemini-3-flash-preview', 0.5, 0.05, 3, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
   entry('gemini-3-flash', 0.5, null, 3, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
 ];
@@ -150,9 +196,13 @@ export function matchLocalPrice(bucket) {
   const at = Date.parse(bucket.bucketStart);
   if (!model || !Number.isFinite(at)) return null;
   const slash = model.lastIndexOf('/');
-  const candidates = slash > 0 && slash < model.length - 1
+  const names = slash > 0 && slash < model.length - 1
     ? [model, model.slice(slash + 1)]
     : [model];
+  const candidates = [...new Set(names.flatMap((name) => {
+    const normalized = name.toLowerCase().replace(/[\s_]+/g, '-');
+    return normalized === name ? [name] : [name, normalized];
+  }))];
   for (const candidate of candidates) {
     const match = matchCandidate(candidate, bucket, at);
     if (match) return match;
@@ -217,6 +267,7 @@ export function estimateLocalBucketCost(bucket) {
     pricePattern: price.pattern,
     priceSourceUrl: price.sourceUrl,
     priceInput: price.input,
+    priceCacheWrite: price.cacheWrite,
     priceCacheRead: price.cacheRead,
     priceOutput: price.output,
     priceContextTier: price.contextTier || null,
