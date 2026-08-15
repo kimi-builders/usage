@@ -9,10 +9,42 @@ export const LIMIT_ALLOWED_HOSTS = new Set([
   'api.anthropic.com',
   'cursor.com',
   'api.github.com',
+  'github.com',
   'opencode.ai',
   'qoder.com',
   'qoder.com.cn',
 ]);
+
+export async function requestBytes(url, {
+  method = 'GET', headers = {}, body, timeoutMs = 12_000, fetcher = fetch,
+} = {}) {
+  const endpoint = new URL(url);
+  if (endpoint.protocol !== 'https:' || !LIMIT_ALLOWED_HOSTS.has(endpoint.hostname)) {
+    throw new LimitHTTPError('额度接口地址不在允许列表中。', { code: 'blocked_endpoint' });
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetcher(endpoint, {
+      method, headers, body, cache: 'no-store', redirect: 'error', signal: controller.signal,
+    });
+    if (!response.ok) {
+      const unauthorized = response.status === 401 || response.status === 403;
+      throw new LimitHTTPError(unauthorized
+        ? '登录状态已过期或没有额度读取权限。'
+        : `供应商额度接口返回 HTTP ${response.status}。`, {
+        status: response.status, code: unauthorized ? 'unauthorized' : 'provider_error',
+      });
+    }
+    return Buffer.from(await response.arrayBuffer());
+  } catch (error) {
+    if (error instanceof LimitHTTPError) throw error;
+    if (error?.name === 'AbortError') throw new LimitHTTPError('额度查询超时，请稍后重试。', { code: 'timeout' });
+    throw new LimitHTTPError('无法连接额度服务，请检查网络后重试。', { code: 'network_error' });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export class LimitHTTPError extends Error {
   constructor(message, { status = 0, code = 'network_error' } = {}) {

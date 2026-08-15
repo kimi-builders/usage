@@ -15,12 +15,12 @@ const PROVIDER_SOURCES = {
   qoder: ['qoder'],
   warp: ['warp'],
   'jetbrains-ai': ['jetbrains-ai'],
-  windsurf: ['windsurf'],
 };
 
 const DAY_SECONDS = 86_400;
 const MONTH_SECONDS = DAY_SECONDS * 30;
 const EVIDENCE_SKEW_TOLERANCE_MS = 5 * 60 * 1_000;
+const QUOTA_STALE_AFTER_MS = 24 * 60 * 60 * 1_000;
 
 export const BENEFIT_VIEW_RANGES = ['30d', '90d', 'all'];
 
@@ -283,7 +283,7 @@ function confidence({ coverage, usedPercent, requestCount }) {
   return 'low';
 }
 
-function enrichWindow(window, buckets, sourceHistoryStart, modelRates, quotaObservedAt, usageObservedAt) {
+function enrichWindow(window, buckets, sourceHistoryStart, modelRates, quotaObservedAt, usageObservedAt, providerStale = false) {
   const normalized = normalizeQuotaWindow(window);
   const reset = timestamp(normalized.resetsAt);
   const expired = reset != null && quotaObservedAt != null && reset <= quotaObservedAt;
@@ -337,7 +337,7 @@ function enrichWindow(window, buckets, sourceHistoryStart, modelRates, quotaObse
   });
   return {
     ...normalized,
-    stale: Boolean(normalized.stale) || expired,
+    stale: Boolean(normalized.stale) || expired || providerStale,
     expired,
     windowSeconds: bounds.seconds,
     observedFrom: bounds.start == null ? null : new Date(bounds.start).toISOString(),
@@ -393,10 +393,12 @@ function totalsAtObservation(buckets, window, observedAt, sourceHistoryStart, us
   };
 }
 
-function historyWindows(history, providerId, buckets, sourceHistoryStart, usageObservedAt) {
+function historyWindows(history, providerId, accountId, buckets, sourceHistoryStart, usageObservedAt) {
   const groups = new Map();
   for (const observation of history?.observations || []) {
-    const provider = observation.providers?.find((item) => item.id === providerId);
+    const provider = observation.providers?.find((item) => (
+      item.id === providerId && (accountId ? item.accountId === accountId : !item.accountId)
+    ));
     const hasProviderTime = Object.prototype.hasOwnProperty.call(provider || {}, 'observedAt');
     const providerTime = timestamp(provider?.observedAt);
     const legacyTime = hasProviderTime ? null : timestamp(observation.observedAt);
@@ -518,6 +520,8 @@ export function buildSubscriptionInsights(snapshot, limits, {
     const quotaObservedAt = providerObservedAt;
     const quotaTimestampSource = providerObservedAt != null ? 'provider.updatedAt' : null;
     const providerEvidenceClock = evidenceClock(usageObservedAt, quotaObservedAt);
+    const providerStale = quotaObservedAt != null
+      && usageReferenceAt - quotaObservedAt > QUOTA_STALE_AFTER_MS;
     const sources = new Set(providerSources(provider.id));
     const buckets = allBuckets.filter((bucket) => sources.has(bucket.source));
     const sourceHistoryStart = buckets.reduce((earliest, bucket) => {
@@ -543,6 +547,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
       modelRates,
       quotaObservedAt,
       usageObservedAt,
+      providerStale,
     ));
     const subscription = settings?.providers?.[provider.id] || {};
     const entitlementType = normalizedEntitlementType(subscription);
@@ -551,7 +556,10 @@ export function buildSubscriptionInsights(snapshot, limits, {
     const price = isPaid && enteredPrice > 0 ? enteredPrice : null;
     const monthlyPrice = price == null ? null : subscription.billingCycle === 'yearly' ? price / 12 : price;
     const normalizedHistoryStart = Number.isFinite(sourceHistoryStart) ? sourceHistoryStart : null;
-    const history = historyWindows(limits?.history, provider.id, buckets, normalizedHistoryStart, usageObservedAt);
+    const history = historyWindows(
+      limits?.history, provider.id, provider.accountId || null,
+      buckets, normalizedHistoryStart, usageObservedAt,
+    );
     const baseWindows = currentWindows.length ? currentWindows : [...history.values()].map((points) => {
       const latest = points.at(-1);
       return {
@@ -685,6 +693,28 @@ export function buildSubscriptionInsights(snapshot, limits, {
 
 export function subscriptionSourceIds(providerId) {
   return [...providerSources(providerId)];
+}
+
+export function selectSubscriptionAccounts(limits, selections = {}) {
+  if (!limits || !Array.isArray(limits.providers)) return limits;
+  return {
+    ...limits,
+    providers: limits.providers.map((provider) => {
+      if (!Array.isArray(provider.accounts) || !provider.accounts.length) return provider;
+      const requested = selections[provider.id];
+      const active = provider.accounts.find((account) => account.accountId === requested)
+        || provider.accounts.find((account) => account.accountId === provider.activeAccountId)
+        || provider.accounts[0];
+      return {
+        ...active,
+        id: provider.id,
+        label: provider.label,
+        accounts: provider.accounts,
+        activeAccountId: active.accountId,
+        quotaCoverage: provider.quotaCoverage,
+      };
+    }),
+  };
 }
 
 export function localTokenTotal(buckets) {

@@ -9,7 +9,6 @@ import openCodeMono from '@lobehub/icons-static-svg/icons/opencode.svg?raw';
 import cursorMono from '@lobehub/icons-static-svg/icons/cursor.svg?raw';
 import qoderIcon from '@lobehub/icons-static-svg/icons/qoder-color.svg';
 import traeIcon from '@lobehub/icons-static-svg/icons/trae-color.svg';
-import windsurfMono from '@lobehub/icons-static-svg/icons/windsurf.svg?raw';
 import rooCodeMono from '@lobehub/icons-static-svg/icons/roocode.svg?raw';
 import piMono from '@lobehub/icons-static-svg/icons/pi.svg?raw';
 import zaiMono from '@lobehub/icons-static-svg/icons/zai.svg?raw';
@@ -30,7 +29,6 @@ const TOOL_ICONS = {
   cursor: { svg: cursorMono, tone: 'cursor', label: 'Cursor' },
   qoder: { src: qoderIcon, tone: 'qoder', label: 'Qoder' },
   trae: { src: traeIcon, tone: 'trae', label: 'Trae' },
-  windsurf: { svg: windsurfMono, tone: 'windsurf', label: 'Windsurf' },
   'roo-code': { svg: rooCodeMono, tone: 'roo', label: 'Roo Code' },
   'pi-coding-agent': { svg: piMono, tone: 'pi', label: 'Pi' },
   zcode: { svg: zaiMono, tone: 'zcode', label: 'ZCode' },

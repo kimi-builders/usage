@@ -33,11 +33,12 @@ export const LIMIT_PROVIDER_CATALOG = [
   },
   {
     id: 'copilot', label: 'GitHub Copilot', group: 'recommended', popular: true,
-    description: 'Premium Requests、Chat 与月度重置', quotaSupport: 'automatic',
+    description: 'Premium Requests、Chat 或按量计费状态', quotaSupport: 'automatic', quotaCoverage: 'best-effort',
     defaultAuthMode: 'local', authModes: ['local', 'environment', 'keychain'],
     defaultEnvironmentVariable: 'COPILOT_API_TOKEN', dashboardUrl: 'https://github.com/settings/copilot/features',
     secretKind: 'GitHub OAuth Token',
-    localHint: '优先复用 GitHub CLI（gh）登录；也可提供具备 Copilot 权限的 GitHub OAuth Token。',
+    accountMode: 'github-device',
+    localHint: '推荐通过 GitHub 设备授权连接；可添加多个 GitHub 账户并随时切换查看额度。GitHub CLI 登录只作为兼容回退。',
   },
   {
     id: 'gemini-cli', label: 'Gemini CLI', group: 'recommended', popular: true,
@@ -46,12 +47,12 @@ export const LIMIT_PROVIDER_CATALOG = [
     localHint: '自动复用 Gemini CLI OAuth 登录。',
   },
   {
-    id: 'opencode', label: 'OpenCode', group: 'more', popular: true,
-    description: '5 小时滚动与每周订阅额度', quotaSupport: 'manual',
-    defaultAuthMode: 'environment', authModes: ['environment', 'keychain'],
-    defaultEnvironmentVariable: 'OPENCODE_SESSION_COOKIE', dashboardUrl: 'https://opencode.ai',
-    secretKind: 'OpenCode Session Cookie', extraFields: ['workspaceId'],
-    localHint: 'OpenCode 暂不向本机 CLI 暴露订阅额度凭据；登录 opencode.ai 后粘贴 auth Cookie，可选填 Workspace 链接。',
+    id: 'opencode', label: 'OpenCode Go', group: 'more', popular: true,
+    description: '5 小时、每周与每月 Go 订阅额度', quotaSupport: 'manual',
+    defaultAuthMode: 'keychain', authModes: ['environment', 'keychain'],
+    defaultEnvironmentVariable: 'OPENCODE_SESSION_COOKIE', dashboardUrl: 'https://opencode.ai/auth',
+    secretKind: 'OpenCode Go Session Cookie', extraFields: ['workspaceId'], accountMode: 'cookie-workspace-optional',
+    localHint: '每个账户保存一份 Cookie；Workspace 通常会自动发现，只在自动发现失败时填写覆盖值。',
   },
   {
     id: 'qoder', label: 'Qoder', group: 'more', popular: true,
@@ -90,12 +91,6 @@ export const LIMIT_PROVIDER_CATALOG = [
     defaultAuthMode: 'unavailable', authModes: ['unavailable'], dashboardUrl: 'https://www.trae.ai',
     localHint: 'Trae 尚未提供稳定、可验证的个人订阅额度接口。我们不会要求你提交账号密码，也不会显示猜测数据。',
   },
-  {
-    id: 'windsurf', label: 'Windsurf', group: 'more', popular: true,
-    description: '每日、每周或消息额度（本机缓存）', quotaSupport: 'automatic',
-    defaultAuthMode: 'local', authModes: ['local'], dashboardUrl: 'https://windsurf.com/subscription/usage',
-    localHint: '自动读取 Windsurf 本机额度缓存，不需要 Cookie；先打开并登录 Windsurf 让缓存更新。',
-  },
 ];
 
 export const LIMIT_PROVIDER_IDS = LIMIT_PROVIDER_CATALOG.map((provider) => provider.id);
@@ -105,7 +100,7 @@ export const LIMIT_ENTITLEMENT_TYPES = ['unknown', 'paid', 'free', 'promotion', 
 // explicit so new providers never reshuffle a user's existing dashboard.
 export const DEFAULT_LIMIT_PROVIDER_ORDER = [
   'kimi-code', 'codex', 'claude-code', 'cursor', 'copilot', 'gemini-cli',
-  'opencode', 'qoder', 'antigravity', 'warp', 'jetbrains-ai', 'windsurf', 'trae',
+  'opencode', 'qoder', 'antigravity', 'warp', 'jetbrains-ai', 'trae',
 ];
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -117,6 +112,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     authMode: provider.defaultAuthMode,
     environmentVariable: provider.defaultEnvironmentVariable || '',
     customPath: '', workspaceId: '', site: 'international',
+    accounts: [], activeAccountId: '',
     entitlementType: 'unknown',
     subscriptionPrice: null, subscriptionCurrency: 'usd', billingCycle: 'monthly', renewsAt: '',
   }])),
@@ -124,6 +120,33 @@ const DEFAULT_SETTINGS = Object.freeze({
 
 function safeText(value, maxLength = 240) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+function safeAccountId(value) {
+  const id = safeText(value, 80);
+  return /^[A-Za-z0-9_-]+$/.test(id) ? id : '';
+}
+
+function safeWorkspaceId(value) {
+  const workspace = safeText(value, 1_024).match(/wrk_[A-Za-z0-9_-]+/)?.[0] || '';
+  return workspace.slice(0, 240);
+}
+
+function normalizeAccounts(candidate, provider) {
+  if (!provider.accountMode || !Array.isArray(candidate?.accounts)) return [];
+  const seen = new Set();
+  return candidate.accounts.slice(0, 20).map((account, index) => {
+    const id = safeAccountId(account?.id);
+    if (!id || seen.has(id)) return null;
+    seen.add(id);
+    const label = safeText(account?.label, 80) || `Account ${index + 1}`;
+    return {
+      id,
+      label,
+      externalIdentifier: safeText(account?.externalIdentifier, 160),
+      workspaceId: provider.id === 'opencode' ? safeWorkspaceId(account?.workspaceId) : '',
+    };
+  }).filter(Boolean);
 }
 
 export function defaultLimitSettings() {
@@ -151,13 +174,21 @@ export function normalizeLimitSettings(value) {
       ? candidate.entitlementType
       : validPrice != null ? 'paid' : 'unknown';
     const isPaid = entitlementType === 'paid';
+    const accounts = normalizeAccounts(candidate, provider);
+    const activeAccountId = safeAccountId(candidate?.activeAccountId);
     providers[provider.id] = {
       enabled: provider.quotaSupport !== 'unavailable' && candidate?.enabled === true,
       authMode,
       environmentVariable: safeText(candidate?.environmentVariable || provider.defaultEnvironmentVariable, 80),
       customPath: safeText(candidate?.customPath, 1_024),
-      workspaceId: safeText(candidate?.workspaceId, 240),
+      // Only persist the non-secret wrk_ identifier. This intentionally drops
+      // cookies accidentally pasted into the old Workspace field.
+      workspaceId: provider.id === 'opencode' ? safeWorkspaceId(candidate?.workspaceId) : safeText(candidate?.workspaceId, 240),
       site: candidate?.site === 'china' ? 'china' : 'international',
+      accounts,
+      activeAccountId: accounts.some((account) => account.id === activeAccountId)
+        ? activeAccountId
+        : accounts[0]?.id || '',
       entitlementType,
       subscriptionPrice: isPaid ? validPrice : null,
       subscriptionCurrency: candidate?.subscriptionCurrency === 'cny' ? 'cny' : 'usd',
@@ -192,6 +223,10 @@ export function publicLimitSettings(settings, {
     customPath: safeLocalPathDisplay(provider.customPath),
     customPathConfigured: Boolean(provider.customPath),
     workspaceId: safeLocalPathDisplay(provider.workspaceId),
+    accounts: provider.accounts.map((account) => ({
+      ...account,
+      hasSecret: hasSecret(`${id}:${account.id}`),
+    })),
   }]));
   return {
     ...normalized,
@@ -200,6 +235,7 @@ export function publicLimitSettings(settings, {
     catalog: normalized.providerOrder.map((id) => catalogById.get(id)).filter(Boolean).map((provider) => ({
       ...provider,
       hasSecret: hasSecret(provider.id),
+      accountCount: providers[provider.id]?.accounts?.length || 0,
       supportsKeychain: keychainAvailable && provider.authModes.includes('keychain'),
       detection: detections[provider.id] || {
         state: provider.quotaSupport === 'unavailable' ? 'unavailable' : 'not_detected',

@@ -13,7 +13,7 @@ import { runManagedSync } from '../sync-runtime.js';
 import { prepareStateForSync } from '../state.js';
 import { loadLocalDashboardData } from './dashboard-data.js';
 import {
-  getPublicLimitSettings, loadSubscriptionLimits, saveLimitSettings,
+  createCopilotDeviceController, getPublicLimitSettings, loadSubscriptionLimits, saveLimitSettings,
 } from '../limits/service.js';
 import { createDashboardControl } from './dashboard-control.js';
 
@@ -227,6 +227,7 @@ export async function startLocalDashboardServer({
   limitsLoader = loadSubscriptionLimits,
   limitSettingsLoader = getPublicLimitSettings,
   limitSettingsSaver = saveLimitSettings,
+  copilotDeviceControl = null,
   syncStatusLoader = getLocalSyncStatus,
   syncAction = runLocalSyncAction,
   control = null,
@@ -243,6 +244,7 @@ export async function startLocalDashboardServer({
     ? createDashboardControl()
     : { state: async () => ({ onboardingRequired: false }), act: async () => ({}) });
   const initialControl = await dashboardControl.state();
+  const copilotDevice = copilotDeviceControl || createCopilotDeviceController();
   let activeData = initialControl.onboardingRequired ? null : await dataLoader();
   let refreshPromise = null;
   let actualPort = 0;
@@ -304,6 +306,24 @@ export async function startLocalDashboardServer({
           const payload = await readJson(request);
           limitSettingsSaver(payload);
           sendJson(request, response, limitSettingsLoader());
+          return;
+        }
+        send(response, 405, 'Method not allowed.', { Allow: 'GET, HEAD, POST' });
+        return;
+      }
+
+      if (url.pathname === '/api/limits/copilot/device') {
+        if (request.method === 'GET' || request.method === 'HEAD') {
+          sendJson(request, response, await copilotDevice({ action: 'status' }));
+          return;
+        }
+        if (request.method === 'POST') {
+          if (!String(request.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
+            send(response, 415, 'Content-Type must be application/json.');
+            return;
+          }
+          const payload = await readJson(request);
+          sendJson(request, response, await copilotDevice(payload));
           return;
         }
         send(response, 405, 'Method not allowed.', { Allow: 'GET, HEAD, POST' });

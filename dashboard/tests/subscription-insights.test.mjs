@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildSubscriptionInsights, buildSubscriptionViewUsage, filterBenefitUsageRecords,
-  localEvidenceDayKey, nearestBenefitObservation, subscriptionSourceIds,
+  localEvidenceDayKey, nearestBenefitObservation, selectSubscriptionAccounts, subscriptionSourceIds,
 } from '../src/subscription-insights.js';
 
 const generatedAt = '2026-08-11T12:00:00.000Z';
@@ -64,6 +64,28 @@ test('does not fabricate token capacity when the provider reports zero consumpti
 test('maps subscription providers to collector source ids', () => {
   assert.deepEqual(subscriptionSourceIds('copilot'), ['copilot-cli']);
   assert.deepEqual(subscriptionSourceIds('kimi-code'), ['kimi-code']);
+});
+
+test('selects a provider account without mixing its quota facts or history', () => {
+  const multi = {
+    generatedAt,
+    providers: [{
+      id: 'codex', label: 'Codex', quotaCoverage: 'supported', activeAccountId: 'personal',
+      accounts: [
+        { id: 'codex', accountId: 'personal', accountLabel: 'Personal', status: 'ok', updatedAt: generatedAt, windows: [{ id: 'weekly', label: 'Weekly', usedPercent: 20, remainingPercent: 80 }] },
+        { id: 'codex', accountId: 'work', accountLabel: 'Work', status: 'ok', updatedAt: generatedAt, windows: [{ id: 'weekly', label: 'Weekly', usedPercent: 70, remainingPercent: 30 }] },
+      ],
+    }],
+    history: { observations: [{ observedAt: generatedAt, providers: [
+      { id: 'codex', accountId: 'personal', windows: [{ id: 'weekly', label: 'Weekly', usedPercent: 15, remainingPercent: 85 }] },
+      { id: 'codex', accountId: 'work', windows: [{ id: 'weekly', label: 'Weekly', usedPercent: 65, remainingPercent: 35 }] },
+    ] }] },
+  };
+  const selected = selectSubscriptionAccounts(multi, { codex: 'work' });
+  const provider = buildSubscriptionInsights(snapshot, selected).providers[0];
+  assert.equal(provider.accountId, 'work');
+  assert.equal(provider.windows[0].usedPercent, 70);
+  assert.deepEqual(provider.windows[0].historyPoints.map((point) => point.usedPercent), [65]);
 });
 
 test('keeps actual subscription spend separate from API-equivalent value', () => {
@@ -356,6 +378,19 @@ test('keeps an expired quota cycle historical without emitting current pace advi
   assert.equal(provider.quotaObservation.historicalWindows, 1);
   assert.ok(codes.includes('quota-historical'));
   assert.equal(codes.some((code) => ['pace-low', 'pace-high', 'exhausted'].includes(code)), false);
+});
+
+test('treats a provider observation older than 24 hours as historical evidence', () => {
+  const value = structuredClone(limits);
+  value.providers[0].updatedAt = '2026-08-10T11:59:59.000Z';
+  value.providers[0].windows[0].resetsAt = '2026-08-16T00:00:00.000Z';
+
+  const provider = buildSubscriptionInsights(snapshot, value).providers[0];
+
+  assert.equal(provider.windows[0].stale, true);
+  assert.equal(provider.quotaObservation.state, 'historical');
+  assert.equal(provider.quotaObservation.currentWindows, 0);
+  assert.equal(provider.windows[0].pace, null);
 });
 
 test('scopes benefit activity and distribution without changing provider attribution', () => {

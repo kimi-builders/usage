@@ -247,7 +247,7 @@ Cursor 的本地来源配置不依赖社区账号或 `init`。看板验证和启
 Collector 才会复用该平台的本机登录或读取你指定的凭据并发起查询。
 
 当前支持 Codex、Claude Code、Kimi Code、Cursor、GitHub Copilot、Gemini CLI、
-Antigravity、OpenCode、Qoder、Warp、JetBrains AI 与 Windsurf。不同平台支持自动检测、
+Antigravity、OpenCode Go、Qoder、Warp 与 JetBrains AI。不同平台支持自动检测、
 环境变量或 macOS 钥匙串中的一种或多种方式。Trae 暂无稳定且可独立验证的个人额度接口，
 因此只显示“暂不可查”，不会生成猜测数据。
 

@@ -124,11 +124,11 @@ test('separates paid core from free complements and unclassified accounts', () =
   });
   const codex = provider('codex', 'paid', 1_000, 200);
   const cursor = provider('cursor', 'free', 500);
-  const windsurf = provider('windsurf', 'promotion', 300);
+  const qoder = provider('qoder', 'promotion', 300);
   const warp = provider('warp', 'unknown', 0);
-  const review = buildPortfolioReview([codex, cursor, windsurf, warp], NOW);
+  const review = buildPortfolioReview([codex, cursor, qoder, warp], NOW);
   assert.deepEqual(review.paidProviders.map((item) => item.id), ['codex']);
-  assert.deepEqual(review.benefitProviders.map((item) => item.id), ['cursor', 'windsurf']);
+  assert.deepEqual(review.benefitProviders.map((item) => item.id), ['cursor', 'qoder']);
   assert.deepEqual(review.unknownProviders.map((item) => item.id), ['warp']);
   assert.equal(review.benefitApiEquivalentUsd, 0.8);
   assert.equal(review.paidWithoutLocalUsage.length, 0);

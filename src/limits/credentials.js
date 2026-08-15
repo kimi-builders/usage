@@ -6,6 +6,15 @@ import { queryDbJson } from '../parsers/sqlite.js';
 
 const KEYCHAIN_SERVICE = 'builders.kimi.usage.subscription-limits';
 
+export function providerAccountCredentialKey(providerId, accountId) {
+  const provider = String(providerId || '').trim();
+  const account = String(accountId || '').trim();
+  if (!/^[A-Za-z0-9_-]+$/.test(provider) || !/^[A-Za-z0-9_-]+$/.test(account)) {
+    throw new Error('账户凭据标识无效。');
+  }
+  return `${provider}:${account}`;
+}
+
 function text(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
@@ -237,7 +246,9 @@ export function resolveProviderSecret(providerId, providerSettings, environment 
   if (providerSettings.authMode === 'environment') {
     return environmentSecret(providerSettings.environmentVariable, environment);
   }
-  if (providerSettings.authMode === 'keychain') return readKeychainSecret(providerId);
+  if (providerSettings.authMode === 'keychain') {
+    return readKeychainSecret(providerSettings.credentialKey || providerId);
+  }
   return null;
 }
 

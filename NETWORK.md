@@ -61,9 +61,15 @@ points; only a fresh provider refresh can append a sanitized observation.
   when the user explicitly selects a Web token source;
 - Cursor: `https://cursor.com/api/usage-summary` and the optional
   `https://cursor.com/api/auth/me` identity endpoint;
-- GitHub Copilot: `https://api.github.com/copilot_internal/user`;
-- OpenCode: `https://opencode.ai/_server`, using only the workspace and
-  subscription server functions needed for quota windows;
+- GitHub Copilot: GitHub's device authorization endpoints
+  `https://github.com/login/device/code` and `https://github.com/login/oauth/access_token`,
+  account identity at `https://api.github.com/user`, then quota facts at
+  `https://api.github.com/copilot_internal/user`; device authorization starts
+  only after the user presses Connect and supports separately stored accounts;
+- OpenCode Go: `https://opencode.ai/_server` is used to discover the signed-in
+  account's Workspace, then `https://opencode.ai/workspace/{id}/go` supplies the
+  rolling, weekly, and monthly subscription windows. Each saved account has its
+  own user-supplied Cookie; a `wrk_…` Workspace ID is an optional override only;
 - Qoder: `https://qoder.com/api/v2/me/usages/big_model_credits`, or the
   equivalent `qoder.com.cn` endpoint when the user selects the China site;
 - Warp: `https://app.warp.dev/graphql/v2?op=GetRequestLimitInfo`;
@@ -72,9 +78,6 @@ points; only a fresh provider refresh can append a sanitized observation.
   `v1internal:fetchAvailableModels`, and, when needed, `v1internal:retrieveUserQuota`;
   expired OAuth credentials may refresh through `https://oauth2.googleapis.com/token`;
 - JetBrains AI: no network; the latest local IDE quota file is read.
-- Windsurf: no network in this version; the local `state.vscdb` quota cache is
-  read after the user enables the provider.
-
 Trae is visible in the setup catalog but disabled because this version has no
 stable, independently verifiable subscription-quota interface for it. Merely
 showing a provider in settings never causes a connection.

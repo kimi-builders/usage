@@ -56,7 +56,10 @@ function sanitizeProvider(provider) {
   const windows = (provider.windows || []).map(sanitizeWindow).filter(Boolean);
   if (!windows.length) return null;
   const observedAt = iso(provider?.observedAt);
-  return { id, ...(observedAt ? { observedAt } : {}), windows };
+  const accountId = /^[A-Za-z0-9_-]{1,80}$/.test(String(provider?.accountId || ''))
+    ? String(provider.accountId)
+    : null;
+  return { id, ...(accountId ? { accountId } : {}), ...(observedAt ? { observedAt } : {}), windows };
 }
 
 function sanitizeObservation(observation, { fallbackProviderObservedAt = true } = {}) {
@@ -98,13 +101,14 @@ export function compactLimitHistory(observations, { now = Date.now() } = {}) {
       buckets.set(key, observation);
       continue;
     }
-    const providers = new Map(current.providers.map((provider) => [provider.id, provider]));
+    const providerKey = (provider) => `${provider.id}\u0000${provider.accountId || ''}`;
+    const providers = new Map(current.providers.map((provider) => [providerKey(provider), provider]));
     for (const provider of observation.providers) {
       // A successful provider result is a complete fact set for that provider.
       // Replacing it prevents a disappeared window from inheriting the newer
       // observation timestamp, while providers absent from this partial poll
       // remain represented by their latest result in the bucket.
-      providers.set(provider.id, provider);
+      providers.set(providerKey(provider), provider);
     }
     buckets.set(key, { observedAt: observation.observedAt, providers: [...providers.values()] });
   }
@@ -132,10 +136,15 @@ export function recordLimitSnapshot(snapshot, { path = defaultPath(), now = Date
   const observedAt = iso(snapshot?.generatedAt);
   const observation = observedAt ? sanitizeObservation({
     observedAt,
-    providers: (snapshot?.providers || []).map((provider) => ({
-      ...provider,
-      observedAt: iso(provider?.updatedAt),
-    })),
+    providers: (snapshot?.providers || []).flatMap((provider) => {
+      const values = Array.isArray(provider?.accounts) && provider.accounts.length
+        ? provider.accounts.map((account) => ({ ...account, id: provider.id }))
+        : [provider];
+      return values.map((value) => ({
+        ...value,
+        observedAt: iso(value?.updatedAt),
+      }));
+    }),
   }, { fallbackProviderObservedAt: false }) : null;
   const current = loadLimitHistory({ path, now });
   if (!observation) return current;

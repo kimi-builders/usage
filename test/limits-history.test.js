@@ -123,6 +123,41 @@ test('keeps each provider real observation time when partial successes share a c
   assert.equal(bucket.providers.find((provider) => provider.id === 'provider-b').observedAt, '2026-08-12T11:14:00.000Z');
 });
 
+test('keeps quota history for multiple accounts isolated inside the same provider', () => {
+  const [bucket] = compactLimitHistory([{
+    observedAt: '2026-08-12T11:01:00.000Z',
+    providers: [
+      { id: 'opencode', accountId: 'personal', observedAt: '2026-08-12T11:01:00.000Z', windows: [
+        { id: 'weekly', label: 'Weekly', usedPercent: 10, remainingPercent: 90 },
+      ] },
+      { id: 'opencode', accountId: 'work', observedAt: '2026-08-12T11:01:00.000Z', windows: [
+        { id: 'weekly', label: 'Weekly', usedPercent: 70, remainingPercent: 30 },
+      ] },
+    ],
+  }], { now: NOW });
+  assert.deepEqual(bucket.providers.map((provider) => [provider.accountId, provider.windows[0].usedPercent]), [
+    ['personal', 10], ['work', 70],
+  ]);
+});
+
+test('records every successful account result without account labels or credentials', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kbu-limit-history-accounts-'));
+  const path = join(directory, 'history.json');
+  try {
+    const history = recordLimitSnapshot({ generatedAt: '2026-08-12T11:00:00.000Z', providers: [{
+      id: 'opencode', label: 'OpenCode Go', status: 'ok', account: 'private', updatedAt: '2026-08-12T11:00:00.000Z',
+      windows: [], accounts: [
+        { accountId: 'personal', accountLabel: 'private@example.com', status: 'ok', updatedAt: '2026-08-12T11:00:00.000Z', windows: [{ id: 'weekly', label: 'Weekly', usedPercent: 20, remainingPercent: 80 }] },
+        { accountId: 'work', accountLabel: 'secret-work', status: 'ok', updatedAt: '2026-08-12T11:00:00.000Z', windows: [{ id: 'weekly', label: 'Weekly', usedPercent: 70, remainingPercent: 30 }] },
+      ],
+    }] }, { path, now: NOW });
+    assert.deepEqual(history.observations[0].providers.map((provider) => provider.accountId), ['personal', 'work']);
+    const raw = readFileSync(path, 'utf8');
+    assert.equal(raw.includes('private@example.com'), false);
+    assert.equal(raw.includes('secret-work'), false);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
 test('normalizes schema v1 history by preserving its real container time on each provider', () => {
   const history = normalizeLimitHistory({ schemaVersion: 1, observations: [{
     observedAt: '2026-08-12T10:04:00.000Z',

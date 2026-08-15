@@ -107,16 +107,17 @@
     },
     {
       "id": "opencode",
-      "upstreamShape": "workspace subscription server function",
+      "upstreamShape": "OpenCode Go workspace page payload",
       "input": {
         "data": {
           "rollingUsage": { "usagePercent": 22, "resetInSec": 1800 },
-          "weeklyUsage": { "usagePercent": 41, "resetInSec": 7200 }
+          "weeklyUsage": { "usagePercent": 41, "resetInSec": 7200 },
+          "monthlyUsage": { "usagePercent": 12.5, "resetInSec": 172800 }
         }
       },
       "invalidInput": {},
       "invalidBehavior": "throws",
-      "expected": { "status": "ok", "windowIds": ["rolling", "weekly"], "remainingPercents": [78, 59] }
+      "expected": { "status": "ok", "windowIds": ["rolling", "weekly", "monthly"], "remainingPercents": [78, 59, 87.5] }
     },
     {
       "id": "qoder",
@@ -151,22 +152,6 @@
       "invalidInput": "<application/>",
       "invalidBehavior": "throws",
       "expected": { "status": "ok", "windowIds": ["credits"], "remainingPercents": [88] }
-    },
-    {
-      "id": "windsurf",
-      "upstreamShape": "cachedPlanInfo local cache",
-      "input": {
-        "planName": "Free",
-        "quotaUsage": {
-          "dailyRemainingPercent": 72,
-          "weeklyRemainingPercent": 41,
-          "dailyResetAtUnix": 1786500000,
-          "weeklyResetAtUnix": 1787000000
-        }
-      },
-      "invalidInput": {},
-      "invalidBehavior": "throws",
-      "expected": { "status": "ok", "windowIds": ["daily", "weekly"], "remainingPercents": [72, 41] }
     },
     {
       "id": "trae",

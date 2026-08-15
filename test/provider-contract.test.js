@@ -11,10 +11,9 @@ import { parseCursorUsage } from '../src/limits/providers/cursor.js';
 import { parseGeminiQuota } from '../src/limits/providers/gemini.js';
 import { parseJetBrainsQuota } from '../src/limits/providers/jetbrains.js';
 import { parseKimiCodeUsage } from '../src/limits/providers/kimi.js';
-import { parseOpenCodeUsage } from '../src/limits/providers/opencode.js';
+import { parseOpenCodeGoUsage } from '../src/limits/providers/opencode.js';
 import { parseQoderUsage } from '../src/limits/providers/qoder.js';
 import { parseWarpUsage } from '../src/limits/providers/warp.js';
-import { parseWindsurfPlan } from '../src/limits/providers/windsurf.js';
 import { clearLimitCache, loadSubscriptionLimits } from '../src/limits/service.js';
 
 const NOW = new Date('2026-08-12T12:00:00.000Z');
@@ -30,11 +29,10 @@ const PARSERS = {
   copilot: (input) => parseCopilotUsage(input, {}, { now: NOW }),
   'gemini-cli': (input) => parseGeminiQuota(input, { claims: {}, plan: 'free' }, { now: NOW }),
   antigravity: (input) => parseAntigravityQuota(input, {}, { now: NOW }),
-  opencode: (input) => parseOpenCodeUsage(JSON.stringify(input), { now: NOW }),
+  opencode: (input) => parseOpenCodeGoUsage(JSON.stringify(input), { now: NOW }),
   qoder: (input) => parseQoderUsage(input, {}, { now: NOW }),
   warp: (input) => parseWarpUsage(input, { now: NOW }),
   'jetbrains-ai': (input) => parseJetBrainsQuota(input, { label: 'WebStorm', version: '2026.2' }, { now: NOW }),
-  windsurf: (input) => parseWindsurfPlan(input, { now: NOW }),
 };
 
 function assertClose(actual, expected, message) {

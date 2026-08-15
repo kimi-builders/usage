@@ -279,8 +279,8 @@ The Collector contacts a provider only after you enable it, using an existing
 local login or a credential source you choose.
 
 Current integrations cover Codex, Claude Code, Kimi Code, Cursor, GitHub
-Copilot, Gemini CLI, Antigravity, OpenCode, Qoder, Warp, JetBrains AI, and
-Windsurf. Depending on the provider, setup can use local detection, an
+Copilot, Gemini CLI, Antigravity, OpenCode Go, Qoder, Warp, and JetBrains AI.
+Depending on the provider, setup can use local detection, an
 environment variable, or macOS Keychain. Trae has no stable independently
 verifiable personal-limit interface, so it is labeled unavailable rather than
 showing invented data.

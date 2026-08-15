@@ -49,8 +49,8 @@ Audited snapshot: e5528d452d4f82cbd7e327246b9044e9c51d64e1
 Provider-specific endpoint knowledge, request shapes, response mapping, local
 credential discovery, and related test cases in the subscription-limit layer
 were adapted or reimplemented from CodexBar's provider integrations. This
-particularly applies to Codex, Claude, Cursor, GitHub Copilot, OpenCode, Qoder,
-Warp, Gemini, Antigravity, JetBrains AI, and Windsurf where the corresponding
+particularly applies to Codex, Claude, Cursor, GitHub Copilot, OpenCode Go,
+Qoder, Warp, Gemini, Antigravity, and JetBrains AI where the corresponding
 source exists upstream.
 
 The implementation here translates those provider facts into JavaScript and a

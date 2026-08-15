@@ -123,6 +123,43 @@ test('quota settings API keeps capability and origin protections for writes', as
   }
 });
 
+test('Copilot device API is local-session protected and never echoes private device data', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'kbu-dashboard-copilot-device-'));
+  writeFileSync(join(root, 'index.html'), '<main>local dashboard</main>');
+  const calls = [];
+  const local = await startLocalDashboardServer({
+    launchBrowser: false,
+    buildRoot: root,
+    dataLoader: async () => ({}),
+    copilotDeviceControl: async (payload) => {
+      calls.push(payload);
+      return payload.action === 'start'
+        ? { status: 'pending', userCode: 'ABCD-EFGH', verificationUri: 'https://github.com/login/device' }
+        : { status: 'idle' };
+    },
+  });
+  try {
+    assert.equal((await http(local.port, '/api/limits/copilot/device')).status, 401);
+    const authorized = await http(local.port, new URL(local.url).pathname + new URL(local.url).search);
+    const cookie = authorized.headers['set-cookie'][0].split(';')[0];
+    const hostile = await http(local.port, '/api/limits/copilot/device', {
+      Cookie: cookie, Origin: 'https://attacker.invalid', 'Content-Type': 'application/json',
+    }, { method: 'POST', body: '{"action":"start"}' });
+    assert.equal(hostile.status, 403);
+    const started = await http(local.port, '/api/limits/copilot/device', {
+      Cookie: cookie, Origin: local.origin, 'Content-Type': 'application/json',
+    }, { method: 'POST', body: '{"action":"start"}' });
+    assert.equal(started.status, 200);
+    assert.deepEqual(JSON.parse(started.body), {
+      status: 'pending', userCode: 'ABCD-EFGH', verificationUri: 'https://github.com/login/device',
+    });
+    assert.deepEqual(calls, [{ action: 'start' }]);
+  } finally {
+    await local.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('sync API distinguishes status reads from explicit local actions', async () => {
   const root = mkdtempSync(join(tmpdir(), 'kbu-dashboard-sync-'));
   writeFileSync(join(root, 'index.html'), '<main>local dashboard</main>');

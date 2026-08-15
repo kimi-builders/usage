@@ -4,17 +4,20 @@ import { normalizeLimitSettings, publicLimitSettings } from '../src/limits/catal
 import { normalizeCookieSecret } from '../src/limits/credentials.js';
 import { parseClaudeUsage } from '../src/limits/providers/claude.js';
 import { parseCodexUsage } from '../src/limits/providers/codex.js';
-import { parseCopilotUsage } from '../src/limits/providers/copilot.js';
+import {
+  fetchCopilotIdentity, parseCopilotUsage, pollCopilotDeviceToken, requestCopilotDeviceCode,
+} from '../src/limits/providers/copilot.js';
 import { parseCursorUsage } from '../src/limits/providers/cursor.js';
 import { parseAntigravityQuota } from '../src/limits/providers/antigravity.js';
 import { parseGeminiQuota } from '../src/limits/providers/gemini.js';
 import { parseJetBrainsQuota } from '../src/limits/providers/jetbrains.js';
 import { parseKimiCodeUsage, parseKimiWebUsage } from '../src/limits/providers/kimi.js';
-import { fetchOpenCodeLimits, parseOpenCodeUsage } from '../src/limits/providers/opencode.js';
+import { fetchOpenCodeGoLimits, parseOpenCodeGoUsage } from '../src/limits/providers/opencode.js';
 import { parseQoderUsage } from '../src/limits/providers/qoder.js';
 import { parseWarpUsage } from '../src/limits/providers/warp.js';
-import { parseWindsurfPlan } from '../src/limits/providers/windsurf.js';
-import { clearLimitCache, loadSubscriptionLimits, saveLimitSettings } from '../src/limits/service.js';
+import {
+  clearLimitCache, createCopilotDeviceController, loadSubscriptionLimits, saveLimitSettings,
+} from '../src/limits/service.js';
 
 const NOW = new Date('2026-08-11T12:00:00.000Z');
 
@@ -65,6 +68,47 @@ test('public settings redact local paths and preserve the private value on an un
   assert.equal(response.providers['jetbrains-ai'].customPath.startsWith('/'), false);
 });
 
+test('normalizes multi-account settings and keeps OpenCode Cookie separate from Workspace ID', () => {
+  const value = normalizeLimitSettings({ providers: {
+    opencode: { enabled: true, workspaceId: 'auth=must-not-persist', accounts: [
+      { id: 'personal', label: 'Personal', workspaceId: 'https://opencode.ai/workspace/wrk_personal/billing' },
+      { id: '../bad', label: 'Bad', workspaceId: 'wrk_bad' },
+    ] },
+  } });
+  assert.equal(value.providers.opencode.workspaceId, '');
+  assert.deepEqual(value.providers.opencode.accounts, [{
+    id: 'personal', label: 'Personal', externalIdentifier: '', workspaceId: 'wrk_personal',
+  }]);
+  const exposed = publicLimitSettings(value, {
+    keychainAvailable: true, hasSecret: (key) => key === 'opencode:personal',
+  });
+  assert.equal(exposed.providers.opencode.accounts[0].hasSecret, true);
+  assert.equal(JSON.stringify(exposed).includes('must-not-persist'), false);
+});
+
+test('saves each account credential under its own key and deletes removed accounts', () => {
+  const writes = [];
+  const deletes = [];
+  let saved;
+  const current = { subscriptionLimits: normalizeLimitSettings({ providers: { opencode: {
+    accounts: [{ id: 'old', label: 'Old', workspaceId: 'wrk_old' }], activeAccountId: 'old',
+  } } }) };
+  saveLimitSettings({
+    settings: { enabled: true, providers: { opencode: {
+      enabled: true, accounts: [{ id: 'new', label: 'New', workspaceId: 'wrk_new' }], activeAccountId: 'new',
+    } } },
+    accountSecrets: { opencode: { new: 'auth=new-cookie' } },
+  }, {
+    config: current,
+    save: (value) => { saved = value; },
+    writeSecret: (key, value) => writes.push([key, value]),
+    deleteSecret: (key) => deletes.push(key),
+  });
+  assert.deepEqual(writes, [['opencode:new', 'auth=new-cookie']]);
+  assert.ok(deletes.includes('opencode:old'));
+  assert.equal(saved.subscriptionLimits.providers.opencode.accounts[0].workspaceId, 'wrk_new');
+});
+
 test('normalizes optional subscription spend without inventing prices', () => {
   assert.equal(normalizeLimitSettings({}).providers.codex.subscriptionPrice, null);
   assert.equal(normalizeLimitSettings({}).providers.codex.entitlementType, 'unknown');
@@ -93,14 +137,14 @@ test('keeps free and promotional benefits out of paid spend fields', () => {
       entitlementType: 'free', subscriptionPrice: 20, subscriptionCurrency: 'usd',
       billingCycle: 'monthly', renewsAt: '2026-09-12',
     },
-    windsurf: { entitlementType: 'promotion' },
+    qoder: { entitlementType: 'promotion' },
     warp: { entitlementType: 'organization' },
     codex: { entitlementType: 'invalid', subscriptionPrice: null },
   } });
   assert.equal(value.providers.cursor.entitlementType, 'free');
   assert.equal(value.providers.cursor.subscriptionPrice, null);
   assert.equal(value.providers.cursor.renewsAt, '');
-  assert.equal(value.providers.windsurf.entitlementType, 'promotion');
+  assert.equal(value.providers.qoder.entitlementType, 'promotion');
   assert.equal(value.providers.warp.entitlementType, 'organization');
   assert.equal(value.providers.codex.entitlementType, 'unknown');
 });
@@ -184,6 +228,82 @@ test('maps GitHub Copilot premium and chat quotas without fake unlimited bars', 
   assert.match(result.notice, /Unlimited/);
 });
 
+test('maps GitHub Copilot legacy monthly and limited quota counters', () => {
+  const result = parseCopilotUsage({
+    copilot_plan: 'free', quota_reset_date: '2026-09-01',
+    monthly_quotas: { completions: 50, chat: '25' },
+    limited_user_quotas: { completions: 15, chat: '5' },
+  }, {}, { now: NOW });
+  assert.deepEqual(result.windows.map(({ id, usedPercent, remainingPercent }) => ({
+    id, usedPercent, remainingPercent,
+  })), [
+    { id: 'premium', usedPercent: 70, remainingPercent: 30 },
+    { id: 'chat', usedPercent: 80, remainingPercent: 20 },
+  ]);
+});
+
+test('keeps GitHub Copilot token billing observable without inventing a quota bar', () => {
+  const result = parseCopilotUsage({
+    copilot_plan: 'business', token_based_billing: true,
+    quota_snapshots: { premium_interactions: { unlimited: true, entitlement: 0, remaining: 0 } },
+  }, {}, { now: NOW });
+  assert.equal(result.status, 'ok');
+  assert.deepEqual(result.windows, []);
+  assert.match(result.notice, /不会用虚假的 100%/);
+});
+
+test('uses GitHub device authorization without exposing device secrets', async () => {
+  const requests = [];
+  const device = await requestCopilotDeviceCode({ fetcher: async (url, init) => {
+    requests.push({ url: String(url), body: init.body });
+    return new Response(JSON.stringify({
+      device_code: 'private-device-code', user_code: 'ABCD-EFGH',
+      verification_uri: 'https://github.com/login/device', expires_in: 900, interval: 5,
+    }), { status: 200 });
+  } });
+  assert.equal(device.userCode, 'ABCD-EFGH');
+  assert.match(requests[0].body, /client_id=/);
+  const pending = await pollCopilotDeviceToken({
+    deviceCode: device.deviceCode, clientId: device.clientId,
+    fetcher: async () => new Response('{"error":"authorization_pending"}', { status: 200 }),
+  });
+  assert.equal(pending.status, 'pending');
+  const identity = await fetchCopilotIdentity('secret-token', { fetcher: async (url, init) => {
+    assert.equal(String(url), 'https://api.github.com/user');
+    assert.equal(init.headers.Authorization, 'Bearer secret-token');
+    return new Response('{"login":"builder","id":42}', { status: 200 });
+  } });
+  assert.deepEqual(identity, { login: 'builder', id: '42' });
+});
+
+test('Copilot device controller stores multiple accounts but never returns OAuth tokens', async () => {
+  let config = {};
+  const secrets = new Map();
+  let identity = 0;
+  const controller = createCopilotDeviceController({
+    requestCode: async () => ({
+      deviceCode: `private-${identity}`, userCode: `CODE-${identity}`, verificationUri: 'https://github.com/login/device',
+      expiresIn: 900, interval: 1, clientId: 'client',
+    }),
+    pollToken: async () => ({ status: 'connected', token: `token-${identity}` }),
+    identityLoader: async () => ({ login: `builder-${identity}`, id: String(++identity) }),
+    configLoader: () => config,
+    configSaver: (next) => { config = next; },
+    secretWriter: (key, value) => secrets.set(key, value),
+    now: () => 1_000,
+  });
+  for (let index = 0; index < 2; index += 1) {
+    const started = await controller({ action: 'start' });
+    assert.equal(started.status, 'pending');
+    assert.equal(JSON.stringify(started).includes('private-'), false);
+    const connected = await controller({ action: 'poll' });
+    assert.equal(connected.status, 'connected');
+    assert.equal(JSON.stringify(connected).includes('token-'), false);
+  }
+  assert.equal(config.subscriptionLimits.providers.copilot.accounts.length, 2);
+  assert.equal(secrets.size, 2);
+});
+
 test('merges Qoder personal and shared credits', () => {
   const result = parseQoderUsage({
     totalQuota: { quotaSummary: { usedValue: 20, limitValue: 100, remainingValue: 80, unit: 'credits' } },
@@ -195,25 +315,24 @@ test('merges Qoder personal and shared credits', () => {
   assert.equal(result.windows[0].remainingPercent, 80);
 });
 
-test('maps OpenCode rolling and weekly quota payloads', () => {
-  const result = parseOpenCodeUsage(JSON.stringify({ data: {
+test('maps OpenCode Go rolling, weekly, and monthly quota payloads', () => {
+  const result = parseOpenCodeGoUsage(JSON.stringify({ data: {
     rollingUsage: { usagePercent: 22, resetInSec: 1800 },
     weeklyUsage: { usagePercent: 41, resetInSec: 7200 },
+    monthlyUsage: { usagePercent: 12.5, resetInSec: 172800 },
   } }), { now: NOW });
-  assert.deepEqual(result.windows.map((window) => window.remainingPercent), [78, 59]);
+  assert.equal(result.label, 'OpenCode Go');
+  assert.deepEqual(result.windows.map((window) => window.remainingPercent), [78, 59, 87.5]);
   assert.equal(result.windows[0].resetsAt, '2026-08-11T12:30:00.000Z');
 });
 
-test('OpenCode retries server functions with POST when GET payloads are incomplete', async () => {
+test('OpenCode Go discovers a workspace and fetches its Go usage page', async () => {
   const requests = [];
   const responses = [
-    '{}', '{"workspace":"wrk_demo"}', '{}',
-    JSON.stringify({ data: {
-      rollingUsage: { usagePercent: 10, resetInSec: 300 },
-      weeklyUsage: { usagePercent: 20, resetInSec: 600 },
-    } }),
+    ';0x00000041;({id:"wrk_demo",name:"Personal"})',
+    '<script>rollingUsage:{usagePercent:10,resetInSec:300},weeklyUsage:{usagePercent:20,resetInSec:600}</script>',
   ];
-  const result = await fetchOpenCodeLimits({
+  const result = await fetchOpenCodeGoLimits({
     settings: { authMode: 'environment', environmentVariable: 'OPENCODE_COOKIE', workspaceId: '' },
     environment: { OPENCODE_COOKIE: 'auth=session' },
     fetcher: async (url, init) => {
@@ -221,27 +340,68 @@ test('OpenCode retries server functions with POST when GET payloads are incomple
       return new Response(responses.shift(), { status: 200 });
     },
   });
-  assert.deepEqual(requests.map((request) => request.method), ['GET', 'POST', 'GET', 'POST']);
-  assert.equal(new URL(requests[1].url).search, '');
-  assert.equal(requests[1].body, '[]');
-  assert.equal(requests[3].body, '["wrk_demo"]');
+  assert.deepEqual(requests.map((request) => request.method), ['GET', 'GET']);
+  assert.match(requests[0].url, /_server\?id=/);
+  assert.equal(new URL(requests[1].url).pathname, '/workspace/wrk_demo/go');
   assert.deepEqual(result.windows.map((window) => window.remainingPercent), [90, 80]);
 });
 
-test('maps Windsurf local cache quota and legacy counters', () => {
-  const quota = parseWindsurfPlan({
-    planName: 'Pro', quotaUsage: {
-      dailyRemainingPercent: 72, weeklyRemainingPercent: 41,
-      dailyResetAtUnix: 1786500000, weeklyResetAtUnix: 1787000000,
+test('OpenCode Go retries workspace discovery with POST when GET is incomplete', async () => {
+  const requests = [];
+  const responses = [
+    '{}',
+    '[{id:"wrk_fallback",name:"Work"}]',
+    '<script>rollingUsage:{usagePercent:25,resetInSec:900}</script>',
+  ];
+  const result = await fetchOpenCodeGoLimits({
+    settings: { authMode: 'environment', environmentVariable: 'OPENCODE_COOKIE', workspaceId: '' },
+    environment: { OPENCODE_COOKIE: 'auth=session' },
+    fetcher: async (url, init) => {
+      requests.push({ url: String(url), method: init.method, body: init.body });
+      return new Response(responses.shift(), { status: 200 });
     },
-  }, { now: NOW });
-  assert.equal(quota.plan, 'Pro');
-  assert.deepEqual(quota.windows.map((window) => window.remainingPercent), [72, 41]);
+  });
+  assert.deepEqual(requests.map((request) => request.method), ['GET', 'POST', 'GET']);
+  assert.equal(requests[1].body, '[]');
+  assert.equal(new URL(requests[2].url).pathname, '/workspace/wrk_fallback/go');
+  assert.equal(result.windows[0].remainingPercent, 75);
+});
 
-  const legacy = parseWindsurfPlan({ usage: {
-    messages: 100, usedMessages: 25, flowActions: 50, remainingFlowActions: 30,
-  } }, { now: NOW });
-  assert.deepEqual(legacy.windows.map((window) => window.usedPercent), [25, 40]);
+test('OpenCode Go accepts a Workspace override and skips discovery', async () => {
+  const requests = [];
+  const result = await fetchOpenCodeGoLimits({
+    settings: { authMode: 'environment', environmentVariable: 'OPENCODE_COOKIE', workspaceId: 'wrk_override' },
+    environment: { OPENCODE_COOKIE: 'auth=session' },
+    fetcher: async (url, init) => {
+      requests.push({ url: String(url), method: init.method });
+      return new Response('<script>weeklyUsage:{usagePercent:30,resetInSec:600}</script>', { status: 200 });
+    },
+  });
+  assert.deepEqual(requests.map((request) => request.method), ['GET']);
+  assert.equal(new URL(requests[0].url).pathname, '/workspace/wrk_override/go');
+  assert.equal(result.windows[0].remainingPercent, 70);
+});
+
+test('OpenCode Go reports an actionable error when workspace discovery fails', async () => {
+  await assert.rejects(fetchOpenCodeGoLimits({
+    settings: { authMode: 'environment', environmentVariable: 'OPENCODE_COOKIE', workspaceId: '' },
+    environment: { OPENCODE_COOKIE: 'auth=session' },
+    fetcher: async () => new Response('{}', { status: 200 }),
+  }), (error) => error.code === 'workspace_unavailable');
+});
+
+test('normalizes OpenCode Go fractional percentages and used-limit payloads', () => {
+  const result = parseOpenCodeGoUsage(JSON.stringify({ data: {
+    rollingWindow: { utilization: 0.25, resetInSeconds: 300 },
+    weeklyWindow: { used: 30, limit: 120, resetsInSeconds: 600 },
+  } }), { now: NOW });
+  assert.deepEqual(result.windows.map((window) => window.usedPercent), [25, 25]);
+});
+
+test('parses OpenCode Go usage embedded as quoted JSON inside an HTML page', () => {
+  const result = parseOpenCodeGoUsage('<script>window.data={"rollingUsage":{"usagePercent":18,"resetInSec":120},"weeklyUsage":{"usagePercent":33,"resetInSec":600}}</script>', { now: NOW });
+  assert.deepEqual(result.windows.map((window) => window.remainingPercent), [82, 67]);
+  assert.equal(result.windows[0].resetsAt, '2026-08-11T12:02:00.000Z');
 });
 
 test('maps Codex subscription windows, model-specific limits, spend control, and reset credits', () => {
@@ -389,4 +549,39 @@ test('subscription limit service isolates provider failures and does not expose 
     'id', 'label', 'status', 'account', 'plan', 'source', 'notice', 'resetCredits',
     'updatedAt', 'windows', 'quotaCoverage',
   ]);
+});
+
+test('subscription limit service queries and isolates every configured account', async () => {
+  clearLimitCache();
+  const seen = [];
+  const result = await loadSubscriptionLimits({
+    force: true,
+    config: { subscriptionLimits: {
+      enabled: true, providerOrder: ['opencode'], providers: { opencode: {
+        enabled: true, accounts: [
+          { id: 'personal', label: 'Personal', workspaceId: 'wrk_personal' },
+          { id: 'work', label: 'Work', workspaceId: 'wrk_work' },
+        ], activeAccountId: 'work',
+      } },
+    } },
+    historyLoader: () => ({ schemaVersion: 1, observations: [] }),
+    historyRecorder: () => {},
+    fetchers: { opencode: async ({ settings }) => {
+      seen.push([settings.accountId, settings.workspaceId, settings.credentialKey]);
+      return {
+        id: 'opencode', label: 'OpenCode Go', status: 'ok', updatedAt: NOW.toISOString(),
+        account: settings.accountLabel, source: 'test', windows: [{
+          id: 'weekly', label: 'Weekly', usedPercent: settings.accountId === 'work' ? 70 : 20,
+          remainingPercent: settings.accountId === 'work' ? 30 : 80,
+        }],
+      };
+    } },
+  });
+  assert.deepEqual(seen, [
+    ['personal', 'wrk_personal', 'opencode:personal'],
+    ['work', 'wrk_work', 'opencode:work'],
+  ]);
+  assert.equal(result.providers[0].activeAccountId, 'work');
+  assert.equal(result.providers[0].windows[0].usedPercent, 70);
+  assert.deepEqual(result.providers[0].accounts.map((account) => account.accountId), ['personal', 'work']);
 });

@@ -248,6 +248,19 @@ export function App() {
     } finally { setLimitSaving(false); }
   };
 
+  const copilotDeviceAction = useCallback(async (action) => {
+    const response = await fetch('/api/limits/copilot/device', {
+      method: 'POST', credentials: 'same-origin', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }),
+    });
+    const next = await response.json();
+    if (!response.ok) throw new Error(next?.error?.message || `Copilot device authorization failed (${response.status})`);
+    if (next.status === 'connected') {
+      await Promise.all([loadLimitSettings(), loadLimits(true)]);
+    }
+    return next;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -475,6 +488,6 @@ export function App() {
 
       <footer className="page-footer"><span>kimi.builders / usage · LOCAL</span><p>{zh ? '数据属于你。分析在本机，社区同步永远可选。' : 'Your data. Local analysis. Community sync is always optional.'}</p><a href={data.community.url} target="_blank" rel="noreferrer">{zh ? '社区版' : 'Community'}<ExternalLink size={12}/></a></footer>
     </main>
-    <MethodDialog open={dialog === 'method'} onClose={closeDialog} zh={zh} data={data} report={report} currency={currency}/><ExportDialog open={dialog === 'export'} onClose={closeDialog} report={report} data={data} filters={filters} zh={zh}/><ShareDialog open={dialog === 'share'} onClose={closeDialog} data={data} filters={filters} initialRange={filters.range} zh={zh}/><BudgetDialog open={dialog === 'budget'} onClose={closeDialog} value={budget} onSave={saveBudget} zh={zh}/>{limitSettings ? <LimitSettingsDialog open={dialog === 'limit-settings'} settings={limitSettings} saving={limitSaving} onSave={saveLimitPreferences} onClose={closeDialog} zh={zh}/> : <Dialog open={dialog === 'limit-settings'} onClose={closeDialog} title={zh ? '账户权益与额度设置' : 'Account benefit and quota settings'} subtitle={zh ? '设置单独从本地服务读取；额度页面仍可独立工作。' : 'Settings load independently from the local service; quota views remain separate.'}><PageState kind={limitSettingsLoading ? 'loading' : 'error'} title={limitSettingsLoading ? (zh ? '正在读取权益设置' : 'Loading benefit settings') : (zh ? '权益设置读取失败' : 'Could not load benefit settings')} body={limitSettingsLoading ? (zh ? '正在读取本机配置，不会发起供应商请求。' : 'Reading local configuration without contacting providers.') : limitSettingsError || (zh ? '本地服务没有返回设置。' : 'The local service did not return settings.')} action={!limitSettingsLoading ? <Button variant="primary" onClick={loadLimitSettings}><RefreshCw size={14}/>{zh ? '重试读取' : 'Retry'}</Button> : null}/></Dialog>}<SyncDialog open={dialog === 'sync'} onClose={closeDialog} zh={zh} control={control} onControlAction={controlAction} onControlChange={loadControl}/>
+    <MethodDialog open={dialog === 'method'} onClose={closeDialog} zh={zh} data={data} report={report} currency={currency}/><ExportDialog open={dialog === 'export'} onClose={closeDialog} report={report} data={data} filters={filters} zh={zh}/><ShareDialog open={dialog === 'share'} onClose={closeDialog} data={data} filters={filters} initialRange={filters.range} zh={zh}/><BudgetDialog open={dialog === 'budget'} onClose={closeDialog} value={budget} onSave={saveBudget} zh={zh}/>{limitSettings ? <LimitSettingsDialog open={dialog === 'limit-settings'} settings={limitSettings} saving={limitSaving} onSave={saveLimitPreferences} onCopilotDeviceAction={copilotDeviceAction} onClose={closeDialog} zh={zh}/> : <Dialog open={dialog === 'limit-settings'} onClose={closeDialog} title={zh ? '账户权益与额度设置' : 'Account benefit and quota settings'} subtitle={zh ? '设置单独从本地服务读取；额度页面仍可独立工作。' : 'Settings load independently from the local service; quota views remain separate.'}><PageState kind={limitSettingsLoading ? 'loading' : 'error'} title={limitSettingsLoading ? (zh ? '正在读取权益设置' : 'Loading benefit settings') : (zh ? '权益设置读取失败' : 'Could not load benefit settings')} body={limitSettingsLoading ? (zh ? '正在读取本机配置，不会发起供应商请求。' : 'Reading local configuration without contacting providers.') : limitSettingsError || (zh ? '本地服务没有返回设置。' : 'The local service did not return settings.')} action={!limitSettingsLoading ? <Button variant="primary" onClick={loadLimitSettings}><RefreshCw size={14}/>{zh ? '重试读取' : 'Retry'}</Button> : null}/></Dialog>}<SyncDialog open={dialog === 'sync'} onClose={closeDialog} zh={zh} control={control} onControlAction={controlAction} onControlChange={loadControl}/>
   </div>;
 }

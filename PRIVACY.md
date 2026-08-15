@@ -32,13 +32,14 @@ Provider access tokens are used only inside the loopback dashboard server when
 the owner enables subscription-limit checks. Auto-detected tokens are read from
 the provider's own local login store. Manual secrets use macOS Keychain when
 available; the normal Collector config stores only provider toggles, auth mode,
-environment-variable names, optional IDE paths, a Qoder site choice, and an
-optional OpenCode workspace identifier/link. Raw tokens, cookies, and copied
-cURL fragments are never returned to the browser, included in exports, or added
-to community sync. Local account detection reads only the minimum credential or
-quota-store field required to report whether a supported app is signed in; it
-does not read conversation content. Windsurf detection and quota display read
-only the `windsurf.settings.cachedPlanInfo` record from its local state database.
+environment-variable names, optional IDE paths, and a Qoder site choice.
+OpenCode Go stores each account Cookie independently; its Workspace is
+discovered at query time unless the user saves an optional `wrk_…` override for
+that account. Raw tokens, cookies, and copied cURL fragments are never returned
+to the browser, included in exports, or added to community sync. Local account
+detection reads only the minimum credential or quota-store field required to
+report whether a supported app is signed in; it does not read conversation
+content.
 
 Successful subscription-limit refreshes keep a separate local history file at
 `~/.kimi-builders/usage/subscription-history.json` (or the configured Collector
