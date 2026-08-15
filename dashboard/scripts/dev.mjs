@@ -41,7 +41,7 @@ try {
     }
     throw error;
   }
-  console.log('正在读取本机 Agent 用量并启动开发看板…');
+  console.log('正在启动开发看板；首次使用会先选择 Agent 数据范围…');
   localServer = await startLocalDashboardServer({
     launchBrowser: false,
     serveStatic: false,

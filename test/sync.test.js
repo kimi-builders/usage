@@ -68,8 +68,9 @@ const server = createServer((request, response) => {
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const address = server.address();
 
-const { saveConfig } = await import('../src/config.js');
+const { loadConfig, saveConfig } = await import('../src/config.js');
 const { runSync } = await import('../src/sync.js');
+const { loadState } = await import('../src/state.js');
 saveConfig({
   apiUrl: `http://127.0.0.1:${address.port}`,
   apiKey: `kbu_${'a'.repeat(43)}`,
@@ -121,4 +122,47 @@ test('repeat sync sends no duplicate batch and hidden projects never enter paylo
     },
     { input: 10, cacheWrite: 3, cacheRead: 4, output: 2 },
   );
+});
+
+test('a new community device requires confirmation, then replays once with --full semantics', async () => {
+  const previous = loadConfig();
+  saveConfig({
+    ...previous,
+    apiKey: `kbu_${'b'.repeat(43)}`,
+    deviceId: 'replacement-device',
+  });
+  const requestsBefore = received.length;
+  await assert.rejects(
+    runSync({ quiet: true }),
+    (error) => error.code === 'SYNC_RECONCILIATION_REQUIRED',
+  );
+  assert.equal(received.length, requestsBefore);
+
+  const replay = await runSync({ quiet: true, full: true });
+  const settled = await runSync({ quiet: true });
+  assert.equal(replay.buckets, 1);
+  assert.equal(replay.sessions, 1);
+  assert.equal(settled.buckets, 0);
+  assert.equal(settled.sessions, 0);
+  assert.equal(received.at(-2).buckets.length, 1);
+  assert.equal(received.at(-2).sessions.length, 1);
+  assert.deepEqual(received.at(-1).buckets, []);
+  assert.deepEqual(received.at(-1).sessions, []);
+  assert.equal(typeof loadState().syncTarget, 'string');
+});
+
+test('local-only sources never enter a sync payload and keep their checkpoint', async () => {
+  const before = loadState();
+  const config = loadConfig();
+  saveConfig({
+    ...config,
+    sourcePolicies: { 'kimi-code': 'local' },
+    sourcePolicyVersion: 1,
+  });
+  const result = await runSync({ quiet: true });
+  const payload = received.at(-1);
+  assert.equal(result.buckets, 0);
+  assert.deepEqual(payload.buckets, []);
+  assert.deepEqual(payload.sessions, []);
+  assert.deepEqual(loadState(), before);
 });

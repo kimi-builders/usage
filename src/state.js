@@ -18,10 +18,44 @@ export function loadState() {
   if (!existsSync(stateFile)) return { buckets: {}, sessions: {} };
   try {
     const parsed = JSON.parse(readFileSync(stateFile, 'utf8'));
-    return { buckets: parsed.buckets || {}, sessions: parsed.sessions || {} };
+    return {
+      buckets: parsed.buckets || {},
+      sessions: parsed.sessions || {},
+      ...(typeof parsed.syncTarget === 'string' && parsed.syncTarget
+        ? { syncTarget: parsed.syncTarget }
+        : {}),
+    };
   } catch {
     return { buckets: {}, sessions: {} };
   }
+}
+
+export function syncTargetKey(config = {}) {
+  const rawApiUrl = String(config.apiUrl || '').trim();
+  let apiUrl = rawApiUrl;
+  try { apiUrl = new URL(rawApiUrl).origin; } catch {}
+  const apiKey = String(config.apiKey || '').trim();
+  const deviceId = String(config.deviceId || '').trim();
+  if (!apiUrl || !apiKey) throw new Error('Cannot bind sync state without a community target.');
+  // Checkpoints belong to one exact remote credential. Store only an
+  // irreversible fingerprint; the API key itself never enters state.json.
+  return createHash('sha256')
+    .update(`${apiUrl}\0${deviceId}\0${apiKey}`)
+    .digest('hex')
+    .slice(0, 32);
+}
+
+export function prepareStateForSync(config, { full = false, state = loadState() } = {}) {
+  const syncTarget = syncTargetKey(config);
+  const hasCheckpoint = Object.keys(state.buckets).length > 0 || Object.keys(state.sessions).length > 0;
+  const targetMatches = state.syncTarget === syncTarget;
+  if (full || (!hasCheckpoint && !targetMatches)) {
+    return { state: { buckets: {}, sessions: {}, syncTarget }, reconciliationRequired: false };
+  }
+  if (!targetMatches) {
+    return { state, reconciliationRequired: true };
+  }
+  return { state: { ...state, syncTarget }, reconciliationRequired: false };
 }
 
 export function saveState(state) {

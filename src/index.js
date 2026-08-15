@@ -12,8 +12,8 @@ function printHelp() {
   console.log(`
 @kimi.builders/usage
 
-  npx @kimi.builders/usage init [--api-url URL]
-  npx @kimi.builders/usage sync
+  npx @kimi.builders/usage init [--api-url URL] [--sync]
+  npx @kimi.builders/usage sync [--full]
   npx @kimi.builders/usage daemon install [--interval 15]
   npx @kimi.builders/usage daemon status [--json]
   npx @kimi.builders/usage daemon restart [--interval 15]
@@ -24,6 +24,7 @@ function printHelp() {
   npx @kimi.builders/usage summary [--days 7]
   npx @kimi.builders/usage status
   npx @kimi.builders/usage sources list
+  npx @kimi.builders/usage sources set <agent> off|local|private
   npx @kimi.builders/usage sources enable cursor --csv PATH
   npx @kimi.builders/usage sources disable cursor
   npx @kimi.builders/usage reset --local
@@ -42,11 +43,12 @@ export async function run(args) {
     return runInit({
       apiUrl: option(args, 'api-url') || process.env.KBU_USAGE_API_URL || 'https://kimi.builders',
       manualKey: option(args, 'manual-key'),
+      syncAfterConnect: args.includes('--sync'),
     });
   }
   if (command === 'sync') {
     const { runManagedSync } = await import('./sync-runtime.js');
-    return runManagedSync();
+    return runManagedSync({ full: args.includes('--full') });
   }
   if (command === 'daemon') {
     const action = args[1] || 'status';

@@ -71,6 +71,21 @@ test('managed sync records private status and prevents overlapping runs', async 
   }
 });
 
+test('managed sync forwards an explicit full-replay confirmation', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'kbu-sync-runtime-full-'));
+  let options;
+  try {
+    await runManagedSync({
+      configDir: root,
+      full: true,
+      sync: async (value) => { options = value; return { buckets: 0, sessions: 0 }; },
+    });
+    assert.equal(options.full, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('daemon status exposes safe log hints instead of absolute local paths', () => {
   const root = '/Users/sentinel/private/kbu-config';
   const status = getDaemonStatus({

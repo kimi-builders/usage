@@ -28,13 +28,17 @@ On the first run:
 
 1. npm asks to download `@kimi.builders/usage`; enter `y`. Installation does
    not scan or upload anything.
-2. The Collector scans local agent logs, starts a private service bound only to
-   `127.0.0.1`, and opens the dashboard.
-3. Press `Ctrl+C` when finished. Run the same command next time.
+2. The dashboard detects available agents without immediately parsing all
+   history. The first-run wizard asks for each agent's Off / Local only /
+   Local + sync scope before scanning.
+3. Review the local results, then optionally connect the community, choose sync
+   sources, and enable background sync—all in the browser. Press `Ctrl+C` when
+   finished.
 
-> **Local is the default.** Opening the dashboard and pressing “Rescan” never
-> sync the community. Data is sent only after you explicitly run `init` or
-> `sync`, press “Sync data”, or install background sync.
+> **Local is the default.** Opening the dashboard, pressing “Rescan”, and
+> running `init` never upload usage; `init` only connects the device. Data from
+> agents marked “Local + sync” is sent only when you explicitly run `sync`,
+> press “Sync now”, install background sync, or use `init --sync`.
 
 If an agent is missing from the dashboard, run this fully offline check first:
 
@@ -117,8 +121,10 @@ or remove the background daemon unless I explicitly approve that separate step.
 dashboard and enable only the providers you use. Limit queries are off by
 default and never run merely because you opened the Token dashboard.
 
-**Community or multi-device history:** connect once, then sync manually or in
-the background:
+**Community or multi-device history:** press “Sync data” in the dashboard,
+approve the device in your browser, and select which agents may sync. One-shot
+sync, background sync, disconnect, and current-device cloud deletion are all
+available in the dashboard. The CLI equivalent is:
 
 ```bash
 npx @kimi.builders/usage@latest init
@@ -175,7 +181,7 @@ browser and is never uploaded to the community or a third party.
 **Project status:** public Beta. Stable sources are covered by cross-platform
 fixtures and contract tests; sources with limited log-format evidence remain
 explicitly labelled Beta. [Roadmap](./docs/ROADMAP.md) ·
-[Release notes](./docs/RELEASE_NOTES_0.4.1.md) · [All docs](./docs/README.md)
+[Release notes](./docs/RELEASE_NOTES_0.5.0.md) · [All docs](./docs/README.md)
 
 ## Run from source
 
@@ -251,16 +257,18 @@ npx @kimi.builders/usage sources list
 models, session IDs, and row timestamps, but still contains aggregate counts and
 redacted parser errors. Review it before sharing.
 
-Cursor is currently the only usage source that requires explicit configuration:
+Cursor is currently the only usage source that first needs a data file. Beginners
+can paste and verify its full CSV path during first-run setup or under **Local &
+sources** in the dashboard; terminal users can also run:
 
 ```bash
 npx @kimi.builders/usage sources enable cursor --csv /path/to/usage.csv
 npx @kimi.builders/usage sources disable cursor
 ```
 
-Local Cursor source settings do not require a community account or `init`. The
-enable command stores only the local CSV path; it neither accesses the network
-nor starts community sync. See the
+Local Cursor source settings do not require a community account or `init`. Dashboard
+verification and the CLI command only store the local CSV path; they neither access
+the network nor start community sync. See the
 [source compatibility matrix](./docs/SOURCE_COMPATIBILITY.md) for maturity,
 limitations, and verification evidence.
 
@@ -297,15 +305,39 @@ fields are documented in [PRIVACY.md](./PRIVACY.md).
 
 ## Connect and sync the community (optional)
 
-Connect the device once:
+Connect the device once (or do the whole flow in the dashboard's “Sync data”
+dialog):
 
 ```bash
 npx @kimi.builders/usage init
 ```
 
 The terminal shows a device code and opens the community approval page. After
-approval, the device receives an independently revocable `kbu_` key. Project
-upload is off by default; when disabled, the JSON payload has no `project` field.
+approval, the device receives an independently revocable `kbu_` key. `init`
+does not upload usage by itself; confirm source scope in the dashboard or with
+`sources set`, then sync. Project upload is off by default; when disabled, the
+JSON payload has no `project` field.
+
+The connection code is valid for 10 minutes and lives only in the current
+Collector/local-dashboard process; it is never written to browser storage or a
+config file. Refreshing the dashboard can resume the request, while stopping or
+restarting the process requires a new code. The device key is delivered once
+after approval and can be safely revoked from the local dashboard at any time.
+
+Each agent has three independent modes:
+
+```bash
+npx @kimi.builders/usage sources list
+npx @kimi.builders/usage sources set codex off
+npx @kimi.builders/usage sources set kimi-code local
+npx @kimi.builders/usage sources set claude-code private
+```
+
+`off` does not scan, `local` stays in on-device analysis, and `private` may
+upload to your community account. Changing mode never silently deletes existing
+cloud history. Current-device cloud deletion is a separate confirmed dashboard
+action. Newly supported agents default to local only and never join sync
+automatically; account-level community settings separately control visibility.
 
 Run one sync:
 
@@ -328,13 +360,21 @@ device is awake and online. After upgrading the Collector, run `daemon restart`
 so the service records the new package path.
 
 Sync uses incremental checkpoints, per-source failure isolation, and a
-concurrency lock. Repeated runs do not duplicate counts. If you delete a device's
-remote history and want to upload the local history again:
+concurrency lock. Repeated runs do not duplicate counts. If you delete a
+device's remote history, reconnect as a different device, or the dashboard
+cannot prove that the local checkpoint belongs to the current community
+device, review every agent marked `private`, then explicitly replay it:
 
 ```bash
-npx @kimi.builders/usage reset --local
-npx @kimi.builders/usage sync
+npx @kimi.builders/usage sync --full
 ```
+
+`--full` re-uploads normalized aggregates only for `private` sources. It does
+not include `off` or `local` sources and does not delete community data. The
+checkpoint is bound to an irreversible fingerprint of the community target
+and device credential, so a reconnect cannot silently inherit another
+device's “already uploaded” state. The dashboard shows the same scope and asks
+for a second confirmation.
 
 ## Command reference
 
@@ -344,8 +384,9 @@ npx @kimi.builders/usage sync
 | `inspect --dry-run` | Show roots and parser results | No |
 | `doctor [--json]` | Produce a redacted compatibility report | No |
 | `sources list` | Show local usage-source status | No |
-| `init [--api-url URL]` | Connect a community device and perform the first sync | Yes |
-| `sync` | Upload changed aggregate records | Yes |
+| `sources set <agent> off\|local\|private` | Set one agent's scan and sync scope | No |
+| `init [--api-url URL] [--sync]` | Connect a community device; no upload by default, `--sync` explicitly keeps connect-then-sync behavior | Yes |
+| `sync [--full]` | Upload changed aggregates; `--full` explicitly replays allowed sources | Yes |
 | `daemon install/status/restart/uninstall` | Manage background sync | See NETWORK |
 | `summary [--days N]` | Read the connected account's hosted summary | Yes |
 | `status` | Show local connection and checkpoint state | No |

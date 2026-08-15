@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import { createSessionSalt, loadConfig } from '../config.js';
 import { enabledSources } from '../parsers/index.js';
+import { sourceIdsFor } from '../source-policy.js';
 import { validateUploadBucket, validateUploadSession } from '../protocol.js';
 import { summarizeBySource, summarizeUsage } from './metrics.js';
 
@@ -28,11 +29,14 @@ function redactLocalPaths(value, roots = []) {
 export async function collectAll({
   sessionSalt,
   enabledSourceIds = [],
+  sourceIds,
   sourceOptions = {},
   sourceEntries,
 } = {}) {
   const results = [];
-  const sources = sourceEntries || enabledSources(enabledSourceIds);
+  const requested = Array.isArray(sourceIds) ? new Set(sourceIds) : null;
+  const sources = (sourceEntries || enabledSources(enabledSourceIds))
+    .filter((source) => !requested || requested.has(source.id));
   for (const source of sources) {
     let roots = [];
     try {
@@ -105,6 +109,7 @@ export async function collectLocalSnapshot({
   const collected = await collectAll({
     sessionSalt: salt,
     enabledSourceIds: config?.enabledSources,
+    sourceIds: sourceIdsFor(config, 'scan', sourceEntries || undefined),
     sourceOptions: config?.sourceOptions,
     sourceEntries,
   });

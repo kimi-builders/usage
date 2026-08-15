@@ -23,11 +23,14 @@ npx @kimi.builders/usage@latest dashboard
 第一次运行时：
 
 1. npm 会询问是否下载 `@kimi.builders/usage`，输入 `y`；安装过程不会扫描或上传数据。
-2. Collector 扫描本机 Agent 日志，启动只监听 `127.0.0.1` 的私有服务，并自动打开看板。
-3. 使用完按 `Ctrl+C` 停止。下次仍运行同一条命令即可。
+2. 本机看板先检测可用 Agent，但不会直接解析全部历史；在首次向导中选择每个 Agent 的
+   “关闭 / 仅本机 / 本机并同步”范围后才开始扫描。
+3. 扫描完成即可查看本机结果。连接社区、选择同步来源和启用后台同步都是向导中的可选步骤；
+   不熟悉命令行也能完成。使用完按 `Ctrl+C` 停止。
 
-> **默认只在本机工作。** 打开看板和点击“重新扫描”都不会同步社区；只有你主动运行
-> `init`、`sync`、点击“同步数据”或安装后台同步后，才会发送脱敏聚合数据。
+> **默认只在本机工作。** 打开看板、点击“重新扫描”以及运行 `init` 都不会上传；`init`
+> 只连接设备。只有你明确运行 `sync`、点击“立即同步”、安装后台同步，或使用
+> `init --sync` 时，才会发送已标记为“本机并同步”的脱敏聚合数据。
 
 如果看板没有识别到某个工具，先运行完全离线的检查：
 
@@ -107,7 +110,9 @@ or remove the background daemon unless I explicitly approve that separate step.
 **想看订阅额度：** 在本地看板进入“权益中心 → 权益设置”，只启用你使用的平台。额度查询
 默认关闭，不会因为打开 Token 看板而访问供应商。
 
-**想同步到社区或跨设备查看：** 主动连接一次，再选择手动或后台同步：
+**想同步到社区或跨设备查看：** 点击看板中的“同步数据”，完成浏览器设备授权并选择允许
+同步的 Agent；单次同步、后台同步、断开和删除当前设备云端数据都可在看板中管理。CLI
+等价方式是：
 
 ```bash
 npx @kimi.builders/usage@latest init
@@ -154,7 +159,7 @@ npx @kimi.builders/usage@latest sync
 
 **项目状态：** 当前是公开 Beta。稳定来源经过跨平台 fixture 与 contract test；日志格式
 覆盖有限的来源会明确标为 Beta。[Roadmap](./docs/ROADMAP.md) ·
-[发布说明](./docs/RELEASE_NOTES_0.4.1.md) · [全部文档](./docs/README.md)
+[发布说明](./docs/RELEASE_NOTES_0.5.0.md) · [全部文档](./docs/README.md)
 
 ## 从源码运行
 
@@ -224,14 +229,15 @@ npx @kimi.builders/usage sources list
 `doctor --json` 适合附在 Issue 中：它不包含路径、项目、模型、会话 ID 或时间明细，
 但仍含汇总数量与脱敏错误，分享前请自行检查。
 
-Cursor 是当前唯一需要显式启用的用量来源：
+Cursor 是当前唯一需要先提供数据文件的用量来源。新手可在首次设置或看板的
+“本机与数据源”中粘贴 CSV 完整路径并验证；终端用户也可以执行：
 
 ```bash
 npx @kimi.builders/usage sources enable cursor --csv /path/to/usage.csv
 npx @kimi.builders/usage sources disable cursor
 ```
 
-Cursor 的本地来源配置不依赖社区账号或 `init`。启用命令只保存本机 CSV 路径，不会联网，
+Cursor 的本地来源配置不依赖社区账号或 `init`。看板验证和启用命令都只保存本机 CSV 路径，不会联网，
 也不会自动执行社区同步。各来源的成熟度、限制和验证证据见
 [来源兼容矩阵](./docs/SOURCE_COMPATIBILITY.md)。
 
@@ -260,14 +266,32 @@ Antigravity、OpenCode、Qoder、Warp、JetBrains AI 与 Windsurf。不同平台
 
 ## 连接与同步社区（可选）
 
-首次连接：
+首次连接（也可完全在看板“同步数据”中完成）：
 
 ```bash
 npx @kimi.builders/usage init
 ```
 
-终端会显示设备码并打开社区授权页。授权后，设备得到一枚可单独撤销的 `kbu_` Key。
+终端会显示设备码并打开社区授权页。授权后，设备得到一枚可单独撤销的 `kbu_` Key；
+`init` 本身不会上传用量，接下来请在看板或 `sources set` 中确认来源范围，再执行同步。
 项目名同步默认关闭；关闭时上传 JSON 中根本不存在 `project` 字段。
+
+连接验证码有效 10 分钟，只临时保留在当前 Collector / 本地看板进程中，不会写入浏览器
+存储或配置文件。刷新看板可继续当前请求；停止或重启进程后需要生成新验证码。设备 Key
+则在批准后仅交付一次，并可随时从本地看板安全撤销。
+
+每个 Agent 都有三个独立模式：
+
+```bash
+npx @kimi.builders/usage sources list
+npx @kimi.builders/usage sources set codex off
+npx @kimi.builders/usage sources set kimi-code local
+npx @kimi.builders/usage sources set claude-code private
+```
+
+`off` 不扫描，`local` 只进入本机分析，`private` 才允许发送到你的社区账户。改变模式不会
+自动删除已有云端历史；删除当前设备云端数据是看板中的独立确认操作。新支持的 Agent 默认
+只在本机启用，不会自动加入同步；这些聚合数据是否公开由社区账号设置另行控制。
 
 单次同步：
 
@@ -289,12 +313,16 @@ npx @kimi.builders/usage daemon uninstall
 执行一次 `daemon restart`，让服务使用新版本路径。
 
 同步采用增量 checkpoint、失败来源隔离和并发锁。重复运行不会重复计数。如果你在社区
-删除了某台设备的数据，并希望重新上传本机仍保留的历史：
+删除了某台设备的数据、更换了设备连接，或看板提示本机与社区 checkpoint 无法确认一致，
+先核对所有 Agent 的 `private` 范围，再显式完整同步：
 
 ```bash
-npx @kimi.builders/usage reset --local
-npx @kimi.builders/usage sync
+npx @kimi.builders/usage sync --full
 ```
+
+`--full` 只重传标记为 `private` 的标准化聚合数据，不包含 `off` 或 `local` 来源，也不会
+删除社区数据。checkpoint 会绑定到社区地址和设备凭据的不可逆指纹；重新授权后不会误把旧
+设备的本机记录当作已经上传。看板遇到相同情况时会展示范围说明并要求二次确认。
 
 ## 常用命令
 
@@ -304,8 +332,9 @@ npx @kimi.builders/usage sync
 | `inspect --dry-run` | 显示读取目录与来源扫描结果 | 无 |
 | `doctor [--json]` | 生成脱敏兼容性报告 | 无 |
 | `sources list` | 查看本地用量来源状态 | 无 |
-| `init [--api-url URL]` | 连接社区设备并首次同步 | 有 |
-| `sync` | 上传发生变化的聚合数据 | 有 |
+| `sources set <agent> off\|local\|private` | 设置单个 Agent 的扫描与同步范围 | 无 |
+| `init [--api-url URL] [--sync]` | 连接社区设备；默认不上传，`--sync` 明确沿用连接后立即同步 | 有 |
+| `sync [--full]` | 上传变化的聚合数据；`--full` 经确认后完整重传允许同步的来源 | 有 |
 | `daemon install/status/restart/uninstall` | 管理后台同步 | 见 NETWORK |
 | `summary [--days N]` | 查看已连接账户的云端摘要 | 有 |
 | `status` | 查看本地连接与 checkpoint 状态 | 无 |

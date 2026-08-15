@@ -2,6 +2,7 @@ import { detectAgentVersions } from '../agent-info.js';
 import { COLLECTOR_VERSION } from '../client-meta.js';
 import { loadConfig } from '../config.js';
 import { deviceEnvironment } from '../device-info.js';
+import { effectiveSourcePolicies } from '../source-policy.js';
 import { collectLocalSnapshot, publicDoctorReport } from './snapshot.js';
 import {
   estimateLocalBucketCost,
@@ -103,6 +104,7 @@ export function createDashboardData(snapshot, {
       url: communityUrl(config?.apiUrl),
       origin: config?.apiUrl || 'https://kimi.builders',
     },
+    sourcePolicies: effectiveSourcePolicies(config),
     pricing: {
       version: LOCAL_PRICE_CATALOG_VERSION,
       basis: 'standard-api',

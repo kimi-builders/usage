@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { startLocalDashboardServer } from '../src/local/dashboard-server.js';
+import { publicSyncResult, startLocalDashboardServer } from '../src/local/dashboard-server.js';
 
 function http(port, path, headers = {}, { method = 'GET', body = '' } = {}) {
   return new Promise((resolve, reject) => {
@@ -21,6 +21,23 @@ function http(port, path, headers = {}, { method = 'GET', body = '' } = {}) {
     outgoing.end(body);
   });
 }
+
+test('Dashboard sync results keep source status but redact parser errors', () => {
+  const result = publicSyncResult({
+    buckets: 13,
+    sessions: 1,
+    sources: [
+      { source: 'codex', status: 'failed', buckets: 0, sessions: 0, error: '/Users/private/rollout.jsonl failed' },
+      { source: 'kimi-code', status: 'ok', buckets: 10, sessions: 1, warnings: ['private warning'] },
+    ],
+  });
+  assert.deepEqual(result.sources, [
+    { source: 'codex', status: 'failed', buckets: 0, sessions: 0, warningCount: 0 },
+    { source: 'kimi-code', status: 'ok', buckets: 10, sessions: 1, warningCount: 1 },
+  ]);
+  assert.equal(JSON.stringify(result).includes('/Users/private'), false);
+  assert.equal(JSON.stringify(result).includes('private warning'), false);
+});
 
 test('local dashboard requires capability cookie and rejects hostile Host/Origin', async () => {
   const root = mkdtempSync(join(tmpdir(), 'kbu-dashboard-server-'));
@@ -140,6 +157,43 @@ test('sync API distinguishes status reads from explicit local actions', async ()
   }
 });
 
+test('control API defers first scan until onboarding is complete', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'kbu-dashboard-control-'));
+  writeFileSync(join(root, 'index.html'), '<main>local dashboard</main>');
+  let onboardingRequired = true;
+  let loads = 0;
+  const actions = [];
+  const local = await startLocalDashboardServer({
+    launchBrowser: false,
+    buildRoot: root,
+    dataLoader: async () => ({ loads: ++loads }),
+    control: {
+      state: async () => ({ onboardingRequired, sources: [] }),
+      act: async (payload) => {
+        actions.push(payload);
+        if (payload.action === 'complete-onboarding') onboardingRequired = false;
+        return { onboardingRequired, action: payload.action };
+      },
+    },
+  });
+  try {
+    assert.equal(loads, 0);
+    const authorized = await http(local.port, new URL(local.url).pathname + new URL(local.url).search);
+    const cookie = authorized.headers['set-cookie'][0].split(';')[0];
+    assert.equal(JSON.parse((await http(local.port, '/api/control', { Cookie: cookie })).body).onboardingRequired, true);
+    const completed = await http(local.port, '/api/control', {
+      Cookie: cookie, Origin: local.origin, 'Content-Type': 'application/json',
+    }, { method: 'POST', body: JSON.stringify({ action: 'complete-onboarding', sourcePolicies: {} }) });
+    assert.equal(JSON.parse(completed.body).onboardingRequired, false);
+    assert.deepEqual(JSON.parse((await http(local.port, '/api/snapshot', { Cookie: cookie })).body), { loads: 1 });
+    assert.equal(loads, 1);
+    assert.equal(actions.length, 1);
+  } finally {
+    await local.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('browser APIs return a stable error contract without raw filesystem details', async () => {
   const root = mkdtempSync(join(tmpdir(), 'kbu-dashboard-safe-error-'));
   const sentinel = '/Users/sentinel/private/quota-response.json';
@@ -160,6 +214,39 @@ test('browser APIs return a stable error contract without raw filesystem details
       error: {
         code: 'internal_error',
         message: 'The local dashboard could not complete this request.',
+      },
+    });
+    assert.equal(response.body.includes(sentinel), false);
+  } finally {
+    await local.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('control API explains failed remote revoke without leaking the underlying network error', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'kbu-dashboard-revoke-error-'));
+  const sentinel = 'https://private-proxy.invalid/secret';
+  writeFileSync(join(root, 'index.html'), '<main>local dashboard</main>');
+  const local = await startLocalDashboardServer({
+    launchBrowser: false,
+    buildRoot: root,
+    dataLoader: async () => ({}),
+    control: {
+      state: async () => ({ onboardingRequired: false, sources: [] }),
+      act: async () => { throw Object.assign(new Error(`failed via ${sentinel}`), { code: 'remote_revoke_failed' }); },
+    },
+  });
+  try {
+    const authorized = await http(local.port, new URL(local.url).pathname + new URL(local.url).search);
+    const cookie = authorized.headers['set-cookie'][0].split(';')[0];
+    const response = await http(local.port, '/api/control', {
+      Cookie: cookie, Origin: local.origin, 'Content-Type': 'application/json',
+    }, { method: 'POST', body: JSON.stringify({ action: 'disconnect' }) });
+    assert.equal(response.status, 502);
+    assert.deepEqual(JSON.parse(response.body), {
+      error: {
+        code: 'remote_revoke_failed',
+        message: 'The community device key could not be revoked. Your local connection was kept.',
       },
     });
     assert.equal(response.body.includes(sentinel), false);

@@ -87,7 +87,8 @@ export function loadSyncStatus({ configDir = getConfigDir() } = {}) {
 }
 
 export async function runManagedSync({
-  trigger = 'manual', quiet = false, surface = 'cli', configDir = getConfigDir(), sync = runSync,
+  trigger = 'manual', quiet = false, surface = 'cli', full = false,
+  configDir = getConfigDir(), sync = runSync,
 } = {}) {
   const paths = getSyncRuntimePaths(configDir);
   mkdirSync(paths.root, { recursive: true, mode: 0o700 });
@@ -98,7 +99,7 @@ export async function runManagedSync({
   appendLog(paths.log, `[${trigger}] synchronization started`);
   const started = Date.now();
   try {
-    const result = await sync({ quiet, surface });
+    const result = await sync({ quiet, surface, full });
     const completedAt = new Date().toISOString();
     const next = {
       state: 'idle', trigger, lastAttemptAt: startedAt, lastSuccessAt: completedAt,

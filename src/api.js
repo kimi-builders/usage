@@ -81,6 +81,10 @@ export function deleteCurrentDeviceData(apiUrl, apiKey) {
   return jsonRequest(apiUrl, '/api/usage/ingest', { method: 'DELETE', apiKey });
 }
 
+export function revokeCurrentDevice(apiUrl, apiKey) {
+  return jsonRequest(apiUrl, '/api/usage/device/current', { method: 'DELETE', apiKey });
+}
+
 export function encodeIngestBody(payload) {
   return gzipSync(Buffer.from(JSON.stringify(payload)));
 }

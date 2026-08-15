@@ -1,7 +1,8 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
+import { createInterface } from 'node:readline';
 import { aggregateToBuckets, extractSessions } from './index.js';
 
 /**
@@ -95,7 +96,7 @@ function findRolloutFiles(home) {
         const path = join(dir, entry.name);
         if (entry.name.endsWith('.jsonl')) {
           // Name check first: a directory named *.jsonl is still handed to
-          // readFileSync, which fails loudly instead of silently skipping data.
+          // the stream reader, which fails loudly instead of silently skipping data.
           let stat;
           try {
             stat = statSync(path);
@@ -114,31 +115,56 @@ function findRolloutFiles(home) {
   return files;
 }
 
-// Read and parse a rollout file. Returns null when the file vanished
-// mid-scan; other read failures are fatal for the source.
-function readRollout(file) {
-  let content;
-  try {
-    // Bound the parsed content to the byte size captured at discovery time:
-    // a line being appended right now is simply picked up by the next sync.
-    content = readFileSync(file.path).subarray(0, file.size).toString('utf8');
-  } catch (error) {
-    if (error?.code === 'ENOENT') return null;
-    throw error;
-  }
+// Stream one rollout instead of materializing the whole JSONL as a single
+// string. Real Codex sessions can grow beyond V8's ~512 MB string limit. Keep
+// full payloads only for the three record types used by token/model/session
+// identity logic; ordinary message/tool records retain timestamp + type only.
+// `recordCount` preserves physical-copy winner selection exactly.
+async function readRollout(file) {
   const records = [];
-  for (const line of content.split('\n')) {
-    if (!line.trim()) continue;
-    let raw;
-    try { raw = JSON.parse(line); } catch { continue; }
-    records.push(raw);
+  let meta = null;
+  let recordCount = 0;
+  if (file.size > 0) {
+    const input = createReadStream(file.path, {
+      encoding: 'utf8',
+      end: file.size - 1,
+      highWaterMark: 256 * 1024,
+    });
+    const lines = createInterface({ input, crlfDelay: Infinity });
+    try {
+      for await (const line of lines) {
+        if (!line) continue;
+        let raw;
+        try { raw = JSON.parse(line); } catch { continue; }
+        recordCount += 1;
+        if (raw?.type === 'session_meta') {
+          if (!meta) {
+            meta = raw;
+            records.push(raw);
+          }
+          continue;
+        }
+        if (raw?.type === 'turn_context' || isTokenCount(raw)) {
+          records.push(raw);
+          continue;
+        }
+        if (parseTimestampMs(raw?.timestamp) !== null) {
+          records.push({ timestamp: raw.timestamp, type: raw.type });
+        }
+      }
+    } catch (error) {
+      if (error?.code === 'ENOENT') return null;
+      throw error;
+    } finally {
+      lines.close();
+      input.destroy();
+    }
   }
   // Only the FIRST session_meta is canonical — later ones are copied parent
   // history. Without any meta, the session id falls back to the filename.
-  const meta = records.find((record) => record?.type === 'session_meta') || null;
   const metaId = meta?.payload?.id;
   const sessionId = (typeof metaId === 'string' && metaId) || basename(file.path).slice(0, -'.jsonl'.length);
-  return { file, records, meta, sessionId };
+  return { file, records, recordCount, meta, sessionId };
 }
 
 function isTokenCount(record) {
@@ -187,15 +213,15 @@ export async function parse({ sessionSalt } = {}) {
   // not at all. Ties go to the lexicographically smallest path.
   const rollouts = [];
   for (const file of findRolloutFiles(home)) {
-    const rollout = readRollout(file);
+    const rollout = await readRollout(file);
     if (rollout) rollouts.push(rollout);
   }
   const winners = new Map();
   for (const rollout of rollouts) {
     const current = winners.get(rollout.sessionId);
     if (!current
-      || rollout.records.length > current.records.length
-      || (rollout.records.length === current.records.length && rollout.file.path < current.file.path)) {
+      || rollout.recordCount > current.recordCount
+      || (rollout.recordCount === current.recordCount && rollout.file.path < current.file.path)) {
       winners.set(rollout.sessionId, rollout);
     }
   }
