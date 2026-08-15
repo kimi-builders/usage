@@ -68,8 +68,9 @@ const server = createServer((request, response) => {
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const address = server.address();
 
-const { saveConfig } = await import('../src/config.js');
+const { loadConfig, saveConfig } = await import('../src/config.js');
 const { runSync } = await import('../src/sync.js');
+const { loadState } = await import('../src/state.js');
 saveConfig({
   apiUrl: `http://127.0.0.1:${address.port}`,
   apiKey: `kbu_${'a'.repeat(43)}`,
@@ -121,4 +122,20 @@ test('repeat sync sends no duplicate batch and hidden projects never enter paylo
     },
     { input: 10, cacheWrite: 3, cacheRead: 4, output: 2 },
   );
+});
+
+test('local-only sources never enter a sync payload and keep their checkpoint', async () => {
+  const before = loadState();
+  const config = loadConfig();
+  saveConfig({
+    ...config,
+    sourcePolicies: { 'kimi-code': 'local' },
+    sourcePolicyVersion: 1,
+  });
+  const result = await runSync({ quiet: true });
+  const payload = received.at(-1);
+  assert.equal(result.buckets, 0);
+  assert.deepEqual(payload.buckets, []);
+  assert.deepEqual(payload.sessions, []);
+  assert.deepEqual(loadState(), before);
 });

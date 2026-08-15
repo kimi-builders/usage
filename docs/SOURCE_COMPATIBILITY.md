@@ -1,10 +1,14 @@
 # 本地用量来源兼容矩阵
 
-> 最后核对：2026-08-13 · Collector `0.4.0`
+> 最后核对：2026-08-14 · Collector `0.4.1`
 
 这份矩阵描述“当前解析器有多少兼容性证据”，不是 Agent 官方支持声明。所有来源都只读
 本机日志；一个来源失败不会阻塞其他来源。`doctor --json` 可生成不含路径、项目名、模型名、
 会话 ID 和逐条时间的脱敏报告。
+
+自动发现不等于强制扫描或上传。首次看板向导与“本机与数据源”页面可把每个来源设为
+`关闭`、`仅本机`或`本机并同步`；只有最后一种会进入社区同步。新加入兼容矩阵的自动来源
+默认仅本机，不会静默加入已有用户的同步范围。
 
 ## 成熟度定义
 
@@ -15,13 +19,13 @@
 | Beta | 已能扫描并有专项测试，但版本、平台或历史格式证据仍有限 |
 | Explicit opt-in | 不自动读取；用户必须显式提供导入文件或配置 |
 
-## 0.4.0 矩阵
+## 0.4.x 矩阵
 
 | 来源 | 级别 | 自动发现 | 主要验证证据 | 已知边界 |
 | --- | --- | --- | --- | --- |
 | Kimi Code | Core | 是 | 当前/旧版存储、delta、cache、sub-agent、秒级时间戳、损坏记录 | 上游新字段只在能够证实时加入 |
 | Claude Code | Stable | 是 | project/transcript、cache TTL、重复 UUID、sidechain、损坏 JSONL | Claude Desktop/Cowork 路径属于兼容读取，格式仍由上游控制 |
-| Codex | Stable | 是 | 当前/归档会话、重放去重、推理强度、上下文/处理档位、sub-agent | 无 usage 的事件不会猜测 Token |
+| Codex | Stable | 是 | 当前/归档会话、流式超大 JSONL、重放去重、推理强度、上下文/处理档位、sub-agent | 无 usage 的事件不会猜测 Token |
 | OpenCode | Stable | 是 | SQLite、旧版 JSON、Token 映射与异常记录 | SQLite schema 漂移会按来源失败隔离 |
 | Gemini CLI | Stable | 是 | JSONL、旧 JSON、嵌套 sub-agent、损坏记录 | 只读取已有 usage metadata，不从正文推算 |
 | Antigravity | Stable | 是 | App/CLI 离线数据库、模型与 Token 映射 | 数据库被锁或格式改变时可能部分读取 |
@@ -30,7 +34,7 @@
 | Pi Coding Agent | Beta | 是 | JSONL 会话、Token 分类、空/损坏记录 | 版本矩阵与跨目录复制去重证据仍在扩充 |
 | ZCode | Beta | 是 | SQLite 正常/空/损坏数据、项目与供应方映射 | Node 20 无 `node:sqlite` 时依赖系统 `sqlite3`；Windows 真实样本有限 |
 | WorkBuddy / CodeBuddy | Beta | 是 | JSONL 项目存储、路由模型、互斥 Token、会话去重 | 产品版本与历史格式样本仍有限；UI 使用 CodeBuddy 品牌图标 |
-| Cursor | Explicit opt-in | 否 | 官方 Usage CSV 的引用、Token 分类与引号字段 | 只支持用户主动导出的 CSV，不读取编辑器对话或私有数据库 |
+| Cursor | 看板验证 CSV 或 CLI 显式启用 | 否 | 官方 Usage CSV 的引用、Token 分类与引号字段 | 只支持用户主动导出的 CSV，不读取编辑器对话或私有数据库 |
 
 ## 平台与 Node.js
 

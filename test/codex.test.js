@@ -1,7 +1,7 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -63,6 +63,26 @@ function sumTokens(result) {
     requests: result.buckets.reduce((total, bucket) => total + bucket.requestCount, 0),
   };
 }
+
+test('rollouts are streamed instead of becoming one V8-sized string', () => {
+  const source = readFileSync(new URL('../src/parsers/codex.js', import.meta.url), 'utf8');
+  assert.match(source, /createReadStream/);
+  assert.doesNotMatch(source, /\breadFileSync\b/);
+});
+
+test('large irrelevant payloads are compacted without losing timing or token facts', async () => {
+  const home = useHome('large-record');
+  writeRollout(home, 'sessions', 'rollout-large.jsonl', [
+    meta('large', '2026-08-01T10:00:00.000Z'),
+    { timestamp: '2026-08-01T10:01:00.000Z', type: 'response_item', payload: { body: 'x'.repeat(2 * 1024 * 1024) } },
+    tokenEvent('2026-08-01T10:02:00.000Z', { last_token_usage: usage(9, 3, 2, 1) }),
+  ]);
+  const result = await parse({ sessionSalt: SALT });
+  assert.deepEqual(sumTokens(result), {
+    input: 6, cacheWrite: 0, cacheRead: 3, output: 1, reasoning: 1, requests: 1,
+  });
+  assert.equal(result.sessions[0].messageCount, 3);
+});
 
 test('last_token_usage is preferred over the cumulative total', async () => {
   const home = useHome('last-preferred');

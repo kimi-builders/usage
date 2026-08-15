@@ -2,8 +2,10 @@ import {
   AlertTriangle, CheckCircle2, CircleDollarSign, Clock3, Database, ExternalLink,
   FileWarning, Monitor, ShieldCheck,
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { sourceLabel } from './format.js';
 import { ToolGlyph } from './tool-glyphs.js';
+import { DataSourceControls, policiesFromSources } from './DataSourceControls.jsx';
 
 function scanTime(value, zh) {
   if (!value) return '—';
@@ -12,7 +14,29 @@ function scanTime(value, zh) {
   });
 }
 
-export function UsageManagement({ data, zh }) {
+export function UsageManagement({ data, control, onControlAction, onControlRefresh, onRescan, zh }) {
+  const [policies, setPolicies] = useState(() => policiesFromSources(control?.sources));
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  useEffect(() => { setPolicies(policiesFromSources(control?.sources)); }, [control]);
+  const savePolicies = async () => {
+    setSaving(true); setSaved(false); setSaveError('');
+    try {
+      await onControlAction({ action: 'save-sources', sourcePolicies: policies });
+      await onControlRefresh();
+      await onRescan();
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1_800);
+    } catch (reason) { setSaveError(reason?.message || String(reason)); }
+    finally { setSaving(false); }
+  };
+  const configureSource = async (sourceId, csvPath) => {
+    const next = await onControlAction({ action: 'configure-source', sourceId, csvPath });
+    setPolicies((current) => ({ ...policiesFromSources(next.sources), ...current }));
+    await onControlRefresh();
+    return next;
+  };
   const terminal = `${data.device?.terminal?.name || 'Terminal'}${data.device?.terminal?.version ? ` v${String(data.device.terminal.version).replace(/^v/i, '')}` : ''}`;
   const architecture = data.device?.os?.architecture;
   const os = `${data.device?.os?.name || 'OS'}${data.device?.os?.version ? ` ${data.device.os.version}` : ''}${architecture ? ` (${architecture})` : ''}`;
@@ -33,6 +57,8 @@ export function UsageManagement({ data, zh }) {
     : (zh ? '健康' : 'Healthy');
 
   return <section className="management-page-stack" id="sources">
+    <DataSourceControls control={control} policies={policies} onChange={setPolicies} onConfigure={configureSource} onSave={savePolicies} saving={saving} saved={saved} zh={zh}/>
+    {saveError ? <p className="sync-error" role="alert"><AlertTriangle size={15}/>{saveError}</p> : null}
     <section className="source-summary-grid" aria-label={zh ? '本机数据健康摘要' : 'Local data health summary'}>
       <article><span><Database size={15}/>{zh ? '已接受事实' : 'Accepted facts'}</span><strong>{acceptedFacts.toLocaleString()}</strong><small>{bucketCount.toLocaleString()} buckets · {sessionCount.toLocaleString()} sessions</small></article>
       <article><span><CheckCircle2 size={15}/>{zh ? '数据源健康' : 'Source health'}</span><strong className={needsAttention ? 'warning' : 'positive'}>{healthLabel}</strong><small>{sources.length - issueSources.length} / {sources.length} {zh ? '来源正常' : 'sources healthy'}</small></article>
@@ -48,8 +74,8 @@ export function UsageManagement({ data, zh }) {
       </article>
 
       <article className="panel privacy-card">
-        <header className="panel-header"><div><h2>{zh ? '本地隐私边界' : 'Local privacy boundary'}</h2><p>{zh ? '本地分析、供应商查询与社区同步彼此独立' : 'Local analysis, provider checks, and community sync stay separate'}</p></div></header>
-        <dl><div><dt><ShieldCheck size={16}/>{zh ? '看板网络上传' : 'Dashboard upload'}</dt><dd>{data.locality?.networkRequests === 0 ? (zh ? '关闭' : 'Off') : '—'}</dd><p>{zh ? '页面只访问 127.0.0.1；本机分析不会自动发送到社区。' : 'The page only talks to 127.0.0.1; local analytics are never uploaded automatically.'}</p></div><div><dt><CircleDollarSign size={16}/>{zh ? '价值口径' : 'Value basis'}</dt><dd>USD</dd><p>{zh ? `${data.pricing.version} · ${data.pricing.entryCount} 条标准 API 价格；这是等价价值，不是实际账单，也不做隐含汇率换算。` : `${data.pricing.version} · ${data.pricing.entryCount} standard API prices; equivalent value, not a bill, with no implicit FX conversion.`}</p></div><div><dt><ShieldCheck size={16}/>{zh ? '社区同步' : 'Community sync'}</dt><dd className={data.community.connected ? 'connected' : ''}>{data.community.connected ? (zh ? '已配置' : 'Configured') : (zh ? '未配置' : 'Not configured')}</dd><p>{zh ? '只有你主动触发同步时 Collector 才连接社区；权益与支出默认不进入同步。' : 'Collector connects only after an explicit sync; benefits and spend are excluded by default.'}</p></div></dl>
+        <header className="panel-header"><div><h2>{zh ? '数据边界与所有权' : 'Data boundaries & ownership'}</h2><p>{zh ? '本机分析、供应商查询、社区同步与公开参与彼此独立' : 'Local analysis, provider checks, community sync, and public participation stay separate'}</p></div></header>
+        <dl><div><dt><ShieldCheck size={16}/>{zh ? '本机看板通信' : 'Local dashboard traffic'}</dt><dd>127.0.0.1</dd><p>{zh ? '浏览器只访问本机服务；“重新扫描”不会触发社区同步。' : 'The browser talks only to the local service; Rescan never triggers community sync.'}</p></div><div><dt><CircleDollarSign size={16}/>{zh ? '价值口径' : 'Value basis'}</dt><dd>USD</dd><p>{zh ? `${data.pricing.version} · ${data.pricing.entryCount} 条标准 API 价格；这是等价价值，不是实际账单，也不做隐含汇率换算。` : `${data.pricing.version} · ${data.pricing.entryCount} standard API prices; equivalent value, not a bill, with no implicit FX conversion.`}</p></div><div><dt><ShieldCheck size={16}/>{zh ? '社区数据控制' : 'Community data control'}</dt><dd className={data.community.connected ? 'connected' : ''}>{data.community.connected ? (zh ? '已连接' : 'Connected') : (zh ? '未连接' : 'Not connected')}</dd><p>{zh ? '你决定同步哪些 Agent；停止同步不删除历史，删除当前设备数据需要单独确认。公开参与由社区账号设置控制。' : 'You choose which agents sync. Stopping sync keeps history; deleting this device’s cloud data requires separate confirmation. Public participation is an account setting.'}</p></div></dl>
         <a className="community-link" href={data.community.url} target="_blank" rel="noreferrer">{zh ? '打开社区用量中心' : 'Open community usage center'}<ExternalLink size={13}/></a>
       </article>
     </section>

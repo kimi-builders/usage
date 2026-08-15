@@ -14,6 +14,7 @@ import { loadLocalDashboardData } from './dashboard-data.js';
 import {
   getPublicLimitSettings, loadSubscriptionLimits, saveLimitSettings,
 } from '../limits/service.js';
+import { createDashboardControl } from './dashboard-control.js';
 
 const DEFAULT_BUILD_ROOT = fileURLToPath(new URL('../../dashboard/dist/client/', import.meta.url));
 const COOKIE_NAME = 'kbu_local_session';
@@ -117,6 +118,8 @@ function browserError(error) {
     not_connected: [409, 'This device is not connected to community sync.'],
     sync_busy: [409, 'A synchronization is already running.'],
     invalid_action: [400, 'Unsupported sync action.'],
+    invalid_control_action: [400, 'Unsupported dashboard control action.'],
+    invalid_control_input: [400, 'Dashboard control input is invalid.'],
   }[error?.code];
   if (declared) return { status: declared[0], code: error.code, message: declared[1] };
   return {
@@ -154,6 +157,23 @@ export function getLocalSyncStatus() {
   };
 }
 
+export function publicSyncResult(result = {}) {
+  const statuses = new Set(['ok', 'skipped', 'partial', 'failed']);
+  return {
+    buckets: Number(result?.buckets || 0),
+    sessions: Number(result?.sessions || 0),
+    protectedBuckets: Number(result?.protectedBuckets || 0),
+    rejected: Number(result?.rejected || 0),
+    sources: (result?.sources || []).map((source) => ({
+      source: String(source?.source || '').slice(0, 64),
+      status: statuses.has(source?.status) ? source.status : 'failed',
+      buckets: Number(source?.buckets || 0),
+      sessions: Number(source?.sessions || 0),
+      warningCount: Array.isArray(source?.warnings) ? source.warnings.length : 0,
+    })),
+  };
+}
+
 export async function runLocalSyncAction(payload = {}) {
   const action = String(payload.action || '');
   const config = loadConfig();
@@ -166,10 +186,7 @@ export async function runLocalSyncAction(payload = {}) {
   if (action === 'sync') {
     try {
       const synced = await runManagedSync({ trigger: 'dashboard', quiet: true, surface: 'local-dashboard' });
-      result = {
-        buckets: Number(synced?.buckets || 0), sessions: Number(synced?.sessions || 0),
-        protectedBuckets: Number(synced?.protectedBuckets || 0), rejected: Number(synced?.rejected || 0),
-      };
+      result = publicSyncResult(synced);
     } catch (error) {
       if (error?.code === 'SYNC_BUSY') {
         error.statusCode = 409;
@@ -201,6 +218,7 @@ export async function startLocalDashboardServer({
   limitSettingsSaver = saveLimitSettings,
   syncStatusLoader = getLocalSyncStatus,
   syncAction = runLocalSyncAction,
+  control = null,
 } = {}) {
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
     throw new Error('本地看板端口必须是 0–65535 的整数。');
@@ -210,7 +228,11 @@ export async function startLocalDashboardServer({
   }
 
   const token = randomBytes(32).toString('base64url');
-  let activeData = await dataLoader();
+  const dashboardControl = control || (dataLoader === loadLocalDashboardData
+    ? createDashboardControl()
+    : { state: async () => ({ onboardingRequired: false }), act: async () => ({}) });
+  const initialControl = await dashboardControl.state();
+  let activeData = initialControl.onboardingRequired ? null : await dataLoader();
   let refreshPromise = null;
   let actualPort = 0;
   let expectedHost = '';
@@ -277,6 +299,26 @@ export async function startLocalDashboardServer({
         return;
       }
 
+      if (url.pathname === '/api/control') {
+        if (request.method === 'GET' || request.method === 'HEAD') {
+          sendJson(request, response, await dashboardControl.state());
+          return;
+        }
+        if (request.method === 'POST') {
+          if (!String(request.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
+            send(response, 415, 'Content-Type must be application/json.');
+            return;
+          }
+          const payload = await readJson(request);
+          const result = await dashboardControl.act(payload);
+          if (['save-sources', 'prepare-onboarding', 'complete-onboarding'].includes(payload.action)) activeData = null;
+          sendJson(request, response, result);
+          return;
+        }
+        send(response, 405, 'Method not allowed.', { Allow: 'GET, HEAD, POST' });
+        return;
+      }
+
       if (url.pathname === '/api/limits') {
         if (!['GET', 'HEAD'].includes(request.method || '')) {
           send(response, 405, 'Method not allowed.', { Allow: 'GET, HEAD' });
@@ -310,7 +352,7 @@ export async function startLocalDashboardServer({
       }
 
       if (url.pathname === '/api/snapshot') {
-        if (url.searchParams.get('refresh') === '1') {
+        if (!activeData || url.searchParams.get('refresh') === '1') {
           if (!refreshPromise) {
             refreshPromise = dataLoader()
               .then((next) => {
@@ -367,7 +409,7 @@ export async function startLocalDashboardServer({
 }
 
 export async function runDashboard(options = {}) {
-  console.log('正在读取本机 Agent 用量；订阅额度仅在你启用供应商后查询…');
+  console.log('正在启动本机用量中心；首次使用可在浏览器选择要扫描和同步的 Agent…');
   const local = await startLocalDashboardServer(options);
   console.log(`本地看板: ${local.url}`);
   console.log('仅监听 127.0.0.1；关闭此终端或按 Ctrl+C 即停止。');

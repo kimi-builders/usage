@@ -9,12 +9,14 @@ not require a Kimi Builders account and does not require network access.
 | --- | --- | --- |
 | Local source logs | Provider-owned conversation and usage files | Read-only |
 | Local snapshot | Aggregated token buckets, session timing, local project basename | Memory only |
+| Local source policy | Per-Agent Off / Local / Local + sync selection | Owner-only config file |
 | Sync payload | Protocol-v2 aggregates and diagnostic client metadata | Explicit `sync`, or an explicitly installed background schedule |
 | Public community | Period aggregates selected by the account owner | Off |
 | Provider quota check | Account limit/reset metadata for enabled providers | Off |
 | Local quota history | Sanitized quota percentages and reset windows | Only after an enabled provider is refreshed |
 
-The local snapshot may contain project basenames because they are useful for
+The local snapshot contains only sources the user leaves in Local or Local +
+sync mode. Off sources are not parsed. The snapshot may contain project basenames because they are useful for
 private analysis. A project basename is removed from the sync payload unless the
 user enables project upload in community settings.
 
@@ -60,10 +62,11 @@ are source, model facts recorded by the Agent, 30-minute UTC time, exclusive
 token counters, request counts, measurement quality, salted session hash,
 session timing/message counters, and client/Agent versions used for diagnostics.
 
-`init`, `sync`, scheduled `daemon run`, and `summary` are the only operations that
-contact a configured Kimi Builders origin. Installing, inspecting, restarting, or
-removing the scheduler is local; install/restart may immediately trigger its first
-run. The local dashboard can separately contact a provider only
+`init`, `sync`, scheduled `daemon run`, `summary`, and explicit community actions
+inside the loopback Dashboard are the only operations that contact a configured
+Kimi Builders origin. `init` connects only and does not upload unless `--sync` is
+also supplied. Installing, inspecting, restarting, or removing the scheduler is
+local; install/restart may immediately trigger its first run. The local dashboard can separately contact a provider only
 after its subscription-limit integration is enabled. See [`NETWORK.md`](NETWORK.md)
 for the endpoint inventory.
 
@@ -77,6 +80,12 @@ Syncing data is not the same as publishing it. Community leaderboard/profile
 visibility is a separate, default-off account setting. Public surfaces use
 period aggregates and must not expose project, device, session, or hourly-detail
 dimensions.
+
+Per-Agent source policy belongs to the current device. Changing Local + sync to
+Local or Off stops future uploads from that source but does not silently delete
+existing cloud history. The Dashboard offers a separate confirmed action to
+delete all cloud usage belonging to the current device; account-level public
+visibility remains managed by the community account.
 
 ## Local reports
 

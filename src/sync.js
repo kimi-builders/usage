@@ -1,8 +1,11 @@
-import { loadConfig } from './config.js';
+import { loadConfig, saveConfig } from './config.js';
 import { fetchSettings, ingest } from './api.js';
 import { createSyncClient, forBatch } from './client-meta.js';
 import { collectAll } from './local/snapshot.js';
 import { validateUploadBucket, validateUploadSession } from './protocol.js';
+import {
+  applySourcePolicies, effectiveSourcePolicies, sourceIdsFor, sourcePolicyIsExplicit,
+} from './source-policy.js';
 import {
   bucketKey,
   contentHash,
@@ -150,9 +153,13 @@ export function applyPrivacy(result, uploadProject) {
 }
 
 export async function runSync({ quiet = false, surface = 'cli' } = {}) {
-  const config = loadConfig();
+  let config = loadConfig();
   if (!config?.apiKey || !config?.sessionSalt) {
     throw new Error('尚未连接设备，请先运行 `npx @kimi.builders/usage init`。');
+  }
+  if (!sourcePolicyIsExplicit(config)) {
+    config = applySourcePolicies(config, effectiveSourcePolicies(config));
+    saveConfig(config);
   }
   const settings = await fetchSettings(config.apiUrl, config.apiKey);
   if (typeof settings.uploadProject !== 'boolean') {
@@ -162,6 +169,7 @@ export async function runSync({ quiet = false, surface = 'cli' } = {}) {
   const collected = await collectAll({
     sessionSalt: config.sessionSalt,
     enabledSourceIds: config.enabledSources,
+    sourceIds: sourceIdsFor(config, 'sync'),
     sourceOptions: config.sourceOptions,
   });
   const sources = collected.results.map((result) => ({

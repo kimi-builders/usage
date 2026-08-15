@@ -11,13 +11,13 @@ removed with the CLI at any time.
 | `inspect --dry-run` | No | Show local roots and parser results |
 | `doctor [--json]` | No | Redacted local compatibility report |
 | `reset --local` | No | Remove local sync checkpoints |
-| `init` | Yes | Device-code connection, then first explicit sync |
+| `init` | Yes | Device-code connection only; no usage upload unless `--sync` is explicit |
 | `sync` | Yes | Read privacy settings and upload changed aggregates |
 | `daemon install/restart` | Yes, in the scheduled child | Manage a per-user OS scheduler and trigger its first incremental sync |
 | `daemon status/uninstall` | No | Inspect or remove the per-user scheduler |
 | scheduled `daemon run` | Yes | Run the same incremental sync while the device is awake and online |
 | `summary` | Yes | Read the connected account's hosted summary |
-| `dashboard` | No by default | Loopback dashboard; optional provider quota checks are opt-in per provider |
+| `dashboard` | No by default | Loopback dashboard; community connection/sync and provider quota checks require explicit browser actions |
 | `npm run setup` | Yes | Explicitly install the dashboard's development dependencies from npm |
 | `npm run dev` | No by default | Loopback Vite + local API; the same optional quota rules as `dashboard` apply |
 
@@ -27,6 +27,7 @@ For the default origin `https://kimi.builders`, the current endpoints are:
 - `POST /api/usage/device/token`
 - `GET /api/usage/settings`
 - `POST /api/usage/ingest`
+- `DELETE /api/usage/ingest`
 - `GET /api/usage?days=N`
 
 `init --api-url` can point to another origin for development or self-hosting.
@@ -40,9 +41,11 @@ destinations and cannot be installed by merely opening the dashboard.
 
 The local web dashboard binds to loopback only and uses a random per-launch
 browser token, strict Host/Origin checks, a restrictive CSP, and no-store
-responses. Its Token analysis stays offline. Subscription-limit checks are
-separate, disabled by default, and contact only the provider explicitly enabled
-in local settings:
+responses. Its Token analysis stays offline. The Dashboard can request device
+authorization, run one sync, manage the OS scheduler, disconnect the current
+device, or delete that device's cloud history only after the user presses the
+corresponding control. Subscription-limit checks are separate, disabled by
+default, and contact only the provider explicitly enabled in local settings:
 
 Quota-history recording, Token-to-quota correlation, pace forecasts, and
 subscription-value observations are local computations and add no network

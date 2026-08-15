@@ -4,7 +4,7 @@ import { createSessionSalt, loadConfig, saveConfig } from './config.js';
 import { fetchSettings, pollDeviceToken, requestDeviceCode } from './api.js';
 import { normalizeCommunityUrl } from './community-url.js';
 import { deviceDisplayName } from './device-info.js';
-import { runSync } from './sync.js';
+import { applySourcePolicies, newInstallSourcePolicies } from './source-policy.js';
 
 export function browserCommand(url, currentPlatform = platform()) {
   if (currentPlatform === 'darwin') return ['open', [url]];
@@ -17,7 +17,7 @@ function openBrowser(url) {
   execFile(command, args, () => {});
 }
 
-export async function runInit({ apiUrl = 'https://kimi.builders', manualKey } = {}) {
+export async function runInit({ apiUrl = 'https://kimi.builders', manualKey, syncAfterConnect = false } = {}) {
   const normalizedApiUrl = normalizeCommunityUrl(apiUrl);
   const existing = loadConfig();
   const sessionSalt = existing?.sessionSalt || createSessionSalt();
@@ -55,7 +55,25 @@ export async function runInit({ apiUrl = 'https://kimi.builders', manualKey } = 
     if (!apiKey) throw new Error('验证码已过期。');
   }
   await fetchSettings(normalizedApiUrl, apiKey);
-  saveConfig({ ...existing, apiUrl: normalizedApiUrl, apiKey, deviceId, sessionSalt });
+  const connectedConfig = {
+    ...existing,
+    apiUrl: normalizedApiUrl,
+    apiKey,
+    deviceId,
+    sessionSalt,
+    ...(!existing ? { onboardingPending: true } : {}),
+  };
+  saveConfig(existing ? connectedConfig : applySourcePolicies(
+    connectedConfig,
+    newInstallSourcePolicies({ sync: syncAfterConnect }),
+  ));
   console.log(`设备已连接，配置保存到 owner-only 文件。Key 前缀：${apiKey.slice(0, 12)}…`);
-  await runSync();
+  if (syncAfterConnect) {
+    const { runSync } = await import('./sync.js');
+    await runSync();
+  } else {
+    console.log('尚未上传任何用量。请打开本地看板选择每个 Agent 的扫描与同步范围：');
+    console.log('  npx @kimi.builders/usage dashboard');
+    console.log('如需沿用旧版“一连接就同步全部自动来源”的行为，可运行 init --sync。');
+  }
 }

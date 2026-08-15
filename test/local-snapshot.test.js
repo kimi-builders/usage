@@ -146,6 +146,23 @@ test('doctor report strips row-level and filesystem-private facts', async () => 
   assert.equal(serialized.includes('fixture parser failure'), true);
 });
 
+test('local snapshot never invokes parsers disabled by the source policy', async () => {
+  let disabledParsed = false;
+  const snapshot = await collectLocalSnapshot({
+    config: {
+      sessionSalt: 'fixture-session-salt'.padEnd(32, 'x'),
+      sourcePolicies: { allowed: 'local', disabled: 'off', synced: 'private' },
+    },
+    sourceEntries: [
+      { id: 'allowed', tier: 'stable', roots: async () => ['/allowed'], parse: async () => ({ buckets: [], sessions: [] }) },
+      { id: 'disabled', tier: 'stable', roots: async () => ['/disabled'], parse: async () => { disabledParsed = true; return { buckets: [], sessions: [] }; } },
+      { id: 'synced', tier: 'stable', roots: async () => ['/synced'], parse: async () => ({ buckets: [], sessions: [] }) },
+    ],
+  });
+  assert.equal(disabledParsed, false);
+  assert.deepEqual(snapshot.sources.map((source) => source.source), ['allowed', 'synced']);
+});
+
 test('local metric contract keeps token categories exclusive and price-independent', () => {
   const bucket = validBucket();
   assert.equal(observedTokenTotal(bucket), 24);
