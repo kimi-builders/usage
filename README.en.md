@@ -35,9 +35,10 @@ On the first run:
    sources, and enable background sync—all in the browser. Press `Ctrl+C` when
    finished.
 
-> **Local is the default.** Opening the dashboard and pressing “Rescan” never
-> sync the community. Data is sent only after you explicitly run `init` or
-> `sync`, press “Sync data”, or install background sync.
+> **Local is the default.** Opening the dashboard, pressing “Rescan”, and
+> running `init` never upload usage; `init` only connects the device. Data from
+> agents marked “Local + sync” is sent only when you explicitly run `sync`,
+> press “Sync now”, install background sync, or use `init --sync`.
 
 If an agent is missing from the dashboard, run this fully offline check first:
 
@@ -180,7 +181,7 @@ browser and is never uploaded to the community or a third party.
 **Project status:** public Beta. Stable sources are covered by cross-platform
 fixtures and contract tests; sources with limited log-format evidence remain
 explicitly labelled Beta. [Roadmap](./docs/ROADMAP.md) ·
-[Release notes](./docs/RELEASE_NOTES_0.4.1.md) · [All docs](./docs/README.md)
+[Release notes](./docs/RELEASE_NOTES_0.5.0.md) · [All docs](./docs/README.md)
 
 ## Run from source
 
@@ -316,6 +317,12 @@ approval, the device receives an independently revocable `kbu_` key. `init`
 does not upload usage by itself; confirm source scope in the dashboard or with
 `sources set`, then sync. Project upload is off by default; when disabled, the
 JSON payload has no `project` field.
+
+The connection code is valid for 10 minutes and lives only in the current
+Collector/local-dashboard process; it is never written to browser storage or a
+config file. Refreshing the dashboard can resume the request, while stopping or
+restarting the process requires a new code. The device key is delivered once
+after approval and can be safely revoked from the local dashboard at any time.
 
 Each agent has three independent modes:
 

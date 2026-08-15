@@ -51,6 +51,9 @@ test('dashboard control supports onboarding, browser connection, deletion, and d
   const pending = await control.act({ action: 'connect-start' });
   assert.equal(pending.status, 'pending');
   assert.equal(pending.userCode, 'ABCD-EFGH');
+  assert.equal(pending.community.status, 'pending');
+  assert.equal(pending.community.authorization.userCode, 'ABCD-EFGH');
+  assert.equal(Array.isArray(pending.sources), true);
   const connected = await control.act({ action: 'connect-poll' });
   assert.equal(connected.status, 'connected');
   assert.equal(connected.community.connected, true);

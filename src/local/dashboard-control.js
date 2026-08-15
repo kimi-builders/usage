@@ -187,7 +187,11 @@ export function createDashboardControl({
     if (action === 'connect-start') {
       const currentTime = now();
       if (pendingConnection && pendingConnection.status === 'pending' && pendingConnection.expiresAt > currentTime) {
-        return { action, ...publicAuthorization(pendingConnection, currentTime) };
+        return {
+          ...(await state()),
+          action,
+          ...publicAuthorization(pendingConnection, currentTime),
+        };
       }
       const apiUrl = normalizeCommunityUrl(payload.apiUrl || config.apiUrl || 'https://kimi.builders');
       const authorization = await deviceCodeRequester(apiUrl, {
@@ -206,7 +210,11 @@ export function createDashboardControl({
         interval: authorization.interval || 5,
         status: 'pending',
       };
-      return { action, ...publicAuthorization(pendingConnection, currentTime) };
+      return {
+        ...(await state()),
+        action,
+        ...publicAuthorization(pendingConnection, currentTime),
+      };
     }
     if (action === 'connect-poll') {
       if (!pendingConnection || pendingConnection.expiresAt <= now()) {

@@ -16,6 +16,7 @@
 - [威胁模型](../THREAT_MODEL.md)
 - [安全政策](../SECURITY.md)
 - [发布清单](../PUBLISHING.md)
+- [0.5.0 发布说明](./RELEASE_NOTES_0.5.0.md)
 - [0.4.1 发布说明](./RELEASE_NOTES_0.4.1.md)
 - [0.4.0 发布说明](./RELEASE_NOTES_0.4.0.md)
 - [许可证](../LICENSE)与[来源说明](../NOTICE)

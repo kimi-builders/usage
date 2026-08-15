@@ -16,6 +16,7 @@ import { Onboarding } from './Onboarding.jsx';
 import { analyzeBudget, analyzeMilestones, analyzeSpikes } from './usage-insights.js';
 import { BudgetDialog, readBudget, storeBudget, UsageInsightAlerts, UsageInsightSummary } from './UsageInsights.jsx';
 import { compact, delta, DISPLAY_CURRENCIES, DISPLAY_FX_AS_OF, DISPLAY_FX_SOURCE, displayMoney, duration, integer, percent } from './format.js';
+import { resolveCommunityStatus } from './device-authorization.js';
 import { isBenefitSection, isStandaloneSection, sectionFromHash, titleForSection, USAGE_SECTION_IDS } from './navigation.js';
 import { Button, PageState } from './ui.jsx';
 
@@ -137,6 +138,7 @@ export function App() {
   const [trendMetric, setTrendMetric] = useState('tokens');
   const [heatMetric, setHeatMetric] = useState('tokens');
   const [dialog, setDialog] = useState(null);
+  const [connectionNow, setConnectionNow] = useState(() => Date.now());
   const [budget, setBudget] = useState(readBudget);
   const [drawer, setDrawer] = useState(false);
   const [limitData, setLimitData] = useState(null);
@@ -264,6 +266,16 @@ export function App() {
   }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('kbu.theme', theme); }, [theme]);
   useEffect(() => { document.documentElement.lang = zh ? 'zh-CN' : 'en'; localStorage.setItem('kbu.locale', locale); }, [locale, zh]);
+  useEffect(() => {
+    if (control?.community?.status !== 'pending') return undefined;
+    const expiresAt = Date.parse(control.community.authorization?.expiresAt || '');
+    if (!Number.isFinite(expiresAt)) return undefined;
+    const timer = window.setTimeout(
+      () => setConnectionNow(Date.now()),
+      Math.max(0, expiresAt - Date.now()) + 50,
+    );
+    return () => window.clearTimeout(timer);
+  }, [control?.community?.authorization?.expiresAt, control?.community?.status]);
   useEffect(() => {
     if (!data || onboardingActive) return undefined;
     let frame = 0;
@@ -411,7 +423,7 @@ export function App() {
   const subscriptionPage = isBenefitSection(activeSection);
   const sourcesPage = activeSection === 'sources';
   const subscriptionView = activeSection === 'subscriptions' ? 'overview' : activeSection.replace('subscription-', '');
-  const communityStatus = control?.community?.status || (control?.community?.connected ? 'connected' : 'disconnected');
+  const communityStatus = resolveCommunityStatus(control?.community, connectionNow);
   const connectionLabel = {
     connected: zh ? '已连接' : 'Connected',
     pending: zh ? '等待批准' : 'Approval pending',

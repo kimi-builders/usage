@@ -6,7 +6,7 @@ import {
 import { Dialog } from './UsageDialogs.jsx';
 import { SourceModeRows, policiesFromSources } from './DataSourceControls.jsx';
 import { DeviceAuthorizationCard } from './DeviceAuthorizationCard.jsx';
-import { sourceLabel } from './format.js';
+import { buildSyncOutcome, formatSyncDuration } from './sync-feedback.js';
 
 const PACKAGE = '@kimi.builders/usage';
 const INTERVALS = [5, 15, 30, 60];
@@ -42,29 +42,6 @@ function dateTime(value, zh) {
   });
 }
 
-function syncOutcome(result = {}, zh) {
-  const changed = Number(result.buckets || 0) + Number(result.sessions || 0);
-  const problemSources = (result.sources || []).filter((source) => ['failed', 'partial'].includes(source.status));
-  const sourceNames = problemSources.slice(0, 3).map((source) => sourceLabel(source.source)).join('、');
-  const more = problemSources.length > 3 ? (zh ? ` 等 ${problemSources.length} 个来源` : ` and ${problemSources.length - 3} more`) : '';
-  const base = changed
-    ? (zh ? `已同步 ${result.buckets || 0} 个 buckets、${result.sessions || 0} 个 sessions。` : `Synced ${result.buckets || 0} buckets and ${result.sessions || 0} sessions.`)
-    : (zh ? '扫描完成，没有新增或变化的用量需要上传。' : 'Scan complete. No new or changed usage needed uploading.');
-  if (problemSources.length) {
-    return {
-      tone: 'warning',
-      text: `${base}${zh ? ` ${sourceNames}${more} 本次读取不完整，社区中的旧数据已保留。` : ` ${sourceNames}${more} could not be fully read; their previous community data was preserved.`}`,
-    };
-  }
-  if (Number(result.rejected || 0) > 0) {
-    return {
-      tone: 'warning',
-      text: `${base} ${zh ? `${result.rejected} 条异常记录已隔离。` : `${result.rejected} invalid records were isolated.`}`,
-    };
-  }
-  return { tone: 'success', text: base };
-}
-
 export function SyncDialog({ open, onClose, zh, control, onControlAction, onControlChange }) {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -78,6 +55,9 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
   const [confirmAction, setConfirmAction] = useState('');
   const [fullSyncRequired, setFullSyncRequired] = useState(false);
   const [disconnectFallback, setDisconnectFallback] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState(null);
+  const [syncStartedAt, setSyncStartedAt] = useState(0);
+  const [syncElapsed, setSyncElapsed] = useState(0);
 
   const load = async () => {
     setLoading(true); setError('');
@@ -101,6 +81,14 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
   useEffect(() => {
     if (control) { setLocalControl(control); setPolicies(policiesFromSources(control.sources)); setAuthorization(control.community?.authorization || null); }
   }, [control]);
+
+  useEffect(() => {
+    if (!['sync', 'sync-full'].includes(busy) || !syncStartedAt) return undefined;
+    const update = () => setSyncElapsed(Date.now() - syncStartedAt);
+    update();
+    const timer = window.setInterval(update, 1_000);
+    return () => window.clearInterval(timer);
+  }, [busy, syncStartedAt]);
 
   useEffect(() => {
     if (!authorization || authorization.status !== 'pending') return undefined;
@@ -127,7 +115,22 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
   }, [authorization, onControlAction, zh]);
 
   const action = async (name) => {
+    const syncAction = ['sync', 'sync-full'].includes(name);
+    const startedAt = Date.now();
     setBusy(name); setError(''); setNotice('');
+    if (syncAction) {
+      setSyncStartedAt(startedAt);
+      setSyncElapsed(0);
+      setSyncFeedback({
+        tone: 'running',
+        title: name === 'sync-full'
+          ? (zh ? '正在完整同步' : 'Complete sync in progress')
+          : (zh ? '正在同步' : 'Sync in progress'),
+        text: zh
+          ? 'Collector 正在扫描所选 Agent，并把新增或变化的标准化用量上传到社区。历史较多时可能需要几分钟。'
+          : 'Collector is scanning the selected agents and uploading new or changed normalized usage. Large histories may take a few minutes.',
+      });
+    }
     try {
       if (['sync', 'sync-full', 'install', 'restart'].includes(name)) {
         if (!Object.values(policies).includes('private')) {
@@ -147,11 +150,13 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
       const body = await response.json().catch(() => null);
       if (body?.reconciliationRequired || body?.error?.code === 'sync_reconciliation_required') {
         setFullSyncRequired(true);
-        setNotice({
+        setSyncFeedback({
           tone: 'warning',
+          title: zh ? '需要确认完整同步' : 'Complete sync confirmation required',
           text: zh
             ? '当前本机 checkpoint 与社区设备无法证明一致。普通增量同步已安全取消，请核对上方 Agent 范围后再确认完整同步。'
             : 'The local checkpoint cannot be proven to match this community device. Incremental sync was safely cancelled; review the agent scope above, then confirm a complete sync.',
+          details: zh ? '本次没有上传任何数据' : 'No data was uploaded',
         });
         return;
       }
@@ -160,12 +165,27 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
       }
       const next = body; setStatus(next);
       if (['sync', 'sync-full'].includes(name)) setFullSyncRequired(false);
-      setNotice(['sync', 'sync-full'].includes(name)
-        ? syncOutcome(next.result, zh)
-        : name === 'uninstall'
+      if (syncAction) {
+        const outcome = buildSyncOutcome(next.result, zh);
+        const durationMs = Number(next.daemon?.lastSync?.lastDurationMs) || Date.now() - startedAt;
+        setSyncFeedback({
+          ...outcome,
+          details: [outcome.details, zh ? `耗时 ${formatSyncDuration(durationMs, true)}` : `Took ${formatSyncDuration(durationMs, false)}`].filter(Boolean).join(' · '),
+        });
+      } else setNotice(name === 'uninstall'
           ? (zh ? '后台同步已停用；数据和连接配置均已保留。' : 'Background sync disabled; data and connection settings were kept.')
           : (zh ? `后台同步已启用：每 ${interval} 分钟一次。` : `Background sync enabled every ${interval} minutes.`));
-    } catch (reason) { setError(reason?.message || String(reason)); }
+    } catch (reason) {
+      const message = reason?.message || String(reason);
+      if (syncAction) {
+        setSyncFeedback({
+          tone: 'error',
+          title: zh ? '同步失败' : 'Sync failed',
+          text: message,
+          details: zh ? `运行 ${formatSyncDuration(Date.now() - startedAt, true)} 后停止；未完成的数据不会覆盖社区旧数据。` : `Stopped after ${formatSyncDuration(Date.now() - startedAt, false)}; incomplete data did not overwrite prior community data.`,
+        });
+      } else setError(message);
+    }
     finally { setBusy(''); }
   };
 
@@ -252,6 +272,13 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
 
       <section className="sync-mode-card">
         <header><div className="sync-mode-icon"><CloudUpload size={19}/></div><div><b>{zh ? '立即同步一次' : 'Sync once now'}</b><p>{zh ? `扫描本机变化并上传 ${syncCount} 个已允许 Agent 的标准化用量；不会上传对话正文、完整路径或供应商凭据。` : `Scan changes and upload normalized usage from ${syncCount} allowed agent${syncCount === 1 ? '' : 's'}—never conversations, full paths, or provider credentials.`}</p></div>{connected ? <button className="primary-btn" type="button" disabled={Boolean(busy) || syncCount === 0} onClick={() => action('sync')}>{busy === 'sync' ? <LoaderCircle className="spin" size={15}/> : <RefreshCw size={15}/>} {busy === 'sync' ? (zh ? '同步中' : 'Syncing') : (zh ? '立即同步' : 'Sync now')}</button> : null}</header>
+        {syncFeedback ? <div className={`sync-action-feedback ${syncFeedback.tone}`} role={syncFeedback.tone === 'error' ? 'alert' : 'status'} aria-live="polite">
+          {syncFeedback.tone === 'running' ? <LoaderCircle className="spin" size={17}/> : syncFeedback.tone === 'success' ? <CircleCheck size={17}/> : <AlertTriangle size={17}/>}
+          <div><b>{syncFeedback.title}</b><p>{syncFeedback.text}</p><small>{syncFeedback.tone === 'running'
+            ? (zh ? `已用时 ${formatSyncDuration(syncElapsed, true)} · 正在等待 Collector 返回可验证结果` : `${formatSyncDuration(syncElapsed, false)} elapsed · waiting for a verified Collector result`)
+            : syncFeedback.details}</small></div>
+          {syncFeedback.tone === 'running' ? <span className="sync-indeterminate" role="progressbar" aria-label={zh ? '同步进行中' : 'Sync in progress'}><i/></span> : null}
+        </div> : null}
         {fullSyncRequired ? <div className="sync-reconcile"><AlertTriangle size={17}/><div><b>{zh ? '需要完整重建一次' : 'One complete replay is required'}</b><p>{zh ? `这会重新上传当前标记为“本机并同步”的 ${syncCount} 个 Agent，用于补齐当前设备缺失的数据；不会上传关闭或仅本机来源。` : `This re-uploads the ${syncCount} agents currently marked “Local + sync” to fill missing data for this device. Off and local-only sources remain local.`}</p></div><button type="button" className="danger-confirm" disabled={Boolean(busy) || syncCount === 0} onClick={() => action('sync-full')}>{busy === 'sync-full' ? <LoaderCircle className="spin" size={14}/> : <CloudUpload size={14}/>} {zh ? '确认完整同步' : 'Confirm complete sync'}</button></div> : null}
         <CommandRow zh={zh} label={zh ? '单次' : 'Once'} command={`npx ${PACKAGE} sync`}/>
         {fullSyncRequired ? <CommandRow zh={zh} label={zh ? '完整' : 'Full'} command={`npx ${PACKAGE} sync --full`}/> : null}

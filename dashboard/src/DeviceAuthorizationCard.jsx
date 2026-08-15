@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Clock3, Copy, ExternalLink, LoaderCircle, RefreshCw, X } from 'lucide-react';
 
 async function copyText(value) {
@@ -32,6 +32,7 @@ export function DeviceAuthorizationCard({ authorization, zh, onCancel, onRetry, 
   const [now, setNow] = useState(() => Date.now());
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
+  const feedbackTimer = useRef(0);
   const expiresAt = useMemo(() => Date.parse(authorization?.expiresAt || '') || now, [authorization?.expiresAt]);
   const seconds = Math.max(0, Math.ceil((expiresAt - now) / 1_000));
   const terminal = seconds <= 0 || ['expired', 'access_denied'].includes(authorization?.status);
@@ -42,14 +43,18 @@ export function DeviceAuthorizationCard({ authorization, zh, onCancel, onRetry, 
     return () => window.clearInterval(timer);
   }, [terminal]);
 
+  useEffect(() => () => window.clearTimeout(feedbackTimer.current), []);
+
   const copy = async () => {
     try {
       await copyText(authorization.userCode);
       setCopied(true); setCopyFailed(false);
-      window.setTimeout(() => setCopied(false), 1_500);
+      window.clearTimeout(feedbackTimer.current);
+      feedbackTimer.current = window.setTimeout(() => setCopied(false), 1_500);
     } catch {
       setCopyFailed(true);
-      window.setTimeout(() => setCopyFailed(false), 1_500);
+      window.clearTimeout(feedbackTimer.current);
+      feedbackTimer.current = window.setTimeout(() => setCopyFailed(false), 1_500);
     }
   };
 
@@ -59,6 +64,9 @@ export function DeviceAuthorizationCard({ authorization, zh, onCancel, onRetry, 
       <em><Clock3 size={12}/>{remainingLabel(seconds, zh)}</em>
     </div>
     <div className="device-authorization-code"><strong>{authorization.userCode}</strong><button type="button" onClick={copy} aria-label={zh ? '复制验证码' : 'Copy verification code'}>{copied ? <Check size={15}/> : <Copy size={15}/>}<span>{copyFailed ? (zh ? '复制失败' : 'Copy failed') : copied ? (zh ? '已复制' : 'Copied') : (zh ? '复制' : 'Copy')}</span></button></div>
+    <small className="device-authorization-lifecycle">{zh
+      ? '验证码只在当前本机看板进程中临时保留；刷新页面仍可继续，停止或重启看板后需重新生成。'
+      : 'The code is kept only in the running local dashboard process. A page refresh can resume it; restarting the dashboard requires a new code.'}</small>
     <div className="device-authorization-actions">
       {terminal ? <button className="primary-btn" type="button" onClick={onRetry}><RefreshCw size={14}/>{zh ? '生成新验证码' : 'Generate new code'}</button> : <a className="primary-btn" href={authorization.verificationUriComplete || authorization.verificationUri} target="_blank" rel="noreferrer"><ExternalLink size={14}/>{zh ? '打开社区授权页' : 'Open authorization page'}</a>}
       <button className="ghost-btn" type="button" onClick={onCancel}><X size={14}/>{zh ? '取消连接' : 'Cancel'}</button>
