@@ -47,8 +47,8 @@ npx @kimi.builders/usage@latest inspect --dry-run
 ```
 
 [Supported sources](#supported-local-usage-sources) ·
-[Compatibility and known limitations](./docs/SOURCE_COMPATIBILITY.md) ·
-[Troubleshooting](./SUPPORT.md)
+[Compatibility and known limitations](./docs/SOURCE_COMPATIBILITY.en.md) ·
+[Troubleshooting](./SUPPORT.en.md)
 
 ### Let an agent do it for you
 
@@ -57,7 +57,7 @@ operate your local terminal. It will check the environment, inspect sources,
 and start the dashboard:
 
 ```text
-Read https://github.com/kimi-builders/usage/blob/main/README.md and follow its
+Read https://github.com/kimi-builders/usage/blob/main/README.en.md and follow its
 current instructions to set up and launch Kimi Builders Usage on this computer.
 
 Requirements:
@@ -86,7 +86,7 @@ background sync on its own:
 
 ```text
 Read these documents and follow their current instructions:
-- https://github.com/kimi-builders/usage/blob/main/README.md
+- https://github.com/kimi-builders/usage/blob/main/README.en.md
 - https://github.com/kimi-builders/usage/blob/main/PRIVACY.md
 - https://github.com/kimi-builders/usage/blob/main/NETWORK.md
 
@@ -180,8 +180,8 @@ browser and is never uploaded to the community or a third party.
 
 **Project status:** public Beta. Stable sources are covered by cross-platform
 fixtures and contract tests; sources with limited log-format evidence remain
-explicitly labelled Beta. [Roadmap](./docs/ROADMAP.md) ·
-[Release notes](./docs/RELEASE_NOTES_0.5.0.md) · [All docs](./docs/README.md)
+explicitly labelled Beta. [Roadmap](./docs/ROADMAP.en.md) ·
+[Release notes](./docs/RELEASE_NOTES_0.5.1.en.md) · [All docs](./docs/README.en.md)
 
 ## Run from source
 
@@ -224,7 +224,7 @@ Session timing uses the same bounded-work definition across tools:
 - engaged time counts user-to-assistant/tool turn gaps up to 30 minutes each;
 - a long-lived session ID cannot turn offline days into continuous work.
 
-See [Local Snapshot v1](./docs/LOCAL_SNAPSHOT_V1.md) for fields and formulas.
+See [Local Snapshot v1](./docs/LOCAL_SNAPSHOT_V1.en.md) for fields and formulas.
 
 ## Supported local usage sources
 
@@ -269,7 +269,7 @@ npx @kimi.builders/usage sources disable cursor
 Local Cursor source settings do not require a community account or `init`. Dashboard
 verification and the CLI command only store the local CSV path; they neither access
 the network nor start community sync. See the
-[source compatibility matrix](./docs/SOURCE_COMPATIBILITY.md) for maturity,
+[source compatibility matrix](./docs/SOURCE_COMPATIBILITY.en.md) for maturity,
 limitations, and verification evidence.
 
 ## Subscription limits (optional)
@@ -412,14 +412,14 @@ the project field by default.
 
 Further reading:
 
-- [Development roadmap](./docs/ROADMAP.md)
-- [Contributing](./CONTRIBUTING.md)
-- [Support and troubleshooting](./SUPPORT.md)
+- [Development roadmap](./docs/ROADMAP.en.md)
+- [Contributing](./CONTRIBUTING.en.md)
+- [Support and troubleshooting](./SUPPORT.en.md)
 - [Privacy boundaries](./PRIVACY.md)
 - [Per-command network inventory](./NETWORK.md)
 - [Threat model](./THREAT_MODEL.md)
 - [Security reporting and release requirements](./SECURITY.md)
-- [Local/community product boundary](./docs/PRODUCT_BOUNDARY.md)
+- [Local/community product boundary](./docs/PRODUCT_BOUNDARY.en.md)
 
 ## Development and verification
 
@@ -451,9 +451,9 @@ Tests redirect every source, config, and state path to temporary fixtures. They
 do not read the developer's real HOME.
 
 Before submitting parser, quota-provider, sync-protocol, or UI changes, follow
-the relevant privacy and test checklist in [CONTRIBUTING.md](./CONTRIBUTING.md).
+the relevant privacy and test checklist in [CONTRIBUTING.en.md](./CONTRIBUTING.en.md).
 Do not open a public Issue for a vulnerability; use the private reporting path
-documented in [SUPPORT.md](./SUPPORT.md).
+documented in [SUPPORT.en.md](./SUPPORT.en.md).
 
 ## License and acknowledgements
 

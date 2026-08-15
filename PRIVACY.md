@@ -1,5 +1,7 @@
 # Privacy
 
+> [中文](./PRIVACY.zh.md)
+
 `@kimi.builders/usage` is local-first. Reading and analysing local Agent logs does
 not require a Kimi Builders account and does not require network access.
 
@@ -58,7 +60,7 @@ salt. Different installations cannot correlate the resulting hashes.
 ## Uploaded by `sync`
 
 The complete transport contract is documented in
-[`docs/LOCAL_SNAPSHOT_V1.md`](docs/LOCAL_SNAPSHOT_V1.md). The principal fields
+[`docs/LOCAL_SNAPSHOT_V1.en.md`](docs/LOCAL_SNAPSHOT_V1.en.md). The principal fields
 are source, model facts recorded by the Agent, 30-minute UTC time, exclusive
 token counters, request counts, measurement quality, salted session hash,
 session timing/message counters, and client/Agent versions used for diagnostics.

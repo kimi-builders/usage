@@ -1,6 +1,8 @@
 # 本地快照 v1：数据与计算契约
 
-> 状态：已实现并由自动化测试覆盖。最后按项目 `0.4.0` 代码核对。
+> [English](./LOCAL_SNAPSHOT_V1.en.md)
+
+> 状态：已实现并由自动化测试覆盖。最后按项目 `0.5.1` 代码核对。
 
 本地快照是 parser、CLI、本地 Web 看板和社区同步之间的稳定读取边界。实现入口是
 `src/local/snapshot.js`；指标汇总在 `src/local/metrics.js`；上传前的第二次验证在

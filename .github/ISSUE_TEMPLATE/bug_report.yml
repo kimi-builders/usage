@@ -1,5 +1,5 @@
-name: Bug report
-description: Report a Collector, dashboard, sync, export, or daemon problem
+name: Bug report / 错误报告
+description: Report a Collector, dashboard, sync, export, or daemon problem / 报告采集、看板、同步、导出或后台服务问题
 title: "[Bug]: "
 labels: [bug]
 body:
@@ -7,63 +7,64 @@ body:
     attributes:
       value: |
         Never attach prompts, responses, full paths, cookies, tokens, API keys, config files, or raw Agent databases. Read SUPPORT.md first.
+        切勿附上提示词、回复、完整路径、Cookie、Token、API Key、配置文件或原始 Agent 数据库；请先阅读 SUPPORT.md。
   - type: dropdown
     id: area
     attributes:
-      label: Area
+      label: Area / 问题范围
       options:
-        - Local dashboard
-        - Community sync
-        - Background sync / daemon
-        - Export or poster
-        - Pricing or model identity
-        - CLI or installation
-        - Other
+        - Local dashboard / 本地看板
+        - Community sync / 社区同步
+        - Background sync / daemon / 后台同步
+        - Export or poster / 导出或海报
+        - Pricing or model identity / 定价或模型身份
+        - CLI or installation / CLI 或安装
+        - Other / 其他
     validations:
       required: true
   - type: input
     id: version
     attributes:
-      label: Collector version or commit
+      label: Collector version or commit / Collector 版本或 commit
       placeholder: 0.4.0 / git commit
     validations:
       required: true
   - type: input
     id: environment
     attributes:
-      label: Environment
+      label: Environment / 环境
       placeholder: macOS 26.5.2 arm64, Node 22.x, Warp 0.x
     validations:
       required: true
   - type: textarea
     id: reproduce
     attributes:
-      label: Steps to reproduce
-      description: Use synthetic or redacted values only.
+      label: Steps to reproduce / 复现步骤
+      description: Use synthetic or redacted values only. / 只使用虚构或脱敏值。
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: Expected behavior
+      label: Expected behavior / 预期行为
     validations:
       required: true
   - type: textarea
     id: actual
     attributes:
-      label: Actual behavior
+      label: Actual behavior / 实际行为
     validations:
       required: true
   - type: textarea
     id: diagnostics
     attributes:
-      label: Reviewed doctor output
-      description: Paste only doctor --json output you have personally reviewed. This is optional.
+      label: Reviewed doctor output / 已检查的 doctor 输出
+      description: Paste only doctor --json output you have personally reviewed. Optional. / 仅粘贴亲自检查过的 doctor --json 输出，可留空。
       render: json
   - type: checkboxes
     id: privacy
     attributes:
-      label: Privacy check
+      label: Privacy check / 隐私检查
       options:
-        - label: I removed credentials, account identity, conversation text, project names, and full paths.
+        - label: I removed credentials, account identity, conversation text, project names, and full paths. / 我已移除凭据、账户身份、对话文本、项目名和完整路径。
           required: true

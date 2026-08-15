@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Security vulnerability
+  - name: Security vulnerability / 安全漏洞
     url: https://github.com/kimi-builders/usage/security/advisories/new
-    about: Report credential exposure, loopback bypasses, data leaks, or supply-chain vulnerabilities privately.
-  - name: Usage community
+    about: Report credential exposure, loopback bypasses, data leaks, or supply-chain vulnerabilities privately. / 私下报告凭据泄露、本地访问绕过、数据泄露或供应链漏洞。
+  - name: Usage community / 用量社区
     url: https://kimi.builders/usage
-    about: Open the hosted community usage dashboard.
+    about: Open the hosted community usage dashboard. / 打开社区用量看板。

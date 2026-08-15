@@ -1,42 +1,42 @@
-name: Feature request
-description: Propose a new source, provider, workflow, analysis, or community integration
+name: Feature request / 功能建议
+description: Propose a new source, provider, workflow, analysis, or community integration / 建议新的来源、平台、工作流、分析或社区集成
 title: "[Feature]: "
 labels: [enhancement]
 body:
   - type: textarea
     id: problem
     attributes:
-      label: Problem to solve
-      description: Describe the user problem before the proposed UI or implementation.
+      label: Problem to solve / 要解决的问题
+      description: Describe the user problem before the proposed UI or implementation. / 先描述用户问题，再描述界面或实现。
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: Proposed outcome
+      label: Proposed outcome / 期望结果
     validations:
       required: true
   - type: dropdown
     id: boundary
     attributes:
-      label: Best product boundary
+      label: Best product boundary / 合适的产品边界
       options:
-        - Local-only
-        - Optional provider connection
-        - Optional community sync
-        - Community-only
-        - Unsure
+        - Local-only / 仅本机
+        - Optional provider connection / 可选 Provider 连接
+        - Optional community sync / 可选社区同步
+        - Community-only / 仅社区
+        - Unsure / 不确定
     validations:
       required: true
   - type: textarea
     id: privacy
     attributes:
-      label: Data, privacy, and network impact
-      description: List any new local path, credential, domain, or uploaded field.
+      label: Data, privacy, and network impact / 数据、隐私与网络影响
+      description: List any new local path, credential, domain, or uploaded field. / 列出新增本地路径、凭据、域名或上传字段。
     validations:
       required: true
   - type: textarea
     id: references
     attributes:
-      label: References and licenses
-      description: Link any products or source code that inspired the request and include their licenses when known.
+      label: References and licenses / 参考与许可证
+      description: Link products or source code that inspired the request and include known licenses. / 链接参考产品或源码，并注明已知许可证。

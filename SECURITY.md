@@ -1,9 +1,11 @@
 # Security policy
 
+> [中文](./SECURITY.zh.md)
+
 ## Supported versions
 
 Security fixes are applied to the latest released minor version. During the
-`0.4.x` public beta, users should reproduce issues on the latest `0.4.x` patch or
+`0.5.x` public beta, users should reproduce issues on the latest `0.5.x` patch or
 the repository default branch before reporting them.
 
 ## Reporting a vulnerability

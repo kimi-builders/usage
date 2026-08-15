@@ -1,5 +1,7 @@
 # Publishing checklist
 
+> [中文](./PUBLISHING.zh.md)
+
 Public releases are produced only by `.github/workflows/release.yml`. The
 workflow runs on GitHub-hosted runners, requests an OIDC identity, verifies the
 supported platform matrix, preserves CycloneDX SBOMs and the reviewed tarball,
@@ -29,8 +31,9 @@ access token as a bootstrap credential:
 ## Before a release
 
 1. Use a clean release branch and review `git status`.
-2. Confirm the public version in `package.json` and update the matching
-   `docs/RELEASE_NOTES_<version>.md` release notes.
+2. Confirm the public version in `package.json` and update the matching Chinese
+   `docs/RELEASE_NOTES_<version>.md` and English
+   `docs/RELEASE_NOTES_<version>.en.md` release notes.
 3. Run the complete local gate:
 
    ```bash

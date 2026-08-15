@@ -1,5 +1,7 @@
 # 本地版与社区版：产品和信任边界
 
+> [English](./PRODUCT_BOUNDARY.en.md)
+
 > 决策状态：当前产品原则。改变这些边界需要同时更新 README、PRIVACY、NETWORK、协议测试与
 > 用户界面文案，不能作为普通重构悄悄发生。
 

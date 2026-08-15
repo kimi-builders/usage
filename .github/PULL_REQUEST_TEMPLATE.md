@@ -1,32 +1,32 @@
-## Problem
+## 问题 / Problem
 
-<!-- What user-visible or maintenance problem does this solve? -->
+<!-- 解决了什么用户可见或维护问题？ / What user-visible or maintenance problem does this solve? -->
 
-## Implementation
+## 实现 / Implementation
 
-<!-- Summarize the approach and important trade-offs. -->
+<!-- 概述方案和重要取舍。 / Summarize the approach and important trade-offs. -->
 
-## Privacy and network impact
+## 隐私和网络影响 / Privacy and network impact
 
-- [ ] No new local read location
-- [ ] No new network destination
-- [ ] No new credential source
-- [ ] No upload/protocol change
-- [ ] No public visibility change
+- [ ] 没有新增本地读取位置 / No new local read location
+- [ ] 没有新增网络目标 / No new network destination
+- [ ] 没有新增凭据来源 / No new credential source
+- [ ] 没有上传或协议变化 / No upload/protocol change
+- [ ] 没有公开可见性变化 / No public visibility change
 
-<!-- Explain every unchecked item and link the updated documentation/tests. -->
+<!-- 解释每个未勾选项，并链接更新后的文档/测试。 / Explain every unchecked item and link the updated documentation/tests. -->
 
-## Verification
+## 验证 / Verification
 
 - [ ] `npm test`
 - [ ] `npm run dashboard:build`
 - [ ] `npm run dashboard:test`
-- [ ] Relevant fixture/compatibility coverage added
-- [ ] Desktop and mobile UI checked when applicable
-- [ ] Dark/light and Chinese/English checked when applicable
+- [ ] 已增加相关 fixture/兼容性覆盖 / Relevant fixture/compatibility coverage added
+- [ ] 适用时已检查桌面与移动端 / Desktop and mobile UI checked when applicable
+- [ ] 适用时已检查深浅主题与中英文 / Dark/light and Chinese/English checked when applicable
 
-## Release and provenance
+## 发布与来源 / Release and provenance
 
-- [ ] README/NETWORK/PRIVACY/ROADMAP updated if needed
-- [ ] NOTICE updated for adapted code, protocols, fixtures, assets, or significant product references
-- [ ] Package contents and migration impact reviewed
+- [ ] 必要时已更新 README/NETWORK/PRIVACY/ROADMAP 及双语版本 / Bilingual docs updated if needed
+- [ ] 改编代码、协议、fixture、资源或重要产品参考已更新 NOTICE / NOTICE updated for adaptations
+- [ ] 已审查包内容与迁移影响 / Package contents and migration impact reviewed

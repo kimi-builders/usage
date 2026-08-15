@@ -1,5 +1,7 @@
 # Kimi Builders Usage 0.4.1
 
+> [English](./RELEASE_NOTES_0.4.1.en.md)
+
 `0.4.1` 是首个公开 Beta 的补丁版本，修复默认隐私设置下可能阻断首次同步的问题，并让
 新用户更快理解、安装和启动本地看板。
 
@@ -43,4 +45,4 @@ npx @kimi.builders/usage@latest daemon restart
 ```
 
 这些命令不会删除本地历史、社区连接或远端数据。完整隐私与网络边界见
-[`PRIVACY.md`](../PRIVACY.md) 和 [`NETWORK.md`](../NETWORK.md)。
+[`隐私说明`](../PRIVACY.zh.md) 和 [`网络行为`](../NETWORK.zh.md)。

@@ -13,6 +13,30 @@ function markdownFiles(directory) {
 }
 
 const failures = [];
+const bilingualPairs = [
+  ['README.md', 'README.en.md'],
+  ['CONTRIBUTING.md', 'CONTRIBUTING.en.md'],
+  ['SUPPORT.md', 'SUPPORT.en.md'],
+  ['NETWORK.md', 'NETWORK.zh.md'],
+  ['PRIVACY.md', 'PRIVACY.zh.md'],
+  ['PUBLISHING.md', 'PUBLISHING.zh.md'],
+  ['SECURITY.md', 'SECURITY.zh.md'],
+  ['THREAT_MODEL.md', 'THREAT_MODEL.zh.md'],
+];
+
+for (const [first, second] of bilingualPairs) {
+  if (!existsSync(join(root, first))) failures.push(`missing bilingual document: ${first}`);
+  if (!existsSync(join(root, second))) failures.push(`missing bilingual document: ${second}`);
+}
+
+for (const name of readdirSync(join(root, 'docs'))) {
+  if (extname(name).toLowerCase() !== '.md' || name.endsWith('.en.md')) continue;
+  const englishName = name.replace(/\.md$/i, '.en.md');
+  if (!existsSync(join(root, 'docs', englishName))) {
+    failures.push(`missing bilingual document: docs/${englishName}`);
+  }
+}
+
 for (const file of markdownFiles(root)) {
   const contents = readFileSync(file, 'utf8');
   const links = contents.matchAll(/!?\[[^\]]*]\(([^)]+)\)/g);
@@ -32,4 +56,3 @@ if (failures.length) {
 } else {
   console.log('Markdown link check passed.');
 }
-

@@ -1,5 +1,7 @@
 # Threat model
 
+> [中文](./THREAT_MODEL.zh.md)
+
 ## Assets
 
 - local Agent logs and project identity;

@@ -36,8 +36,10 @@ try {
   ]);
   const allowedRoots = ['bin/', 'dashboard/dist/client/', 'docs/', 'src/'];
   const allowedFiles = new Set([
-    ...required, 'README.en.md', 'CONTRIBUTING.md', 'NETWORK.md', 'PRIVACY.md',
-    'PUBLISHING.md', 'SECURITY.md', 'SUPPORT.md', 'THREAT_MODEL.md',
+    ...required, 'README.en.md', 'CONTRIBUTING.md', 'CONTRIBUTING.en.md',
+    'NETWORK.md', 'NETWORK.zh.md', 'PRIVACY.md', 'PRIVACY.zh.md',
+    'PUBLISHING.md', 'PUBLISHING.zh.md', 'SECURITY.md', 'SECURITY.zh.md',
+    'SUPPORT.md', 'SUPPORT.en.md', 'THREAT_MODEL.md', 'THREAT_MODEL.zh.md',
   ]);
   const sensitive = /(^|\/)(?:\.env(?:\..*)?|auth\.json|credentials\.json|subscription-history\.json|config\.json|state\.json|[^/]+\.(?:pem|key|p12))$/i;
   for (const file of report.files || []) {
@@ -51,7 +53,11 @@ try {
   }
   if (required.size) fail(`missing required files: ${[...required].join(', ')}`);
   if (report.size > 2 * 1024 * 1024) fail(`tarball exceeds 2 MiB (${report.size} bytes)`);
-  if (report.unpackedSize > 3 * 1024 * 1024) fail(`unpacked package exceeds 3 MiB (${report.unpackedSize} bytes)`);
+  // The package deliberately ships the complete Chinese and English trust,
+  // support, contract, and release documentation. Keep the compressed 2 MiB
+  // download gate strict while allowing the equivalent plain-text pair once
+  // npm expands the archive.
+  if (report.unpackedSize > 3.5 * 1024 * 1024) fail(`unpacked package exceeds 3.5 MiB (${report.unpackedSize} bytes)`);
   if (report.entryCount > 250) fail(`package contains too many files (${report.entryCount})`);
 
   const executable = report.files.find((file) => file.path === 'bin/kbu-usage.js');

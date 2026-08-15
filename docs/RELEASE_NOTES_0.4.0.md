@@ -1,5 +1,7 @@
 # Kimi Builders Usage 0.4.0
 
+> [English](./RELEASE_NOTES_0.4.0.en.md)
+
 `0.4.0` 是第一个公开 Beta：一个开源、本地优先的多 Agent 用量与订阅分析工具。
 
 ## 主要能力
@@ -58,4 +60,4 @@ npx @kimi.builders/usage@latest daemon restart
 ```
 
 该命令不会删除本地历史、社区连接或远端数据。完整命令、隐私与网络边界见项目 README、
-[`PRIVACY.md`](../PRIVACY.md) 和 [`NETWORK.md`](../NETWORK.md)。
+[`隐私说明`](../PRIVACY.zh.md) 和 [`网络行为`](../NETWORK.zh.md)。

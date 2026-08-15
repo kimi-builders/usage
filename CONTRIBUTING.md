@@ -1,5 +1,7 @@
 # 参与开发
 
+> [English](./CONTRIBUTING.en.md)
+
 感谢你帮助改进 Kimi Builders Usage。这个项目会接触开发者本机日志和账户额度，正确性、
 隐私和可解释性优先于“支持数量”或开发速度。
 

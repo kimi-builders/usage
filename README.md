@@ -48,47 +48,39 @@ npx @kimi.builders/usage@latest inspect --dry-run
 本机终端的 Agent，它会检查环境、扫描来源并启动看板：
 
 ```text
-Read https://github.com/kimi-builders/usage/blob/main/README.md and follow its
-current instructions to set up and launch Kimi Builders Usage on this computer.
+阅读 https://github.com/kimi-builders/usage/blob/main/README.md，并按照当前文档在
+这台电脑上安装和启动 Kimi Builders Usage。
 
-Requirements:
-1. Prefer the published package and npx; do not clone the repository or install
-   anything globally unless there is a concrete reason.
-2. Check `node --version` first. Node.js 20+ is required. If Node is missing or
-   too old, explain the safest installation option for this OS and ask before
-   installing or upgrading it.
-3. Run `npx @kimi.builders/usage@latest inspect --dry-run` and summarize which
-   Agent sources were detected. Do not expose full local paths, credentials,
-   session identifiers, or conversation content in your response.
-4. Run `npx @kimi.builders/usage@latest dashboard`, keep the process running,
-   and open the authorized local dashboard URL. If automatic opening fails,
-   tell me to copy the URL directly from my terminal; do not paste its capability
-   token into chat.
-5. This request is local-only. Do not run `init`, `sync`, `daemon`, enable quota
-   providers, upload data, or change privacy settings unless I explicitly ask.
-6. If a command fails, diagnose the real error, apply only the smallest safe
-   fix, retry it, and finish with a short summary of what is running and how I
-   can stop or restart it.
+要求：
+1. 优先使用已发布的 npm 包和 npx；除非有明确理由，否则不要克隆仓库或全局安装。
+2. 先运行 `node --version`。项目要求 Node.js 20+。如果未安装或版本过低，先说明适合
+   当前操作系统的最安全安装方式，得到我确认后再安装或升级。
+3. 运行 `npx @kimi.builders/usage@latest inspect --dry-run`，简要说明检测到了哪些
+   Agent 来源。回复中不要暴露完整本机路径、凭据、会话标识或对话内容。
+4. 运行 `npx @kimi.builders/usage@latest dashboard`，保持进程运行并打开已授权的本地
+   看板地址。如果无法自动打开，让我从终端直接复制地址；不要把其中的 capability token
+   粘贴到聊天中。
+5. 这次只使用本地功能。除非我明确要求，否则不要运行 `init`、`sync` 或 `daemon`，
+   不要启用额度 Provider、上传数据或修改隐私设置。
+6. 如果命令失败，定位真实原因，只做最小且安全的修复后重试；最后简要说明当前运行状态，
+   以及如何停止或重新启动。
 ```
 
 如果你已经决定连接社区并同步，可以改用下面这个提示词。它会在设备授权时停下来让你
 确认，不会擅自安装持续同步服务：
 
 ```text
-Read these documents and follow their current instructions:
+阅读并遵循以下文档的当前说明：
 - https://github.com/kimi-builders/usage/blob/main/README.md
-- https://github.com/kimi-builders/usage/blob/main/PRIVACY.md
-- https://github.com/kimi-builders/usage/blob/main/NETWORK.md
+- https://github.com/kimi-builders/usage/blob/main/PRIVACY.zh.md
+- https://github.com/kimi-builders/usage/blob/main/NETWORK.zh.md
 
-Help me connect Kimi Builders Usage to kimi.builders and perform one sync.
-Check Node.js 20+ and run the offline dry-run first. Then check the existing
-connection with `npx @kimi.builders/usage@latest status`. If this device is not
-connected, run `npx @kimi.builders/usage@latest init`, open the device approval
-page, and pause so I can review and approve it. After approval, complete one
-`npx @kimi.builders/usage@latest sync`, verify the final status, and launch the
-local dashboard. Never print or copy API keys, cookies, credentials, full local
-paths, session identifiers, or conversation content. Do not install, restart,
-or remove the background daemon unless I explicitly approve that separate step.
+帮我把 Kimi Builders Usage 连接到 kimi.builders，并执行一次同步。先确认 Node.js 20+，
+再运行离线 dry-run。然后用 `npx @kimi.builders/usage@latest status` 检查现有连接。
+如果设备尚未连接，运行 `npx @kimi.builders/usage@latest init`，打开设备批准页面后暂停，
+让我检查并批准。批准完成后执行一次 `npx @kimi.builders/usage@latest sync`，核对最终状态，
+再启动本地看板。不要输出或复制 API Key、Cookie、凭据、完整本机路径、会话标识或对话内容。
+除非我另行明确批准，否则不要安装、重启或移除后台 daemon。
 ```
 
 ![用量中心总览](./docs/assets/screenshots/dashboard-overview.png)
@@ -130,7 +122,7 @@ npx @kimi.builders/usage@latest sync
 | 订阅额度 | 否，需逐平台启用 | 供应商本机登录或手动凭据 | 本机直连所选供应商 |
 | 社区同步 | 否，需主动连接 | kimi.builders | 脱敏后的聚合数据 |
 
-云端不能主动读取你的电脑。完整网络目标和触发条件见 [NETWORK.md](./NETWORK.md)。
+云端不能主动读取你的电脑。完整网络目标和触发条件见 [网络行为](./NETWORK.zh.md)。
 
 ## 你能得到什么
 
@@ -159,7 +151,7 @@ npx @kimi.builders/usage@latest sync
 
 **项目状态：** 当前是公开 Beta。稳定来源经过跨平台 fixture 与 contract test；日志格式
 覆盖有限的来源会明确标为 Beta。[Roadmap](./docs/ROADMAP.md) ·
-[发布说明](./docs/RELEASE_NOTES_0.5.0.md) · [全部文档](./docs/README.md)
+[发布说明](./docs/RELEASE_NOTES_0.5.1.md) · [全部文档](./docs/README.md)
 
 ## 从源码运行
 
@@ -261,8 +253,8 @@ Antigravity、OpenCode Go、Qoder、Warp 与 JetBrains AI。不同平台支持�
 
 额度凭据和响应不会进入 Token 快照、导出文件或社区同步。手动 Secret 不写入普通
 `config.json`。脱敏历史最多保留 400 天，较旧数据自动降采样；它同样不会进入导出、海报
-或社区同步。各平台网络目标和认证边界见 [NETWORK.md](./NETWORK.md)，本地保存字段见
-[PRIVACY.md](./PRIVACY.md)。
+或社区同步。各平台网络目标和认证边界见 [网络行为](./NETWORK.zh.md)，本地保存字段见
+[隐私说明](./PRIVACY.zh.md)。
 
 ## 连接与同步社区（可选）
 
@@ -361,10 +353,10 @@ Session ID 使用安装级随机盐进行 HMAC-SHA-256 转换，不同设备无�
 - [开发路线与计划](./docs/ROADMAP.md)
 - [参与开发](./CONTRIBUTING.md)
 - [问题反馈与排障](./SUPPORT.md)
-- [隐私边界](./PRIVACY.md)
-- [逐命令网络清单](./NETWORK.md)
-- [威胁模型](./THREAT_MODEL.md)
-- [安全报告与发布要求](./SECURITY.md)
+- [隐私边界](./PRIVACY.zh.md)
+- [逐命令网络清单](./NETWORK.zh.md)
+- [威胁模型](./THREAT_MODEL.zh.md)
+- [安全报告与发布要求](./SECURITY.zh.md)
 - [本地版与社区版的产品边界](./docs/PRODUCT_BOUNDARY.md)
 
 ## 开发与验证
@@ -390,7 +382,7 @@ npm run release:check
 
 它会运行 Collector 测试、构建并测试看板，再执行 `npm pack --dry-run` 展示实际发布内容。
 `npm publish` 也会通过 `prepublishOnly` 自动执行同一套检查，但不会在检查命令中被调用。
-发布流程见 [PUBLISHING.md](./PUBLISHING.md)。
+发布流程见 [发布清单](./PUBLISHING.zh.md)。
 
 测试会把来源、配置和状态目录指向临时 fixture，不读取开发者真实的 HOME。
 

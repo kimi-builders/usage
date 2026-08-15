@@ -1,5 +1,7 @@
 # 问题反馈与排障
 
+> [English](./SUPPORT.en.md)
+
 ## 先判断是哪一类问题
 
 | 类型 | 示例 | 建议入口 |
@@ -135,4 +137,4 @@ Reporting：
 
 <https://github.com/kimi-builders/usage/security/advisories/new>
 
-报告中使用虚构凭据和最小复现。支持版本和响应目标见 [SECURITY.md](./SECURITY.md)。
+报告中使用虚构凭据和最小复现。支持版本和响应目标见 [安全政策](./SECURITY.zh.md)。

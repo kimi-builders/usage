@@ -1,5 +1,7 @@
 # Network behaviour
 
+> [中文](./NETWORK.zh.md)
+
 There is no telemetry, update check, advertising request, or hidden background
 connection. Local parsing modules do not import the network client. Background
 sync exists only after an explicit `daemon install` and can be inspected or

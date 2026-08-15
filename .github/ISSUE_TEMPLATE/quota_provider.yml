@@ -1,5 +1,5 @@
-name: Subscription-limit provider
-description: Report setup, authentication, quota mapping, or provider API drift
+name: Subscription-limit provider / 订阅额度平台
+description: Report setup, authentication, quota mapping, or provider API drift / 报告配置、认证、额度映射或接口变化
 title: "[Limits]: "
 labels: [limits, compatibility]
 body:
@@ -7,40 +7,41 @@ body:
     attributes:
       value: |
         Never paste a cookie, token, API key, cURL command, Keychain value, email, account ID, or raw provider response.
+        切勿粘贴 Cookie、Token、API Key、cURL 命令、钥匙串值、邮箱、账户 ID 或原始 Provider 响应。
   - type: input
     id: provider
     attributes:
-      label: Provider and client version
+      label: Provider and client version / Provider 与客户端版本
     validations:
       required: true
   - type: input
     id: environment
     attributes:
-      label: OS and Collector version
+      label: OS and Collector version / 系统与 Collector 版本
     validations:
       required: true
   - type: dropdown
     id: auth
     attributes:
-      label: Credential mode
+      label: Credential mode / 凭据方式
       options:
-        - Local auto-detection
-        - Environment variable
-        - macOS Keychain
-        - No credential / unavailable
+        - Local auto-detection / 本机自动检测
+        - Environment variable / 环境变量
+        - macOS Keychain / macOS 钥匙串
+        - No credential / unavailable / 无凭据或不可用
     validations:
       required: true
   - type: textarea
     id: issue
     attributes:
-      label: What happened?
-      description: Include the redacted UI error category and expected quota windows.
+      label: What happened? / 发生了什么？
+      description: Include the redacted UI error category and expected quota windows. / 提供脱敏错误类别和预期额度窗口。
     validations:
       required: true
   - type: checkboxes
     id: privacy
     attributes:
-      label: Privacy check
+      label: Privacy check / 隐私检查
       options:
-        - label: I removed all credentials, account details, copied requests, and raw responses.
+        - label: I removed all credentials, account details, copied requests, and raw responses. / 我已移除所有凭据、账户信息、复制的请求和原始响应。
           required: true

@@ -1,5 +1,7 @@
 # 项目文档
 
+> [English](./README.en.md)
+
 如果你是第一次接手项目，按下面顺序阅读：
 
 1. [开发路线与计划](./ROADMAP.md)：当前完成度、下一步优先级和验收标准。
@@ -11,11 +13,12 @@
 
 信任与发布文档：
 
-- [隐私边界](../PRIVACY.md)
-- [网络目标](../NETWORK.md)
-- [威胁模型](../THREAT_MODEL.md)
-- [安全政策](../SECURITY.md)
-- [发布清单](../PUBLISHING.md)
+- [隐私边界](../PRIVACY.zh.md)
+- [网络目标](../NETWORK.zh.md)
+- [威胁模型](../THREAT_MODEL.zh.md)
+- [安全政策](../SECURITY.zh.md)
+- [发布清单](../PUBLISHING.zh.md)
+- [0.5.1 发布说明](./RELEASE_NOTES_0.5.1.md)
 - [0.5.0 发布说明](./RELEASE_NOTES_0.5.0.md)
 - [0.4.1 发布说明](./RELEASE_NOTES_0.4.1.md)
 - [0.4.0 发布说明](./RELEASE_NOTES_0.4.0.md)
@@ -35,4 +38,6 @@
 | 打包依赖、字体或图标 | package lock、NOTICE、npm pack 审计 |
 | 发布版本 | 发布说明、PUBLISHING、SBOM、provenance、干净 checkout 与三平台 smoke test |
 
-不知道下一步做什么时，回到 [ROADMAP 的“现在应该从哪里开始”](./ROADMAP.md#现在应该从哪里开始)。
+新增或修改公开文档时，应同步维护同名中文/英文版本；LICENSE 和 NOTICE 保持单一法律/来源文本。
+
+不知道下一步做什么时，回到 [ROADMAP 的“当前结论”](./ROADMAP.md#当前结论)。
