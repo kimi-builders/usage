@@ -103,6 +103,11 @@ function findRolloutFiles(home) {
           } catch {
             continue; // vanished mid-scan
           }
+          if (!stat.isFile()) {
+            throw Object.assign(new Error(`Codex rollout is not a regular file: ${path}`), {
+              code: 'EISDIR',
+            });
+          }
           files.push({ path, size: stat.size });
         } else if (entry.isDirectory()) {
           walk(path);
