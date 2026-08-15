@@ -124,6 +124,33 @@ test('repeat sync sends no duplicate batch and hidden projects never enter paylo
   );
 });
 
+test('a new community device requires confirmation, then replays once with --full semantics', async () => {
+  const previous = loadConfig();
+  saveConfig({
+    ...previous,
+    apiKey: `kbu_${'b'.repeat(43)}`,
+    deviceId: 'replacement-device',
+  });
+  const requestsBefore = received.length;
+  await assert.rejects(
+    runSync({ quiet: true }),
+    (error) => error.code === 'SYNC_RECONCILIATION_REQUIRED',
+  );
+  assert.equal(received.length, requestsBefore);
+
+  const replay = await runSync({ quiet: true, full: true });
+  const settled = await runSync({ quiet: true });
+  assert.equal(replay.buckets, 1);
+  assert.equal(replay.sessions, 1);
+  assert.equal(settled.buckets, 0);
+  assert.equal(settled.sessions, 0);
+  assert.equal(received.at(-2).buckets.length, 1);
+  assert.equal(received.at(-2).sessions.length, 1);
+  assert.deepEqual(received.at(-1).buckets, []);
+  assert.deepEqual(received.at(-1).sessions, []);
+  assert.equal(typeof loadState().syncTarget, 'string');
+});
+
 test('local-only sources never enter a sync payload and keep their checkpoint', async () => {
   const before = loadState();
   const config = loadConfig();

@@ -12,7 +12,7 @@ removed with the CLI at any time.
 | `doctor [--json]` | No | Redacted local compatibility report |
 | `reset --local` | No | Remove local sync checkpoints |
 | `init` | Yes | Device-code connection only; no usage upload unless `--sync` is explicit |
-| `sync` | Yes | Read privacy settings and upload changed aggregates |
+| `sync [--full]` | Yes | Read privacy settings and upload changed aggregates; `--full` explicitly replays only sources marked Local + sync |
 | `daemon install/restart` | Yes, in the scheduled child | Manage a per-user OS scheduler and trigger its first incremental sync |
 | `daemon status/uninstall` | No | Inspect or remove the per-user scheduler |
 | scheduled `daemon run` | Yes | Run the same incremental sync while the device is awake and online |

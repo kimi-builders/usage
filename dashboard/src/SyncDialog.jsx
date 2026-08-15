@@ -75,6 +75,7 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
   const [policies, setPolicies] = useState(() => policiesFromSources(control?.sources));
   const [authorization, setAuthorization] = useState(null);
   const [confirmAction, setConfirmAction] = useState('');
+  const [fullSyncRequired, setFullSyncRequired] = useState(false);
 
   const load = async () => {
     setLoading(true); setError('');
@@ -124,7 +125,7 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
   const action = async (name) => {
     setBusy(name); setError(''); setNotice('');
     try {
-      if (['sync', 'install', 'restart'].includes(name)) {
+      if (['sync', 'sync-full', 'install', 'restart'].includes(name)) {
         if (!Object.values(policies).includes('private')) {
           throw new Error(zh ? '请先把至少一个 Agent 设为“本机并同步”。' : 'Mark at least one agent as “Local + sync” first.');
         }
@@ -139,9 +140,23 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: name, intervalMinutes: interval }),
       });
-      if (!response.ok) throw new Error((await response.text()).replace(/^Local dashboard error:\s*/, '') || `Sync action failed (${response.status})`);
-      const next = await response.json(); setStatus(next);
-      setNotice(name === 'sync'
+      const body = await response.json().catch(() => null);
+      if (body?.reconciliationRequired || body?.error?.code === 'sync_reconciliation_required') {
+        setFullSyncRequired(true);
+        setNotice({
+          tone: 'warning',
+          text: zh
+            ? '当前本机 checkpoint 与社区设备无法证明一致。普通增量同步已安全取消，请核对上方 Agent 范围后再确认完整同步。'
+            : 'The local checkpoint cannot be proven to match this community device. Incremental sync was safely cancelled; review the agent scope above, then confirm a complete sync.',
+        });
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(body?.error?.message || `Sync action failed (${response.status})`);
+      }
+      const next = body; setStatus(next);
+      if (['sync', 'sync-full'].includes(name)) setFullSyncRequired(false);
+      setNotice(['sync', 'sync-full'].includes(name)
         ? syncOutcome(next.result, zh)
         : name === 'uninstall'
           ? (zh ? '后台同步已停用；数据和连接配置均已保留。' : 'Background sync disabled; data and connection settings were kept.')
@@ -216,7 +231,9 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
 
       <section className="sync-mode-card">
         <header><div className="sync-mode-icon"><CloudUpload size={19}/></div><div><b>{zh ? '立即同步一次' : 'Sync once now'}</b><p>{zh ? `扫描本机变化并上传 ${syncCount} 个已允许 Agent 的标准化用量；不会上传对话正文、完整路径或供应商凭据。` : `Scan changes and upload normalized usage from ${syncCount} allowed agent${syncCount === 1 ? '' : 's'}—never conversations, full paths, or provider credentials.`}</p></div>{connected ? <button className="primary-btn" type="button" disabled={Boolean(busy) || syncCount === 0} onClick={() => action('sync')}>{busy === 'sync' ? <LoaderCircle className="spin" size={15}/> : <RefreshCw size={15}/>} {busy === 'sync' ? (zh ? '同步中' : 'Syncing') : (zh ? '立即同步' : 'Sync now')}</button> : null}</header>
+        {fullSyncRequired ? <div className="sync-reconcile"><AlertTriangle size={17}/><div><b>{zh ? '需要完整重建一次' : 'One complete replay is required'}</b><p>{zh ? `这会重新上传当前标记为“本机并同步”的 ${syncCount} 个 Agent，用于补齐当前设备缺失的数据；不会上传关闭或仅本机来源。` : `This re-uploads the ${syncCount} agents currently marked “Local + sync” to fill missing data for this device. Off and local-only sources remain local.`}</p></div><button type="button" className="danger-confirm" disabled={Boolean(busy) || syncCount === 0} onClick={() => action('sync-full')}>{busy === 'sync-full' ? <LoaderCircle className="spin" size={14}/> : <CloudUpload size={14}/>} {zh ? '确认完整同步' : 'Confirm complete sync'}</button></div> : null}
         <CommandRow zh={zh} label={zh ? '单次' : 'Once'} command={`npx ${PACKAGE} sync`}/>
+        {fullSyncRequired ? <CommandRow zh={zh} label={zh ? '完整' : 'Full'} command={`npx ${PACKAGE} sync --full`}/> : null}
       </section>
 
       <section className="sync-mode-card">

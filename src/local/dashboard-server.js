@@ -10,6 +10,7 @@ import {
   getDaemonStatus, installDaemon, restartDaemon, uninstallDaemon,
 } from '../daemon.js';
 import { runManagedSync } from '../sync-runtime.js';
+import { prepareStateForSync } from '../state.js';
 import { loadLocalDashboardData } from './dashboard-data.js';
 import {
   getPublicLimitSettings, loadSubscriptionLimits, saveLimitSettings,
@@ -117,6 +118,7 @@ function browserError(error) {
     request_too_large: [413, 'Request body is too large.'],
     not_connected: [409, 'This device is not connected to community sync.'],
     sync_busy: [409, 'A synchronization is already running.'],
+    sync_reconciliation_required: [409, 'Confirm a complete replay before rebuilding this device’s community usage.'],
     invalid_action: [400, 'Unsupported sync action.'],
     invalid_control_action: [400, 'Unsupported dashboard control action.'],
     invalid_control_input: [400, 'Dashboard control input is invalid.'],
@@ -183,14 +185,22 @@ export async function runLocalSyncAction(payload = {}) {
     });
   }
   let result = null;
-  if (action === 'sync') {
+  if (['sync', 'sync-full'].includes(action)) {
+    if (action === 'sync' && prepareStateForSync(config).reconciliationRequired) {
+      return { ...getLocalSyncStatus(), action, result: null, reconciliationRequired: true };
+    }
     try {
-      const synced = await runManagedSync({ trigger: 'dashboard', quiet: true, surface: 'local-dashboard' });
+      const synced = await runManagedSync({
+        trigger: 'dashboard', quiet: true, surface: 'local-dashboard', full: action === 'sync-full',
+      });
       result = publicSyncResult(synced);
     } catch (error) {
       if (error?.code === 'SYNC_BUSY') {
         error.statusCode = 409;
         error.code = 'sync_busy';
+      } else if (error?.code === 'SYNC_RECONCILIATION_REQUIRED') {
+        error.statusCode = 409;
+        error.code = 'sync_reconciliation_required';
       }
       throw error;
     }

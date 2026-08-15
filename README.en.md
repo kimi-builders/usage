@@ -353,13 +353,21 @@ device is awake and online. After upgrading the Collector, run `daemon restart`
 so the service records the new package path.
 
 Sync uses incremental checkpoints, per-source failure isolation, and a
-concurrency lock. Repeated runs do not duplicate counts. If you delete a device's
-remote history and want to upload the local history again:
+concurrency lock. Repeated runs do not duplicate counts. If you delete a
+device's remote history, reconnect as a different device, or the dashboard
+cannot prove that the local checkpoint belongs to the current community
+device, review every agent marked `private`, then explicitly replay it:
 
 ```bash
-npx @kimi.builders/usage reset --local
-npx @kimi.builders/usage sync
+npx @kimi.builders/usage sync --full
 ```
+
+`--full` re-uploads normalized aggregates only for `private` sources. It does
+not include `off` or `local` sources and does not delete community data. The
+checkpoint is bound to an irreversible fingerprint of the community target
+and device credential, so a reconnect cannot silently inherit another
+device's “already uploaded” state. The dashboard shows the same scope and asks
+for a second confirmation.
 
 ## Command reference
 
@@ -371,7 +379,7 @@ npx @kimi.builders/usage sync
 | `sources list` | Show local usage-source status | No |
 | `sources set <agent> off\|local\|private` | Set one agent's scan and sync scope | No |
 | `init [--api-url URL] [--sync]` | Connect a community device; no upload by default, `--sync` explicitly keeps connect-then-sync behavior | Yes |
-| `sync` | Upload changed aggregate records | Yes |
+| `sync [--full]` | Upload changed aggregates; `--full` explicitly replays allowed sources | Yes |
 | `daemon install/status/restart/uninstall` | Manage background sync | See NETWORK |
 | `summary [--days N]` | Read the connected account's hosted summary | Yes |
 | `status` | Show local connection and checkpoint state | No |

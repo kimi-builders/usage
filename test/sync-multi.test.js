@@ -87,12 +87,22 @@ await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const address = server.address();
 
 const { saveConfig } = await import('../src/config.js');
+const { syncTargetKey } = await import('../src/state.js');
 const { runSync } = await import('../src/sync.js');
-saveConfig({
+const syncConfig = {
   apiUrl: `http://127.0.0.1:${address.port}`,
   apiKey: `kbu_${'a'.repeat(43)}`,
   sessionSalt: 'fixture-session-salt'.padEnd(32, 'x'),
-});
+};
+saveConfig(syncConfig);
+
+// This fixture represents an already-bound checkpoint. Legacy checkpoints
+// without a target intentionally require one explicit full replay.
+const seededState = JSON.parse(readFileSync(join(stateDir, 'state.json'), 'utf8'));
+writeFileSync(join(stateDir, 'state.json'), JSON.stringify({
+  ...seededState,
+  syncTarget: syncTargetKey(syncConfig),
+}), 'utf8');
 
 function readStateFile() {
   return JSON.parse(readFileSync(join(stateDir, 'state.json'), 'utf8'));

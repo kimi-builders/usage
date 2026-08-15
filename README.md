@@ -308,12 +308,16 @@ npx @kimi.builders/usage daemon uninstall
 执行一次 `daemon restart`，让服务使用新版本路径。
 
 同步采用增量 checkpoint、失败来源隔离和并发锁。重复运行不会重复计数。如果你在社区
-删除了某台设备的数据，并希望重新上传本机仍保留的历史：
+删除了某台设备的数据、更换了设备连接，或看板提示本机与社区 checkpoint 无法确认一致，
+先核对所有 Agent 的 `private` 范围，再显式完整同步：
 
 ```bash
-npx @kimi.builders/usage reset --local
-npx @kimi.builders/usage sync
+npx @kimi.builders/usage sync --full
 ```
+
+`--full` 只重传标记为 `private` 的标准化聚合数据，不包含 `off` 或 `local` 来源，也不会
+删除社区数据。checkpoint 会绑定到社区地址和设备凭据的不可逆指纹；重新授权后不会误把旧
+设备的本机记录当作已经上传。看板遇到相同情况时会展示范围说明并要求二次确认。
 
 ## 常用命令
 
@@ -325,7 +329,7 @@ npx @kimi.builders/usage sync
 | `sources list` | 查看本地用量来源状态 | 无 |
 | `sources set <agent> off\|local\|private` | 设置单个 Agent 的扫描与同步范围 | 无 |
 | `init [--api-url URL] [--sync]` | 连接社区设备；默认不上传，`--sync` 明确沿用连接后立即同步 | 有 |
-| `sync` | 上传发生变化的聚合数据 | 有 |
+| `sync [--full]` | 上传变化的聚合数据；`--full` 经确认后完整重传允许同步的来源 | 有 |
 | `daemon install/status/restart/uninstall` | 管理后台同步 | 见 NETWORK |
 | `summary [--days N]` | 查看已连接账户的云端摘要 | 有 |
 | `status` | 查看本地连接与 checkpoint 状态 | 无 |

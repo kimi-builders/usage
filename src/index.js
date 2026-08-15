@@ -13,7 +13,7 @@ function printHelp() {
 @kimi.builders/usage
 
   npx @kimi.builders/usage init [--api-url URL] [--sync]
-  npx @kimi.builders/usage sync
+  npx @kimi.builders/usage sync [--full]
   npx @kimi.builders/usage daemon install [--interval 15]
   npx @kimi.builders/usage daemon status [--json]
   npx @kimi.builders/usage daemon restart [--interval 15]
@@ -48,7 +48,7 @@ export async function run(args) {
   }
   if (command === 'sync') {
     const { runManagedSync } = await import('./sync-runtime.js');
-    return runManagedSync();
+    return runManagedSync({ full: args.includes('--full') });
   }
   if (command === 'daemon') {
     const action = args[1] || 'status';

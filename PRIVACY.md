@@ -62,7 +62,7 @@ are source, model facts recorded by the Agent, 30-minute UTC time, exclusive
 token counters, request counts, measurement quality, salted session hash,
 session timing/message counters, and client/Agent versions used for diagnostics.
 
-`init`, `sync`, scheduled `daemon run`, `summary`, and explicit community actions
+`init`, `sync`, explicitly confirmed `sync --full`, scheduled `daemon run`, `summary`, and explicit community actions
 inside the loopback Dashboard are the only operations that contact a configured
 Kimi Builders origin. `init` connects only and does not upload unless `--sync` is
 also supplied. Installing, inspecting, restarting, or removing the scheduler is
@@ -86,6 +86,12 @@ Local or Off stops future uploads from that source but does not silently delete
 existing cloud history. The Dashboard offers a separate confirmed action to
 delete all cloud usage belonging to the current device; account-level public
 visibility remains managed by the community account.
+
+Sync checkpoints are bound to an irreversible fingerprint of the configured
+community target and device credential. If that target cannot be proven to
+match, ordinary incremental sync stops. A complete replay requires an explicit
+`sync --full` command or a second confirmation in the Dashboard, and still
+includes only sources marked Local + sync.
 
 ## Local reports
 
