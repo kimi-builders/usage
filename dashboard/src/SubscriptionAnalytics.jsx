@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, BarChart3, ChevronLeft, ChevronRight, CircleAlert, Clock3, FileText, LayoutDashboard, ShieldCheck } from 'lucide-react';
 import { CHART_COLORS, CONSUMPTION_PALETTE } from './chart-colors.js';
-import { compact, displayDollars, percent, pluralUnit } from './format.js';
+import { compactNumber, displayDollars, percent, pluralUnit } from './format.js';
 import { ProviderSelect } from './provider-select.jsx';
 import { HeatModeTabs, WeekPager, storedHeatMode, storeHeatMode } from './heat-controls.jsx';
 import { addLocalWeeks, firstDataWeekStart, localWeekEnd, localWeekStart, weekLabel } from './week.js';
@@ -35,6 +35,10 @@ const BENEFIT_RANGE_LABELS = {
   '90d': ['近 90 天', 'Last 90 days'],
   all: ['全部', 'All history'],
 };
+
+function localizedCompact(value, zh) {
+  return compactNumber(value, zh ? 'zh' : 'en');
+}
 
 function storedBenefitRange(view) {
   const value = localStorage.getItem(`kbu.benefit.${view}-range.v1`);
@@ -103,7 +107,7 @@ function tokenBreakdownRows(row, zh, combineInput = false) {
 }
 
 function TokenBreakdown({ row, zh, combineInput = false }) {
-  return <div className="trend-tooltip-breakdown">{tokenBreakdownRows(row, zh, combineInput).map(([label, value, color]) => <span key={label}><i style={{ background: color }}/><em>{label}</em><b>{compact(value)}</b></span>)}</div>;
+  return <div className="trend-tooltip-breakdown">{tokenBreakdownRows(row, zh, combineInput).map(([label, value, color]) => <span key={label}><i style={{ background: color }}/><em>{label}</em><b>{localizedCompact(value, zh)}</b></span>)}</div>;
 }
 
 // Dock the tooltip to the side opposite the pointer so it never covers the
@@ -118,7 +122,7 @@ function tooltipLeft(event, viewport, tipWidth) {
 
 function localTrendFacts(item, zh, currency) {
   const facts = [
-    `${Number(item?.requestCount || 0).toLocaleString()} ${requestUnit(item?.requestCount || 0, zh)}`,
+    `${localizedCompact(Number(item?.requestCount || 0), zh)} ${requestUnit(item?.requestCount || 0, zh)}`,
     `${zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} ${money((item?.costMicros || 0) / 1e6, currency)}`,
     zh ? '本机归因事实' : 'Local attributed facts',
   ];
@@ -206,8 +210,8 @@ function buildTrendPlot(timeline, points) {
 
 function localTrendLabel(item, zh, currency) {
   const parts = zh
-    ? [dateLabel(item.key, true), `本机 Token：${compact(item.totalTokens)}`, `请求：${Number(item.requestCount || 0).toLocaleString()}`, `API 等价价值：${money(item.costMicros / 1e6, currency)}`]
-    : [dateLabel(item.key, false), `Local Tokens: ${compact(item.totalTokens)}`, `Requests: ${Number(item.requestCount || 0).toLocaleString()}`, `API-equivalent value: ${money(item.costMicros / 1e6, currency)}`];
+    ? [dateLabel(item.key, true), `本机 Token：${localizedCompact(item.totalTokens, zh)}`, `请求：${localizedCompact(Number(item.requestCount || 0), zh)}`, `API 等价价值：${money(item.costMicros / 1e6, currency)}`]
+    : [dateLabel(item.key, false), `Local Tokens: ${localizedCompact(item.totalTokens, zh)}`, `Requests: ${localizedCompact(Number(item.requestCount || 0), zh)}`, `API-equivalent value: ${money(item.costMicros / 1e6, currency)}`];
   if (item.officialObservation) {
     parts.push(zh
       ? `官方已用：${item.officialObservation.usedPercent.toFixed(1)}%（${dateLabel(item.officialObservation.observedAt, true, true)}观测）`
@@ -225,8 +229,8 @@ function quotaTrendLabel(point, zh, currency) {
     : [dateLabel(point.observedAt, false, true), `Official used: ${point.usedPercent.toFixed(1)}%`];
   if (localObserved && localTotals) {
     parts.push(...(zh
-      ? [`本机 Token：${compact(localTotals.totalTokens)}`, `请求：${Number(localTotals.requestCount || 0).toLocaleString()}`, `API 等价价值：${money(localTotals.costMicros / 1e6, currency)}`]
-      : [`Local Tokens: ${compact(localTotals.totalTokens)}`, `Requests: ${Number(localTotals.requestCount || 0).toLocaleString()}`, `API-equivalent value: ${money(localTotals.costMicros / 1e6, currency)}`]));
+      ? [`本机 Token：${localizedCompact(localTotals.totalTokens, zh)}`, `请求：${localizedCompact(Number(localTotals.requestCount || 0), zh)}`, `API 等价价值：${money(localTotals.costMicros / 1e6, currency)}`]
+      : [`Local Tokens: ${localizedCompact(localTotals.totalTokens, zh)}`, `Requests: ${localizedCompact(Number(localTotals.requestCount || 0), zh)}`, `API-equivalent value: ${money(localTotals.costMicros / 1e6, currency)}`]));
     if (point.localEvidenceState === 'local-stale') {
       parts.push(zh ? '本机快照早于额度观测，不参与跨源推算' : 'Local snapshot predates this quota observation; excluded from cross-source estimates');
     }
@@ -277,7 +281,7 @@ function BenefitTrendTooltip({ active, zh, currency }) {
     const item = active.datum;
     return <aside className="trend-tooltip benefit-trend-tooltip" role="tooltip" style={{ left: active.left }}>
       <strong>{dateLabel(item.key, zh)}</strong>
-      <div className="trend-tooltip-total"><span>{compact(item.totalTokens)} tokens</span><small>{zh ? '命中率' : 'hit'} {cacheHit(item)}</small></div>
+      <div className="trend-tooltip-total"><span>{localizedCompact(item.totalTokens, zh)} tokens</span><small>{zh ? '命中率' : 'hit'} {cacheHit(item)}</small></div>
       <TokenBreakdown row={item} zh={zh}/>
       <footer>{localTrendFacts(item, zh, currency)}</footer>
       <span className="benefit-tooltip-affordance">{zh ? '点击查看证据 →' : 'Click to view evidence →'}</span>
@@ -290,7 +294,7 @@ function BenefitTrendTooltip({ active, zh, currency }) {
     <strong>{dateLabel(point.observedAt, zh, true)}</strong>
     <div className="trend-tooltip-total"><span>{zh ? '官方已用' : 'Official used'} {point.usedPercent.toFixed(1)}%</span><small>{zh ? '额度事实' : 'quota fact'}</small></div>
     {localTotals ? <TokenBreakdown row={localTotals} zh={zh}/> : <p className="trend-tooltip-note">{zh ? '该观测时刻没有可连接的本机 Token 事实。' : 'No joinable local Token facts at this observation.'}</p>}
-    <footer>{localTotals ? `${Number(localTotals.requestCount || 0).toLocaleString()} ${requestUnit(localTotals.requestCount || 0, zh)} · ${zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} ${money((localTotals.costMicros || 0) / 1e6, currency)} · ` : ''}{zh ? '官方观测' : 'Official observation'} {dateLabel(point.observedAt, zh, true)}{point.localEvidenceState === 'local-stale' ? ` · ${zh ? '本机快照较旧，不参与跨源推算' : 'local snapshot is stale and excluded from cross-source estimates'}` : ''}</footer>
+    <footer>{localTotals ? `${localizedCompact(Number(localTotals.requestCount || 0), zh)} ${requestUnit(localTotals.requestCount || 0, zh)} · ${zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} ${money((localTotals.costMicros || 0) / 1e6, currency)} · ` : ''}{zh ? '官方观测' : 'Official observation'} {dateLabel(point.observedAt, zh, true)}{point.localEvidenceState === 'local-stale' ? ` · ${zh ? '本机快照较旧，不参与跨源推算' : 'local snapshot is stale and excluded from cross-source estimates'}` : ''}</footer>
     <span className="benefit-tooltip-affordance">{zh ? '点击查看证据 →' : 'Click to view evidence →'}</span>
   </aside>;
 }
@@ -374,7 +378,7 @@ export function BenefitTrendView({ provider, zh, currency, onDrilldown }) {
       {provider.evidenceClock?.state === 'local-stale' ? <div className="benefit-inline-warning" data-evidence="clock-mismatch"><CircleAlert size={14}/><span>{zh ? `本机用量快照（${dateLabel(provider.evidenceClock.usageObservedAt, true, true)}）早于额度观测（${dateLabel(provider.evidenceClock.quotaObservedAt, true, true)}）；两类事实仍分别展示，但容量与剩余额度推算已暂停。` : `The local usage snapshot (${dateLabel(provider.evidenceClock.usageObservedAt, false, true)}) predates the quota observation (${dateLabel(provider.evidenceClock.quotaObservedAt, false, true)}). Both facts remain visible, but capacity and remaining-Token estimates are paused.`}</span></div> : null}
       {!plot.quota.length ? <div className="benefit-inline-warning"><CircleAlert size={14}/><span>{provider.quotaObservation?.state === 'unavailable' ? (zh ? '该账户当前没有可验证的官方额度窗口，只展示本机趋势。' : 'This account has no verifiable official quota window; only local trends are shown.') : (zh ? '额度历史从成功刷新后开始积累，至少两个样本才计算速度。' : 'Quota history begins after successful refresh and needs two samples for pace.')}</span></div> : null}
     </section>
-    <section className="benefit-kpi-row"><article><span>{zh ? '近 30 天 TOKEN' : '30D TOKENS'}</span><strong>{compact(provider.recentTotals.totalTokens)}</strong><small>{provider.recentTotals.requestCount.toLocaleString()} {requestUnit(provider.recentTotals.requestCount, zh)}</small></article><article><span>{zh ? 'API 等价价值' : 'API EQUIVALENT'}</span><strong>{money(provider.economics.apiEquivalentUsd, currency)}</strong><small>{zh ? '标准价格，不是账单' : 'standard pricing, not a bill'}</small></article><article><span>{zh ? '完整周期样本' : 'COMPLETE CYCLES'}</span><strong>{Math.max(0, ...provider.windows.map((window) => window.cycleStats?.sampledCycles || 0))}</strong><small>{zh ? '覆盖率 ≥90% 且接近重置' : '≥90% coverage near reset'}</small></article><article><span>{zh ? '官方额度状态' : 'QUOTA STATUS'}</span><strong>{provider.quotaObservation?.state === 'current' ? (zh ? '当前可读' : 'Current') : provider.quotaObservation?.state === 'historical' ? (zh ? '仅历史' : 'History') : (zh ? '不可观测' : 'Hidden')}</strong><small>{zh ? '不以缺失推断无限' : 'missing never means unlimited'}</small></article></section>
+    <section className="benefit-kpi-row"><article><span>{zh ? '近 30 天 TOKEN' : '30D TOKENS'}</span><strong>{localizedCompact(provider.recentTotals.totalTokens, zh)}</strong><small>{localizedCompact(provider.recentTotals.requestCount, zh)} {requestUnit(provider.recentTotals.requestCount, zh)}</small></article><article><span>{zh ? 'API 等价价值' : 'API EQUIVALENT'}</span><strong>{money(provider.economics.apiEquivalentUsd, currency)}</strong><small>{zh ? '标准价格，不是账单' : 'standard pricing, not a bill'}</small></article><article><span>{zh ? '完整周期样本' : 'COMPLETE CYCLES'}</span><strong>{Math.max(0, ...provider.windows.map((window) => window.cycleStats?.sampledCycles || 0))}</strong><small>{zh ? '覆盖率 ≥90% 且接近重置' : '≥90% coverage near reset'}</small></article><article><span>{zh ? '官方额度状态' : 'QUOTA STATUS'}</span><strong>{provider.quotaObservation?.state === 'current' ? (zh ? '当前可读' : 'Current') : provider.quotaObservation?.state === 'historical' ? (zh ? '仅历史' : 'History') : (zh ? '不可观测' : 'Hidden')}</strong><small>{zh ? '不以缺失推断无限' : 'missing never means unlimited'}</small></article></section>
   </section>;
 }
 
@@ -462,7 +466,7 @@ export function BenefitActivityView({ provider, usageData, zh, currency }) {
           return <button type="button" className="benefit-heat-cell is-unobserved" data-observed="false" aria-label={unavailable} title={unavailable} disabled key={hour}/>;
         }
         const level = cell.totalTokens > 0 ? Math.max(1, Math.ceil(cell.totalTokens / max * 6)) : 0;
-        const title = `${slot} · ${zh ? '已观测' : 'Observed'} · ${compact(cell.totalTokens)} Token · ${cell.requestCount} ${requestUnit(cell.requestCount, zh)} · ${money(cell.costMicros / 1e6, currency)}`;
+        const title = `${slot} · ${zh ? '已观测' : 'Observed'} · ${localizedCompact(cell.totalTokens, zh)} Token · ${localizedCompact(cell.requestCount, zh)} ${requestUnit(cell.requestCount, zh)} · ${money(cell.costMicros / 1e6, currency)}`;
         return <button
           ref={(node) => { const key = `${day}-${hour}`; if (node) heatCellRefs.current.set(key, node); else heatCellRefs.current.delete(key); }}
           type="button"
@@ -479,13 +483,13 @@ export function BenefitActivityView({ provider, usageData, zh, currency }) {
         />;
       })}</div></div>)}<div className="benefit-heat-hours">{Array.from({ length: 24 }, (_, hour) => <span key={hour}>{hour % 3 === 0 ? String(hour).padStart(2, '0') : ''}</span>)}</div></div></div>
       {hovered && selectedCell ? <aside className="heatmap-tooltip benefit-heat-tooltip" data-dock={hovered.hour < 12 ? 'r' : 'l'} role="tooltip">
-        <header><strong>{weekdays[hovered.day]} {String(hovered.hour).padStart(2, '0')}:00</strong><span>{compact(selectedCell.totalTokens)} tokens</span><small>{zh ? '命中率' : 'hit'} {cacheHit(selectedCell)}</small></header>
-        {tokenBreakdownRows(selectedCell, zh, true).map(([label, value, color]) => <div key={label}><span><i style={{ background: color }}/>{label}</span><b>{compact(value)}</b></div>)}
-        <footer>{zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} {money(selectedCell.costMicros / 1e6, currency)} · {Number(selectedCell.requestCount || 0).toLocaleString()} {requestUnit(selectedCell.requestCount || 0, zh)} · {zh ? '本机归因事实' : 'local attributed facts'}</footer>
+        <header><strong>{weekdays[hovered.day]} {String(hovered.hour).padStart(2, '0')}:00</strong><span>{localizedCompact(selectedCell.totalTokens, zh)} tokens</span><small>{zh ? '命中率' : 'hit'} {cacheHit(selectedCell)}</small></header>
+        {tokenBreakdownRows(selectedCell, zh, true).map(([label, value, color]) => <div key={label}><span><i style={{ background: color }}/>{label}</span><b>{localizedCompact(value, zh)}</b></div>)}
+        <footer>{zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} {money(selectedCell.costMicros / 1e6, currency)} · {localizedCompact(Number(selectedCell.requestCount || 0), zh)} {requestUnit(selectedCell.requestCount || 0, zh)} · {zh ? '本机归因事实' : 'local attributed facts'}</footer>
       </aside> : null}
       <footer className="benefit-heat-footer"><span>{zh ? '少' : 'Less'} {[1,2,3,4,5,6].map((level) => <i data-level={level} key={level}/>)} {zh ? '多' : 'More'}</span><span><i className="is-observed-zero" data-level="0"/> {zh ? '已观测 0' : 'Observed 0'}　<i className="is-unobserved"/> {zh ? '未观测' : 'Not observed'}</span><span>{zh ? '悬停或聚焦查看本机证据' : 'Hover or focus for local evidence'}</span></footer>
     </section>
-    <section className="benefit-kpi-row"><article><span>{zh ? '活跃星期' : 'ACTIVE WEEKDAYS'}</span><strong>{activeDays} / 7</strong><small>{mode === 'week' ? weekLabel(weekStartMs, zh) : benefitRangeLabel(range, zh)}</small></article><article><span>{zh ? '峰值时段' : 'PEAK SLOT'}</span><strong>{peak?.totalTokens ? `${weekdays[peak.day]} ${String(peak.hour).padStart(2,'0')}:00` : '—'}</strong><small>{peak?.totalTokens ? `${compact(peak.totalTokens)} Token` : (zh ? '没有非零观测' : 'No nonzero observation')}</small></article><article><span>{zh ? '额度撞线证据' : 'LIMIT EVENTS'}</span><strong>{provider.decisionSignals.some((signal) => signal.code === 'exhausted') ? (zh ? '发现' : 'Found') : (zh ? '未发现' : 'None')}</strong><small>{zh ? '仅供应商返回的额度事实 · 全量' : 'provider-reported facts only · all history'}</small></article><article><span>{zh ? '节奏覆盖范围' : 'RHYTHM COVERAGE'}</span><strong>{compact(viewUsage.totals.totalTokens)}</strong><small>{zh ? '当前窗口已归因本机 Token' : 'attributed local Tokens in this window'}</small></article></section>
+    <section className="benefit-kpi-row"><article><span>{zh ? '活跃星期' : 'ACTIVE WEEKDAYS'}</span><strong>{activeDays} / 7</strong><small>{mode === 'week' ? weekLabel(weekStartMs, zh) : benefitRangeLabel(range, zh)}</small></article><article><span>{zh ? '峰值时段' : 'PEAK SLOT'}</span><strong>{peak?.totalTokens ? `${weekdays[peak.day]} ${String(peak.hour).padStart(2,'0')}:00` : '—'}</strong><small>{peak?.totalTokens ? `${localizedCompact(peak.totalTokens, zh)} Token` : (zh ? '没有非零观测' : 'No nonzero observation')}</small></article><article><span>{zh ? '额度撞线证据' : 'LIMIT EVENTS'}</span><strong>{provider.decisionSignals.some((signal) => signal.code === 'exhausted') ? (zh ? '发现' : 'Found') : (zh ? '未发现' : 'None')}</strong><small>{zh ? '仅供应商返回的额度事实 · 全量' : 'provider-reported facts only · all history'}</small></article><article><span>{zh ? '节奏覆盖范围' : 'RHYTHM COVERAGE'}</span><strong>{localizedCompact(viewUsage.totals.totalTokens, zh)}</strong><small>{zh ? '当前窗口已归因本机 Token' : 'attributed local Tokens in this window'}</small></article></section>
   </section>;
 }
 
@@ -497,7 +501,7 @@ function MixCard({ title, rows, zh, semantic = false }) {
     const suppliedShare = finiteNumber(row.share);
     const share = Math.max(0, Math.min(1, suppliedShare ?? (total ? row.totalTokens / total : 0)));
     const color = semantic ? TOKEN_MIX_COLORS[row.id] : CONSUMPTION_PALETTE[index % CONSUMPTION_PALETTE.length];
-    return <article key={row.id} style={{ '--mix-color': color }}><span>{String(index + 1).padStart(2,'0')}</span><div><b title={row.label}>{row.label}</b><i><em style={{ width: share > 0 ? `${Math.max(2, share * 100)}%` : '0%' }}/></i></div><strong>{compact(row.totalTokens)}<small> · {percent(share)}</small></strong></article>;
+    return <article key={row.id} style={{ '--mix-color': color }}><span>{String(index + 1).padStart(2,'0')}</span><div><b title={row.label}>{row.label}</b><i><em style={{ width: share > 0 ? `${Math.max(2, share * 100)}%` : '0%' }}/></i></div><strong>{localizedCompact(row.totalTokens, zh)}<small> · {percent(share)}</small></strong></article>;
   }) : <p>{zh ? '当前没有可归因记录' : 'No attributable records yet'}</p>}</div></section>;
 }
 
@@ -515,7 +519,7 @@ export function BenefitDistributionView({ provider, usageData, zh }) {
     { id: 'reasoning', label: zh ? '推理' : 'Reasoning', totalTokens: viewUsage.totals.reasoningOutputTokens },
   ].sort((a,b) => b.totalTokens - a.totalTokens);
   const panelProps = providerPanelProps(provider);
-  return <section className="benefit-view-stack" {...panelProps}><section className="benefit-section-heading"><div><span>{zh ? '单一订阅构成' : 'ONE-BENEFIT BREAKDOWN'}</span><h2><LayoutDashboard size={16}/>{zh ? `${provider.label} 的消耗构成` : `${provider.label} consumption mix`}</h2><p>{zh ? `${benefitRangeLabel(range, true)} · 只使用已归因到该订阅的本机 Token；不代表供应商账单内部权重。` : `${benefitRangeLabel(range, false)} · only local Tokens attributed to this benefit; not the provider billing weight.`}</p></div><div className="benefit-section-range"><strong>{compact(viewUsage.totals.totalTokens)} Token</strong><BenefitRangeControl value={range} onChange={changeRange} zh={zh} label={zh ? '消耗构成证据范围' : 'Consumption mix evidence range'}/></div></section><div className="benefit-distribution-grid"><MixCard title={zh ? '模型' : 'Models'} rows={viewUsage.modelRows} zh={zh}/><MixCard title={zh ? 'Token 类型' : 'Token types'} rows={tokenTypeRows} zh={zh} semantic/><MixCard title={zh ? '推理强度' : 'Reasoning effort'} rows={viewUsage.effortRows} zh={zh}/><MixCard title={zh ? '项目 / 工作负载' : 'Projects / workload'} rows={viewUsage.projectRows} zh={zh}/></div><div className="benefit-attribution-note"><ShieldCheck size={14}/><span>{zh ? `证据窗口：${benefitRangeLabel(range, true)}。归因范围：${provider.sources.join('、')}。无法确认账户归属的数据不会被强行放进这个订阅。` : `Evidence window: ${benefitRangeLabel(range, false)}. Attribution scope: ${provider.sources.join(', ')}. Data without reliable account attribution is not forced into this benefit.`}</span></div></section>;
+  return <section className="benefit-view-stack" {...panelProps}><section className="benefit-section-heading"><div><span>{zh ? '单一订阅构成' : 'ONE-BENEFIT BREAKDOWN'}</span><h2><LayoutDashboard size={16}/>{zh ? `${provider.label} 的消耗构成` : `${provider.label} consumption mix`}</h2><p>{zh ? `${benefitRangeLabel(range, true)} · 只使用已归因到该订阅的本机 Token；不代表供应商账单内部权重。` : `${benefitRangeLabel(range, false)} · only local Tokens attributed to this benefit; not the provider billing weight.`}</p></div><div className="benefit-section-range"><strong>{localizedCompact(viewUsage.totals.totalTokens, zh)} Token</strong><BenefitRangeControl value={range} onChange={changeRange} zh={zh} label={zh ? '消耗构成证据范围' : 'Consumption mix evidence range'}/></div></section><div className="benefit-distribution-grid"><MixCard title={zh ? '模型' : 'Models'} rows={viewUsage.modelRows} zh={zh}/><MixCard title={zh ? 'Token 类型' : 'Token types'} rows={tokenTypeRows} zh={zh} semantic/><MixCard title={zh ? '推理强度' : 'Reasoning effort'} rows={viewUsage.effortRows} zh={zh}/><MixCard title={zh ? '项目 / 工作负载' : 'Projects / workload'} rows={viewUsage.projectRows} zh={zh}/></div><div className="benefit-attribution-note"><ShieldCheck size={14}/><span>{zh ? `证据窗口：${benefitRangeLabel(range, true)}。归因范围：${provider.sources.join('、')}。无法确认账户归属的数据不会被强行放进这个订阅。` : `Evidence window: ${benefitRangeLabel(range, false)}. Attribution scope: ${provider.sources.join(', ')}. Data without reliable account attribution is not forced into this benefit.`}</span></div></section>;
 }
 
 function RecordsTable({ label, columns, rows, rowClassName = '', renderCells, focusKey = null }) {
@@ -591,7 +595,7 @@ export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh, 
           {recordCell(dateLabel(row.observedAt, zh, true), columns[0], 0)}
           {recordCell(row.label, columns[1], 1)}
           {recordCell(row.usedPercent == null ? '—' : `${Number(row.usedPercent).toFixed(1)}%`, columns[2], 2, { strong: true, className: 'evidence-official' })}
-          {recordCell(localObserved ? compact(row.localTotals?.totalTokens || 0) : '—', columns[3], 3, { className: 'evidence-local' })}
+          {recordCell(localObserved ? localizedCompact(row.localTotals?.totalTokens || 0, zh) : '—', columns[3], 3, { className: 'evidence-local' })}
           {recordCell(row.localCoverage == null ? '—' : percent(row.localCoverage), columns[4], 4, { className: 'evidence-local' })}
           {recordCell(row.resetsAt ? dateLabel(row.resetsAt, zh, true) : '—', columns[5], 5)}
         </>;
@@ -605,8 +609,8 @@ export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh, 
       renderCells={(row, columns) => <>
         {recordCell(dateLabel(row.observedAt, zh, true), columns[0], 0)}
         {recordCell(row.model, columns[1], 1, { title: row.model })}
-        {recordCell(compact(row.totalTokens), columns[2], 2, { strong: true, className: 'evidence-local' })}
-        {recordCell(row.requestCount.toLocaleString(), columns[3], 3, { className: 'evidence-local' })}
+        {recordCell(localizedCompact(row.totalTokens, zh), columns[2], 2, { strong: true, className: 'evidence-local' })}
+        {recordCell(localizedCompact(row.requestCount, zh), columns[3], 3, { className: 'evidence-local' })}
         {recordCell(row.reasoningEffort || (zh ? '未记录' : 'Not recorded'), columns[4], 4, { className: 'evidence-local' })}
         {recordCell(money(row.costMicros / 1e6, currency), columns[5], 5, { className: 'evidence-derived' })}
       </>}

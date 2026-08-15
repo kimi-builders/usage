@@ -84,6 +84,50 @@ test('overview provider tabs control a panel labelled by the active tab', () => 
   assert.match(markup, /<details class="subscription-deep-dive">/);
 });
 
+test('benefits center follows Chinese compact units while English keeps K/M/B', () => {
+  const observedAt = '2026-08-11T12:00:00.000Z';
+  const props = {
+    data: {
+      enabled: true,
+      generatedAt: observedAt,
+      providers: [{
+        id: 'codex', label: 'Codex', status: 'ok', updatedAt: observedAt,
+        windows: [{
+          id: 'primary', label: '5 hours', usedPercent: 10, remainingPercent: 90,
+          resetsAt: '2026-08-11T14:00:00.000Z', windowSeconds: 18_000,
+        }],
+      }],
+      history: { observations: [] },
+    },
+    usageData: {
+      generatedAt: observedAt,
+      buckets: [{
+        id: 'large-local-bucket', source: 'codex', model: 'gpt-5.6-sol',
+        modelCanonical: 'gpt-5.6-sol', bucketStart: observedAt,
+        inputTokens: 26_200_000_000, cacheWriteInputTokens: 0,
+        cacheReadInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0,
+        totalTokens: 26_200_000_000, requestCount: 62_769,
+        costMicros: 1_000_000, pricedTokens: 26_200_000_000,
+        unpricedTokens: 0, assumedTokens: 0,
+      }],
+    },
+    settings: { refreshMinutes: 10, providers: { codex: { entitlementType: 'unknown' } } },
+    loading: false,
+    error: null,
+    onRefresh: () => {},
+    onSettings: () => {},
+    view: 'overview',
+  };
+
+  const chinese = renderToStaticMarkup(createElement(module.SubscriptionCenter, { ...props, zh: true }));
+  const english = renderToStaticMarkup(createElement(module.SubscriptionCenter, { ...props, zh: false }));
+  assert.match(chinese, /262亿/);
+  assert.match(chinese, /6\.3万 次请求/);
+  assert.doesNotMatch(chinese, /26\.2B/);
+  assert.match(english, /26\.2B/);
+  assert.match(english, /62\.8K requests/);
+});
+
 test('settings filter tabs control their labelled provider panel', () => {
   const markup = renderToStaticMarkup(createElement(module.LimitSettingsDialog, {
     open: true,
