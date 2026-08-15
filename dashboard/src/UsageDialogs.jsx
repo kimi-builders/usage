@@ -168,7 +168,7 @@ export function ShareDialog({ open, onClose, data, filters, initialRange, zh }) 
       try {
         await document.fonts.ready;
         const url = await toPng(posterRef.current, { width: 1080, height: 1440, pixelRatio: 1, cacheBust: true, backgroundColor: '#050607' });
-        if (!cancelled && revision === revisionRef.current) setPreview({ url, revision, report, range, name, handle, avatar });
+        if (!cancelled && revision === revisionRef.current) setPreview({ url, revision, report, range, name, handle, avatar, zh });
       } catch (reason) {
         if (!cancelled && revision === revisionRef.current) setError(reason?.message || String(reason));
       } finally {
@@ -180,14 +180,15 @@ export function ShareDialog({ open, onClose, data, filters, initialRange, zh }) 
       clearTimeout(timer);
       if (revisionRef.current === revision) revisionRef.current += 1;
     };
-  }, [open, range, name, handle, avatar, report]);
+  }, [open, range, name, handle, avatar, report, zh]);
   const previewCurrent = Boolean(open && preview
     && preview.revision === revisionRef.current
     && preview.report === report
     && preview.range === range
     && preview.name === name
     && preview.handle === handle
-    && preview.avatar === avatar);
+    && preview.avatar === avatar
+    && preview.zh === zh);
   const canUsePreview = previewCurrent && !busy && !avatarBusy && !sharing && !error;
   const selectAvatar = async (file) => {
     setAvatarBusy(true); setAvatarError('');
@@ -268,6 +269,6 @@ export function ShareDialog({ open, onClose, data, filters, initialRange, zh }) 
         </div>
       </div>
     </div>
-    <div className="poster-render-host" aria-hidden="true"><UsagePoster ref={posterRef} report={report} range={range} identity={{ name: name.trim() || 'Local Builder', handle: handle.trim() || 'local', avatar }} generatedAt={data.generatedAt}/></div>
+    <div className="poster-render-host" aria-hidden="true"><UsagePoster ref={posterRef} report={report} range={range} identity={{ name: name.trim() || 'Local Builder', handle: handle.trim() || 'local', avatar }} generatedAt={data.generatedAt} zh={zh}/></div>
   </Dialog>;
 }
