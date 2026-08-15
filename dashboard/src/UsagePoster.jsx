@@ -1,5 +1,5 @@
 import { forwardRef } from 'react';
-import { compact, duration, money, percent, sourceLabel } from './format.js';
+import { compactNumber, duration, money, percent, sourceLabel } from './format.js';
 import { ToolGlyph } from './tool-glyphs.js';
 import { localDateKey } from './usage-insights.js';
 
@@ -7,6 +7,8 @@ const RANGE_LABELS = {
   today: ['今天', 'TODAY'], '24h': ['近 24 小时', '24H'], '7d': ['近 7 天', '7D'],
   '30d': ['近 30 天', '30D'], '90d': ['近 90 天', '90D'], all: ['全部时间', 'ALL'],
 };
+
+const compact = (value) => compactNumber(value, 'zh');
 
 function posterDuration(seconds) {
   const hours = Math.floor((seconds || 0) / 3600);
@@ -124,7 +126,7 @@ export const UsagePoster = forwardRef(function UsagePoster({ report, range, iden
         <div className="poster-span"><strong>{fmt(start)} — {fmt(report.end)}</strong><span>数据起止 SPAN</span></div>
       </section>
       <section className="poster-hero">
-        <div><strong>{compact(report.totals.totalTokens)}</strong><span>{rangeZh} TOKEN　<small>LIFETIME {compact(report.lifetimeTotals.totalTokens)} · {report.totals.requestCount.toLocaleString('en-US')} REQUESTS</small></span></div>
+        <div><strong>{compact(report.totals.totalTokens)}</strong><span>{rangeZh} TOKEN　<small>累计 {compact(report.lifetimeTotals.totalTokens)} · {compact(report.totals.requestCount)} 次请求</small></span></div>
         <div><strong>{money(report.totals.costMicros)}</strong><span>API 等价价值</span></div>
         <div><strong>{posterDuration(report.activeSeconds)}</strong><span>活跃时长</span></div>
       </section>

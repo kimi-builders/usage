@@ -13,9 +13,18 @@ export const SOURCE_LABELS = {
   cursor: 'Cursor',
 };
 
-export function compact(value, digits = 1) {
+export function compactNumber(value, locale = 'en', digits = 1) {
   if (!Number.isFinite(value)) return '—';
-  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: digits }).format(value).toUpperCase();
+  return new Intl.NumberFormat(locale === 'zh' ? 'zh-CN' : 'en-US', {
+    notation: 'compact',
+    maximumFractionDigits: digits,
+  }).format(value).toUpperCase();
+}
+
+// Legacy English formatter retained for subscription surfaces that have not
+// opted into locale-aware copy yet. Usage surfaces should call compactNumber.
+export function compact(value, digits = 1) {
+  return compactNumber(value, 'en', digits);
 }
 
 export function integer(value) {

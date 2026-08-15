@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import { compact, displayMoney, percent, sourceLabel, usdMoney } from './format.js';
+import { compactNumber, displayMoney, percent, sourceLabel, usdMoney } from './format.js';
 import { ToolGlyph } from './tool-glyphs.js';
 
 const OPTIONAL_COLUMNS = [
@@ -97,6 +97,7 @@ function GrainTabs({ active, onChange, zh, controlsId }) {
 }
 
 export function RecordsSection({ report, zh, currency, device }) {
+  const compact = (value) => compactNumber(value, zh ? 'zh' : 'en');
   const recordsPanelId = useId();
   const [grain, setGrain] = useState('day');
   const [enabled, setEnabled] = useState([]);
