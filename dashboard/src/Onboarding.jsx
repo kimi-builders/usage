@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowRight, BarChart3, Check, CheckCircle2, Cloud, CloudUpload, ExternalLink,
-  HardDrive, Languages, LoaderCircle, RefreshCw, ShieldCheck, Sparkles,
+  ArrowRight, BarChart3, Check, CheckCircle2, Cloud, CloudUpload,
+  HardDrive, Languages, LoaderCircle, ShieldCheck, Sparkles,
 } from 'lucide-react';
 import { SourceModeRows, policiesFromSources } from './DataSourceControls.jsx';
+import { DeviceAuthorizationCard } from './DeviceAuthorizationCard.jsx';
 
 function totals(snapshot) {
   const sources = snapshot?.sources || [];
@@ -18,7 +19,7 @@ export function Onboarding({ control, zh, onLocale, onControlAction, onScan, onS
   const [step, setStep] = useState('welcome');
   const [policies, setPolicies] = useState(() => policiesFromSources(control.sources, { detectedDefaults: !control.policyExplicit }));
   const [snapshot, setSnapshot] = useState(null);
-  const [authorization, setAuthorization] = useState(null);
+  const [authorization, setAuthorization] = useState(control.community?.authorization || null);
   const [connected, setConnected] = useState(Boolean(control.community?.connected));
   const [automatic, setAutomatic] = useState(false);
   const [busy, setBusy] = useState('');
@@ -51,8 +52,22 @@ export function Onboarding({ control, zh, onLocale, onControlAction, onScan, onS
     finally { setBusy(''); }
   };
 
+  const cancelConnection = async () => {
+    setBusy('cancel'); setError('');
+    try {
+      await onControlAction({ action: 'connect-cancel' });
+      setAuthorization(null);
+    } catch (reason) { setError(reason?.message || String(reason)); }
+    finally { setBusy(''); }
+  };
+
   useEffect(() => {
-    if (!authorization || connected) return undefined;
+    setConnected(Boolean(control.community?.connected));
+    setAuthorization(control.community?.authorization || null);
+  }, [control]);
+
+  useEffect(() => {
+    if (!authorization || authorization.status !== 'pending' || connected) return undefined;
     let cancelled = false;
     const poll = async () => {
       try {
@@ -62,8 +77,10 @@ export function Onboarding({ control, zh, onLocale, onControlAction, onScan, onS
           setConnected(true); setAuthorization(null);
           setStep('sync');
         } else if (['expired', 'access_denied'].includes(result.status)) {
-          setAuthorization(null);
+          setAuthorization(result.community?.authorization || { ...authorization, status: result.status });
           setError(result.status === 'expired' ? (zh ? '验证码已过期，请重新连接。' : 'The code expired. Start again.') : (zh ? '设备授权已被拒绝。' : 'Device authorization was denied.'));
+        } else if (result.community?.authorization) {
+          setAuthorization(result.community.authorization);
         }
       } catch (reason) {
         if (!cancelled) setError(reason?.message || String(reason));
@@ -102,7 +119,7 @@ export function Onboarding({ control, zh, onLocale, onControlAction, onScan, onS
 
       {step === 'results' ? <section className="onboarding-card onboarding-results"><header><div><p className="section-eyebrow">STEP 03 · SCAN COMPLETE</p><h2><CheckCircle2 size={21}/>{zh ? '本机用量视图已就绪' : 'Your local usage view is ready'}</h2><p>{zh ? '这些结果目前只用于当前设备上的看板。' : 'These results are currently used only by the dashboard on this device.'}</p></div></header><div className="onboarding-result-grid"><article><strong>{summary.sources}</strong><span>{zh ? '有数据的 Agent' : 'Agents with data'}</span></article><article><strong>{summary.buckets.toLocaleString()}</strong><span>30m buckets</span></article><article><strong>{summary.sessions.toLocaleString()}</strong><span>{zh ? '会话' : 'Sessions'}</span></article></div><div className="onboarding-choice"><button type="button" className="choice-card" onClick={() => finish({ keepLocalOnly: true })}><HardDrive size={20}/><b>{zh ? '先只看本机' : 'Stay local for now'}</b><span>{zh ? '直接进入看板，以后仍可连接社区。' : 'Open the dashboard; connect later anytime.'}</span><ArrowRight size={15}/></button><button type="button" className="choice-card primary" onClick={() => setStep(connected ? 'sync' : 'connect')}><Cloud size={20}/><b>{zh ? '连接社区看板' : 'Connect community dashboard'}</b><span>{zh ? '你可以精确选择哪些 Agent 可以同步。' : 'Choose exactly which agents may sync.'}</span><ArrowRight size={15}/></button></div>{error ? <p className="onboarding-error">{error}</p> : null}</section> : null}
 
-      {step === 'connect' ? <section className="onboarding-card onboarding-connect"><header><div><p className="section-eyebrow">STEP 04 · OPTIONAL COMMUNITY</p><h2>{zh ? '连接你的社区账户' : 'Connect your community account'}</h2><p>{zh ? '远程数据属于你：只有随后标为“本机并同步”的 Agent 会上传；你可随时停止、断开或删除当前设备的云端数据。' : 'You own the remote data. Only agents later marked “Local + sync” upload; you can stop, disconnect, or delete this device’s cloud data anytime.'}</p></div></header>{authorization ? <div className="device-code-card"><span>{zh ? '浏览器验证码' : 'Browser verification code'}</span><strong>{authorization.userCode}</strong><p>{zh ? '已打开授权页面，完成批准后这里会自动继续。' : 'The authorization page is open. This screen continues automatically after approval.'}</p><a href={authorization.verificationUriComplete} target="_blank" rel="noreferrer">{zh ? '重新打开授权页' : 'Reopen authorization page'}<ExternalLink size={13}/></a><LoaderCircle className="spin" size={20}/></div> : <div className="connect-explainer"><Cloud size={24}/><div><b>{zh ? '安全设备授权' : 'Secure device authorization'}</b><p>{zh ? '无需复制 API Key。浏览器登录社区并批准当前设备，凭据只保存在 owner-only 本机配置文件中。' : 'No API key copying. Sign in and approve this device; its credential stays in an owner-only local config file.'}</p></div><button type="button" className="primary-btn" onClick={startConnection} disabled={busy === 'connect'}>{busy === 'connect' ? <LoaderCircle className="spin" size={15}/> : <Cloud size={15}/>} {zh ? '打开浏览器连接' : 'Connect in browser'}</button></div>}<footer><button type="button" className="ghost-btn" onClick={() => finish({ keepLocalOnly: true })}>{zh ? '暂不连接' : 'Not now'}</button></footer>{error ? <p className="onboarding-error">{error}</p> : null}</section> : null}
+      {step === 'connect' ? <section className="onboarding-card onboarding-connect"><header><div><p className="section-eyebrow">STEP 04 · OPTIONAL COMMUNITY</p><h2>{zh ? '连接你的社区账户' : 'Connect your community account'}</h2><p>{zh ? '远程数据属于你：只有随后标为“本机并同步”的 Agent 会上传；你可随时停止、断开或删除当前设备的云端数据。' : 'You own the remote data. Only agents later marked “Local + sync” upload; you can stop, disconnect, or delete this device’s cloud data anytime.'}</p></div></header>{authorization ? <DeviceAuthorizationCard authorization={authorization} zh={zh} onCancel={cancelConnection} onRetry={startConnection}/> : <div className="connect-explainer"><Cloud size={24}/><div><b>{zh ? '安全设备授权' : 'Secure device authorization'}</b><p>{zh ? '无需复制 API Key。浏览器登录社区并批准当前设备，凭据只保存在 owner-only 本机配置文件中。批准连接不会自动上传；下一步仍由你选择同步范围。' : 'No API key copying. Sign in and approve this device; its credential stays in an owner-only local config file. Approval does not upload anything; you choose the sync scope next.'}</p></div><button type="button" className="primary-btn" onClick={startConnection} disabled={busy === 'connect'}>{busy === 'connect' ? <LoaderCircle className="spin" size={15}/> : <Cloud size={15}/>} {zh ? '打开浏览器连接' : 'Connect in browser'}</button></div>}<footer><button type="button" className="ghost-btn" onClick={() => finish({ keepLocalOnly: true })}>{zh ? '暂不连接' : 'Not now'}</button></footer>{error ? <p className="onboarding-error">{error}</p> : null}</section> : null}
 
       {step === 'sync' ? <section className="onboarding-card"><header><div><p className="section-eyebrow">STEP 04 · SYNC SCOPE</p><h2><Check size={20}/>{zh ? '已连接，选择同步范围' : 'Connected—choose sync scope'}</h2><p>{zh ? '本机扫描和社区同步彼此独立。你可以只同步一部分 Agent，未选择的仍留在本机看板。保存后会立即完成第一次增量同步。' : 'Local scanning and community sync are independent. Sync only a subset; the rest stay local. Saving performs the first incremental sync.'}</p></div></header><SourceModeRows sources={control.sources.filter((source) => source.mode !== 'off')} policies={policies} onChange={setPolicies} onConfigure={configureSource} connected zh={zh} compact/><label className="onboarding-auto-sync"><input type="checkbox" checked={automatic} disabled={syncCount === 0} onChange={(event) => setAutomatic(event.target.checked)}/><span><b>{zh ? '每 15 分钟后台同步' : 'Background sync every 15 minutes'}</b><small>{syncCount === 0 ? (zh ? '先把至少一个 Agent 设为“本机并同步”。' : 'Mark at least one agent as “Local + sync” first.') : (zh ? '使用系统后台服务；设备唤醒且联网时运行，可随时停用。' : 'Uses the system scheduler while awake and online; disable anytime.')}</small></span></label><footer><button type="button" className="ghost-btn" onClick={() => setStep('results')}>{zh ? '返回' : 'Back'}</button><button type="button" className="primary-btn" disabled={busy === 'finish'} onClick={() => finish()}>{busy === 'finish' ? <LoaderCircle className="spin" size={15}/> : <CloudUpload size={15}/>} {syncCount ? (zh ? '保存、同步并进入' : 'Save, sync, and open') : (zh ? '保持仅本机并进入' : 'Keep local and open')}</button></footer>{error ? <p className="onboarding-error">{error}</p> : null}</section> : null}
     </section>

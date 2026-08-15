@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Dialog } from './UsageDialogs.jsx';
 import { SourceModeRows, policiesFromSources } from './DataSourceControls.jsx';
+import { DeviceAuthorizationCard } from './DeviceAuthorizationCard.jsx';
 import { sourceLabel } from './format.js';
 
 const PACKAGE = '@kimi.builders/usage';
@@ -76,6 +77,7 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
   const [authorization, setAuthorization] = useState(null);
   const [confirmAction, setConfirmAction] = useState('');
   const [fullSyncRequired, setFullSyncRequired] = useState(false);
+  const [disconnectFallback, setDisconnectFallback] = useState(false);
 
   const load = async () => {
     setLoading(true); setError('');
@@ -93,15 +95,15 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
     setNotice('');
     load();
     const refresh = onControlChange?.();
-    refresh?.then((next) => { setLocalControl(next); setPolicies(policiesFromSources(next.sources)); }).catch(() => {});
+    refresh?.then((next) => { setLocalControl(next); setPolicies(policiesFromSources(next.sources)); setAuthorization(next.community?.authorization || null); }).catch(() => {});
   }, [open]);
 
   useEffect(() => {
-    if (control) { setLocalControl(control); setPolicies(policiesFromSources(control.sources)); }
+    if (control) { setLocalControl(control); setPolicies(policiesFromSources(control.sources)); setAuthorization(control.community?.authorization || null); }
   }, [control]);
 
   useEffect(() => {
-    if (!authorization) return undefined;
+    if (!authorization || authorization.status !== 'pending') return undefined;
     let cancelled = false;
     const poll = async () => {
       try {
@@ -112,8 +114,10 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
           await load();
           setNotice(zh ? '社区账户已连接。请确认下方每个 Agent 的同步范围。' : 'Community connected. Confirm the per-agent sync scope below.');
         } else if (['expired', 'access_denied'].includes(next.status)) {
-          setAuthorization(null);
+          setAuthorization(next.community?.authorization || { ...authorization, status: next.status });
           setError(next.status === 'expired' ? (zh ? '验证码已过期，请重试。' : 'The code expired. Try again.') : (zh ? '设备授权已拒绝。' : 'Device authorization was denied.'));
+        } else if (next.community?.authorization) {
+          setAuthorization(next.community.authorization);
         }
       } catch (reason) { if (!cancelled) setError(reason?.message || String(reason)); }
     };
@@ -175,6 +179,15 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
     finally { setBusy(''); }
   };
 
+  const cancelConnection = async () => {
+    setBusy('connect-cancel'); setError('');
+    try {
+      const next = await onControlAction({ action: 'connect-cancel' });
+      setAuthorization(null); setLocalControl(next);
+    } catch (reason) { setError(reason?.message || String(reason)); }
+    finally { setBusy(''); }
+  };
+
   const saveScope = async () => {
     setBusy('scope'); setError('');
     try {
@@ -198,11 +211,17 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
     try {
       const next = await onControlAction({ action: name });
       setLocalControl(next); setPolicies(policiesFromSources(next.sources)); setConfirmAction('');
+      setDisconnectFallback(false);
       await load();
       setNotice(name === 'delete-device-data'
         ? (zh ? '当前设备的社区用量数据已删除；本机历史仍保留。下次同步会按所选范围重新上传。' : 'This device’s community usage was deleted. Local history remains; the next sync replays the selected scope.')
-        : (zh ? '设备已断开，后台同步已停用；社区已有历史未删除。' : 'Device disconnected and background sync disabled; existing community history was kept.'));
-    } catch (reason) { setError(reason?.message || String(reason)); }
+        : name === 'disconnect-local'
+          ? (zh ? '仅本机连接已清除。远端 Key 可能仍有效，请前往社区设备管理中撤销它。' : 'The local connection was forgotten. The remote key may still be active; revoke it in community device management.')
+          : (zh ? '设备 Key 已撤销，本机已断开，后台同步已停用；社区已有历史未删除。' : 'Device key revoked, local connection removed, and background sync disabled; existing community history was kept.'));
+    } catch (reason) {
+      if (reason?.code === 'remote_revoke_failed') setDisconnectFallback(true);
+      setError(reason?.message || String(reason));
+    }
     finally { setBusy(''); }
   };
 
@@ -212,7 +231,9 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
   const automatic = Boolean(daemon?.installed && daemon?.loaded);
   const installCommand = `npx ${PACKAGE} daemon install --interval ${interval}`;
   const statusFacts = [
-    { label: zh ? '目标' : 'Target', value: status?.apiUrl || 'https://kimi.builders' },
+    { label: zh ? '社区' : 'Community', value: status?.apiUrl || localControl?.community?.apiUrl || 'https://kimi.builders' },
+    { label: zh ? '当前设备' : 'Current device', value: localControl?.community?.device?.name || (zh ? '当前电脑' : 'This computer') },
+    { label: 'Collector', value: `v${localControl?.community?.device?.collectorVersion || '—'}` },
     { label: zh ? '方式' : 'Mode', value: automatic ? (zh ? `自动 · ${interval} 分钟` : `Automatic · ${interval} min`) : (zh ? '手动同步' : 'Manual sync') },
     { label: zh ? '最近成功' : 'Last success', value: dateTime(daemon?.lastSync?.lastSuccessAt, zh) },
   ];
@@ -221,11 +242,11 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
     <div className="sync-dialog-body">
       <section className={`sync-connection ${connected ? 'connected' : 'disconnected'}`}>
         <div className="sync-connection-icon">{connected ? <CircleCheck size={22}/> : <Unplug size={22}/>}</div>
-        <div><span>{connected ? (zh ? '已连接 Kimi Builders' : 'Connected to Kimi Builders') : (zh ? '尚未连接社区' : 'Not connected yet')}</span><strong>{connected ? status?.apiUrl : (zh ? '先完成一次安全设备授权' : 'Authorize this device first')}</strong></div>
+        <div><span>{connected ? (zh ? '已连接 Kimi Builders' : 'Connected to Kimi Builders') : (zh ? '尚未连接社区' : 'Not connected yet')}</span><strong>{connected ? (status?.apiUrl || localControl?.community?.apiUrl) : (zh ? '先完成一次安全设备授权' : 'Authorize this device first')}</strong></div>
         <em>{loading ? <LoaderCircle className="spin" size={16}/> : automatic ? (zh ? '自动同步中' : 'Automatic') : connected ? (zh ? '按需同步' : 'On demand') : (zh ? '待配置' : 'Setup')}</em>
       </section>
 
-      {connected ? <div className="sync-facts">{statusFacts.map((fact) => <div key={fact.label}><span>{fact.label}</span><strong>{fact.value}</strong></div>)}</div> : <section className="sync-setup"><AlertTriangle size={18}/><div><b>{zh ? '在这里连接，无需终端命令' : 'Connect here—no terminal required'}</b><p>{zh ? '浏览器登录并批准当前设备；设备凭据只保存在本机 owner-only 配置文件中。' : 'Sign in and approve this device in your browser. Its credential stays in an owner-only local config file.'}</p></div>{authorization ? <div className="sync-device-code"><span>{zh ? '验证码' : 'Code'}</span><strong>{authorization.userCode}</strong><a href={authorization.verificationUriComplete} target="_blank" rel="noreferrer">{zh ? '打开授权页' : 'Open authorization'}<ExternalLink size={12}/></a><LoaderCircle className="spin" size={16}/></div> : <button className="primary-btn" type="button" onClick={startConnection} disabled={busy === 'connect'}>{busy === 'connect' ? <LoaderCircle className="spin" size={15}/> : <Cloud size={15}/>} {zh ? '连接社区账户' : 'Connect community account'}</button>}<details><summary>{zh ? '终端备用方式' : 'CLI fallback'}</summary><CommandRow zh={zh} label={zh ? '连接' : 'Connect'} command={`npx ${PACKAGE} init`}/></details></section>}
+      {connected ? <div className="sync-facts">{statusFacts.map((fact) => <div key={fact.label}><span>{fact.label}</span><strong>{fact.value}</strong></div>)}</div> : <section className="sync-setup"><AlertTriangle size={18}/><div><b>{zh ? '在这里连接，无需终端命令' : 'Connect here—no terminal required'}</b><p>{zh ? '浏览器登录并批准当前设备；凭据只保存在本机。批准连接不会自动上传，之后仍需选择 Agent 同步范围并点击同步。' : 'Sign in and approve this device in your browser; the credential stays local. Approval does not upload data—you still choose agent scope and start sync afterward.'}</p></div>{authorization ? <DeviceAuthorizationCard authorization={authorization} zh={zh} onCancel={cancelConnection} onRetry={startConnection} compact/> : <button className="primary-btn" type="button" onClick={startConnection} disabled={busy === 'connect'}>{busy === 'connect' ? <LoaderCircle className="spin" size={15}/> : <Cloud size={15}/>} {zh ? '连接社区账户' : 'Connect community account'}</button>}<details><summary>{zh ? '终端备用方式' : 'CLI fallback'}</summary><CommandRow zh={zh} label={zh ? '连接' : 'Connect'} command={`npx ${PACKAGE} init`}/></details></section>}
 
       {localControl?.sources?.length ? <section className="sync-scope-card"><header><div><b>{zh ? '按 Agent 控制同步范围' : 'Per-agent sync scope'}</b><p>{zh ? '关闭 = 不扫描；仅本机 = 只在当前设备分析；本机并同步 = 允许发送到你的社区账户。账号公开设置另行决定这些聚合数据是否公开。' : 'Off = no scan; Local only = analyze on this device; Local + sync = may upload to your community account. Account-level visibility settings separately decide whether those aggregates are public.'}</p></div><button className="ghost-btn" type="button" onClick={saveScope} disabled={busy === 'scope'}>{busy === 'scope' ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>} {zh ? '保存范围' : 'Save scope'}</button></header><SourceModeRows sources={localControl.sources} policies={policies} onChange={setPolicies} onConfigure={configureSource} connected={connected} zh={zh} compact/></section> : null}
 
@@ -248,7 +269,7 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
       </section>
 
       <section className="sync-boundary"><ShieldCheck size={18}/><div><b>{zh ? '“重新扫描”不等于“同步数据”' : '“Rescan” is not “Sync”'}</b><p>{zh ? '重新扫描只刷新当前本地页面，零上传；立即同步或后台同步才会把增量发送到已连接的社区账户。云端没有命令可以主动拉取本机日志。' : 'Rescan only refreshes this local page with zero upload. Sync now or background sync sends increments to the connected community account. The cloud cannot pull local logs.'}</p><small>{zh ? '运行日志' : 'Run log'} · {daemon?.logPath || (zh ? '首次同步后生成' : 'created after first sync')}</small></div></section>
-      {connected ? <section className="sync-ownership"><header><div><b>{zh ? '远程数据由你控制' : 'You control remote data'}</b><p>{zh ? '当前设备策略与账号公开设置分开管理。停止或断开不会偷偷删除历史。' : 'This device policy is separate from account-level public settings. Stopping or disconnecting never silently deletes history.'}</p></div><a href={localControl?.community?.dashboardUrl || status?.apiUrl} target="_blank" rel="noreferrer">{zh ? '社区公开与账号设置' : 'Community visibility & account settings'}<ExternalLink size={12}/></a></header><div><button type="button" className={confirmAction === 'disconnect' ? 'danger-confirm' : 'ghost-btn'} onClick={() => destructiveAction('disconnect')} disabled={Boolean(busy)}><LogOut size={14}/>{confirmAction === 'disconnect' ? (zh ? '再次点击确认断开' : 'Click again to disconnect') : (zh ? '断开当前设备' : 'Disconnect device')}</button><button type="button" className={confirmAction === 'delete-device-data' ? 'danger-confirm' : 'ghost-btn'} onClick={() => destructiveAction('delete-device-data')} disabled={Boolean(busy)}><Trash2 size={14}/>{confirmAction === 'delete-device-data' ? (zh ? '再次点击删除云端数据' : 'Click again to delete cloud data') : (zh ? '删除当前设备云端数据' : 'Delete this device’s cloud data')}</button></div></section> : null}
+      {connected ? <section className="sync-ownership"><header><div><b>{zh ? '远程数据由你控制' : 'You control remote data'}</b><p>{zh ? '停止同步只停后台任务；断开会撤销当前设备 Key，但保留社区历史。删除数据是独立操作。' : 'Stopping sync only stops the background job. Disconnecting revokes this device key but keeps community history. Data deletion is separate.'}</p></div><a href={localControl?.community?.dashboardUrl || status?.apiUrl} target="_blank" rel="noreferrer">{zh ? '社区设备与公开设置' : 'Community devices & visibility'}<ExternalLink size={12}/></a></header><div><button type="button" className={confirmAction === 'disconnect' ? 'danger-confirm' : 'ghost-btn'} onClick={() => destructiveAction('disconnect')} disabled={Boolean(busy)}><LogOut size={14}/>{confirmAction === 'disconnect' ? (zh ? '确认撤销 Key 并断开' : 'Revoke key and disconnect') : (zh ? '安全断开当前设备' : 'Safely disconnect device')}</button><button type="button" className={confirmAction === 'delete-device-data' ? 'danger-confirm' : 'ghost-btn'} onClick={() => destructiveAction('delete-device-data')} disabled={Boolean(busy)}><Trash2 size={14}/>{confirmAction === 'delete-device-data' ? (zh ? '再次点击删除云端数据' : 'Click again to delete cloud data') : (zh ? '删除当前设备云端数据' : 'Delete this device’s cloud data')}</button></div>{disconnectFallback ? <div className="sync-revoke-warning"><AlertTriangle size={17}/><div><b>{zh ? '社区暂时无法确认撤销' : 'Remote revocation could not be confirmed'}</b><p>{zh ? '为避免留下一个你看不见的有效 Key，本机连接仍完整保留。只有在你准备稍后到社区设备管理手动撤销时，才使用下面的本机清除。' : 'Your local connection was kept so an active key is not hidden from you. Use local-only removal only if you will revoke it later in community device management.'}</p></div><button type="button" className={confirmAction === 'disconnect-local' ? 'danger-confirm' : 'ghost-btn'} onClick={() => destructiveAction('disconnect-local')} disabled={Boolean(busy)}>{confirmAction === 'disconnect-local' ? (zh ? '确认仅清除本机' : 'Confirm local-only removal') : (zh ? '仅清除本机连接' : 'Forget locally only')}</button></div> : null}</section> : null}
       {notice ? <p className={`sync-notice ${typeof notice === 'object' && notice.tone === 'warning' ? 'warning' : ''}`} role="status" aria-live="polite">{typeof notice === 'object' && notice.tone === 'warning' ? <AlertTriangle size={15}/> : <CircleCheck size={15}/>} {typeof notice === 'object' ? notice.text : notice}</p> : null}
       {error ? <p className="sync-error" role="alert"><AlertTriangle size={15}/>{error}</p> : null}
     </div>

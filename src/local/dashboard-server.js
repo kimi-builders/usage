@@ -117,6 +117,7 @@ function browserError(error) {
     invalid_json: [400, 'Request body must be valid JSON.'],
     request_too_large: [413, 'Request body is too large.'],
     not_connected: [409, 'This device is not connected to community sync.'],
+    remote_revoke_failed: [502, 'The community device key could not be revoked. Your local connection was kept.'],
     sync_busy: [409, 'A synchronization is already running.'],
     sync_reconciliation_required: [409, 'Confirm a complete replay before rebuilding this device’s community usage.'],
     invalid_action: [400, 'Unsupported sync action.'],

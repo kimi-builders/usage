@@ -187,7 +187,12 @@ export function App() {
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
     });
     const next = await response.json();
-    if (!response.ok) throw new Error(next?.error?.message || `Control action failed (${response.status})`);
+    if (!response.ok) {
+      const error = new Error(next?.error?.message || `Control action failed (${response.status})`);
+      error.code = next?.error?.code;
+      error.statusCode = response.status;
+      throw error;
+    }
     if (next.sources) setControl(next);
     return next;
   }, []);
@@ -406,9 +411,18 @@ export function App() {
   const subscriptionPage = isBenefitSection(activeSection);
   const sourcesPage = activeSection === 'sources';
   const subscriptionView = activeSection === 'subscriptions' ? 'overview' : activeSection.replace('subscription-', '');
+  const communityStatus = control?.community?.status || (control?.community?.connected ? 'connected' : 'disconnected');
+  const connectionLabel = {
+    connected: zh ? '已连接' : 'Connected',
+    pending: zh ? '等待批准' : 'Approval pending',
+    expired: zh ? '验证码过期' : 'Code expired',
+    access_denied: zh ? '连接已拒绝' : 'Connection denied',
+    attention: zh ? '连接失效' : 'Reconnect',
+    disconnected: zh ? '未连接' : 'Not connected',
+  }[communityStatus] || (zh ? '连接状态' : 'Connection');
 
   return <div className="app-shell" id="top">
-    <header className="global-topbar"><div className="mobile-brand-wrap"><button ref={menuButtonRef} className="mobile-menu-button" type="button" aria-label={zh ? '打开导航菜单' : 'Open navigation menu'} aria-expanded={drawer} aria-controls="mobile-dashboard-drawer" onClick={() => setDrawer(true)}><Menu size={20}/></button><a className="brand" href="#top" onClick={(event) => navigateSection(event, '#top')}><img src="/brand/logo-tile.svg" alt=""/><span>kimi<span>.</span>builders</span><small>LOCAL</small></a></div><div className="global-actions"><span className="local-pill"><ShieldCheck size={12}/>{t.local}</span><button className="icon-btn" type="button" onClick={openLimitSettings} aria-label={zh ? '权益设置' : 'Benefit settings'} title={zh ? '权益设置' : 'Benefit settings'}><Settings2 size={16}/></button><button className="icon-btn" type="button" onClick={() => setLocale(zh ? 'en' : 'zh')} aria-label={zh ? '切换为英文' : 'Switch to Chinese'} title="Language">{zh ? '文' : 'En'}</button><button className="icon-btn" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={zh ? '切换主题' : 'Switch theme'} title="Theme">{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}</button></div></header>
+    <header className="global-topbar"><div className="mobile-brand-wrap"><button ref={menuButtonRef} className="mobile-menu-button" type="button" aria-label={zh ? '打开导航菜单' : 'Open navigation menu'} aria-expanded={drawer} aria-controls="mobile-dashboard-drawer" onClick={() => setDrawer(true)}><Menu size={20}/></button><a className="brand" href="#top" onClick={(event) => navigateSection(event, '#top')}><img src="/brand/logo-tile.svg" alt=""/><span>kimi<span>.</span>builders</span><small>LOCAL</small></a></div><div className="global-actions"><span className="local-pill"><ShieldCheck size={12}/>{t.local}</span><button className={`connection-pill ${communityStatus}`} type="button" onClick={openSync} aria-label={`${zh ? '社区连接状态' : 'Community connection status'}：${connectionLabel}`} title={zh ? '管理社区连接与同步' : 'Manage community connection and sync'}><Cloud size={13}/><span>{connectionLabel}</span></button><button className="icon-btn" type="button" onClick={openLimitSettings} aria-label={zh ? '权益设置' : 'Benefit settings'} title={zh ? '权益设置' : 'Benefit settings'}><Settings2 size={16}/></button><button className="icon-btn" type="button" onClick={() => setLocale(zh ? 'en' : 'zh')} aria-label={zh ? '切换为英文' : 'Switch to Chinese'} title="Language">{zh ? '文' : 'En'}</button><button className="icon-btn" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={zh ? '切换主题' : 'Switch theme'} title="Theme">{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}</button></div></header>
     <DesktopNav zh={zh} communityUrl={data.community.url} activeSection={activeSection} onNavigate={navigateSection} onSettings={openLimitSettings}/><MobileDrawer open={drawer} onClose={closeDrawer} zh={zh} communityUrl={data.community.url} theme={theme} setTheme={setTheme} setLocale={setLocale} activeSection={activeSection} onNavigate={navigateSection} onSettings={openLimitSettings} onSync={openSync}/><MobileNav zh={zh} activeSection={activeSection} onNavigate={navigateSection}/>
     <main className="page-content">
       {error ? <PageState className="snapshot-error-banner" compact kind="error" title={zh ? '重新扫描失败，仍显示上一次快照' : 'Rescan failed; showing the previous snapshot'} body={zh ? `${error}。当前页面保留 ${new Date(data.generatedAt).toLocaleString('zh-CN')} 生成的数据，重试成功前请按过期快照理解。` : `${error}. This page still shows data generated ${new Date(data.generatedAt).toLocaleString('en-US')}; treat it as stale until a retry succeeds.`} action={<Button variant="primary" onClick={() => load(true)} disabled={refreshing}><RefreshCw className={refreshing ? 'spin' : ''} size={14}/>{zh ? '重试扫描' : 'Retry scan'}</Button>}/>: null}

@@ -1,10 +1,13 @@
 import { existsSync, statSync } from 'node:fs';
 import { platform } from 'node:os';
 import { resolve } from 'node:path';
-import { deleteCurrentDeviceData, fetchSettings, pollDeviceToken, requestDeviceCode } from '../api.js';
+import {
+  deleteCurrentDeviceData, fetchSettings, pollDeviceToken, requestDeviceCode, revokeCurrentDevice,
+} from '../api.js';
+import { COLLECTOR_VERSION } from '../client-meta.js';
 import { createSessionSalt, loadConfig, saveConfig } from '../config.js';
 import { normalizeCommunityUrl } from '../community-url.js';
-import { deviceDisplayName } from '../device-info.js';
+import { deviceDisplayName, deviceEnvironment } from '../device-info.js';
 import { getDaemonStatus, uninstallDaemon } from '../daemon.js';
 import { sourceRegistry } from '../parsers/index.js';
 import {
@@ -14,6 +17,20 @@ import { clearState } from '../state.js';
 
 function connected(config) {
   return Boolean(config?.apiKey && config?.sessionSalt);
+}
+
+function publicAuthorization(pending, currentTime) {
+  if (!pending) return null;
+  const expired = pending.expiresAt <= currentTime;
+  return {
+    status: expired ? 'expired' : pending.status,
+    userCode: pending.userCode,
+    verificationUri: pending.verificationUri,
+    verificationUriComplete: pending.verificationUriComplete,
+    expiresAt: new Date(pending.expiresAt).toISOString(),
+    expiresIn: Math.max(0, Math.ceil((pending.expiresAt - currentTime) / 1_000)),
+    interval: pending.interval,
+  };
 }
 
 export async function detectSourceCatalog({ config = loadConfig(), registry = sourceRegistry } = {}) {
@@ -51,16 +68,32 @@ export async function detectSourceCatalog({ config = loadConfig(), registry = so
 }
 
 export async function getDashboardControlState({
-  config = loadConfig(), registry = sourceRegistry, daemon = getDaemonStatus(),
+  config = loadConfig(), registry = sourceRegistry, daemon = getDaemonStatus(), authorization = null,
 } = {}) {
   const apiUrl = config?.apiUrl || 'https://kimi.builders';
+  const isConnected = connected(config);
+  const failureAt = Date.parse(daemon?.lastSync?.lastAttemptAt || '');
+  const connectedAt = Date.parse(config?.connectedAt || '');
+  const authenticationFailed = isConnected
+    && daemon?.lastSync?.lastErrorCode === 'authentication_failed'
+    && (!Number.isFinite(connectedAt) || !Number.isFinite(failureAt) || failureAt >= connectedAt);
+  const environment = isConnected ? deviceEnvironment() : null;
   return {
     onboardingRequired: !config || config.onboardingPending === true,
     policyExplicit: sourcePolicyIsExplicit(config),
     community: {
-      connected: connected(config),
+      connected: isConnected,
+      status: authenticationFailed ? 'attention' : isConnected ? 'connected' : authorization?.status || 'disconnected',
       apiUrl,
       dashboardUrl: new URL('/usage', normalizeCommunityUrl(apiUrl)).toString(),
+      authorization,
+      device: isConnected ? {
+        id: config.deviceId || '',
+        name: deviceDisplayName(),
+        collectorVersion: COLLECTOR_VERSION,
+        terminal: environment.terminal,
+        os: environment.os,
+      } : null,
     },
     daemon,
     sources: await detectSourceCatalog({ config, registry }),
@@ -87,6 +120,7 @@ export function createDashboardControl({
   deviceTokenPoller = pollDeviceToken,
   settingsFetcher = fetchSettings,
   remoteDataDeleter = deleteCurrentDeviceData,
+  remoteDeviceRevoker = revokeCurrentDevice,
   daemonStatus = getDaemonStatus,
   daemonUninstaller = uninstallDaemon,
   stateClearer = clearState,
@@ -100,7 +134,12 @@ export function createDashboardControl({
       config = applySourcePolicies(config, effectiveSourcePolicies(config, registry), registry);
       configSaver(config);
     }
-    return getDashboardControlState({ config, registry, daemon: daemonStatus() });
+    return getDashboardControlState({
+      config,
+      registry,
+      daemon: daemonStatus(),
+      authorization: publicAuthorization(pendingConnection, now()),
+    });
   };
 
   const act = async (payload = {}) => {
@@ -146,6 +185,10 @@ export function createDashboardControl({
       return { ...(await state()), action };
     }
     if (action === 'connect-start') {
+      const currentTime = now();
+      if (pendingConnection && pendingConnection.status === 'pending' && pendingConnection.expiresAt > currentTime) {
+        return { action, ...publicAuthorization(pendingConnection, currentTime) };
+      }
       const apiUrl = normalizeCommunityUrl(payload.apiUrl || config.apiUrl || 'https://kimi.builders');
       const authorization = await deviceCodeRequester(apiUrl, {
         clientName: '@kimi.builders/usage',
@@ -156,27 +199,36 @@ export function createDashboardControl({
       pendingConnection = {
         apiUrl,
         deviceCode: authorization.deviceCode,
-        expiresAt: now() + Number(authorization.expiresIn || 600) * 1000,
-      };
-      return {
-        action,
-        status: 'pending',
         userCode: authorization.userCode,
         verificationUri: authorization.verificationUri,
         verificationUriComplete: authorization.verificationUriComplete,
-        expiresIn: authorization.expiresIn,
+        expiresAt: currentTime + Number(authorization.expiresIn || 600) * 1000,
         interval: authorization.interval || 5,
+        status: 'pending',
       };
+      return { action, ...publicAuthorization(pendingConnection, currentTime) };
     }
     if (action === 'connect-poll') {
       if (!pendingConnection || pendingConnection.expiresAt <= now()) {
-        pendingConnection = null;
-        return { action, status: 'expired' };
+        if (pendingConnection) {
+          pendingConnection.status = 'expired';
+          pendingConnection.deviceCode = '';
+        }
+        return { ...(await state()), action, status: 'expired' };
       }
       const result = await deviceTokenPoller(pendingConnection.apiUrl, pendingConnection.deviceCode);
       if (!result?.apiKey) {
-        if (result?.error === 'access_denied') pendingConnection = null;
-        return { action, status: result?.error || 'authorization_pending', interval: result?.interval || 5 };
+        if (result?.interval) pendingConnection.interval = result.interval;
+        if (result?.error === 'access_denied') {
+          pendingConnection.status = 'access_denied';
+          pendingConnection.deviceCode = '';
+        }
+        return {
+          ...(await state()),
+          action,
+          status: result?.error || 'authorization_pending',
+          interval: pendingConnection.interval,
+        };
       }
       await settingsFetcher(pendingConnection.apiUrl, result.apiKey);
       configSaver({
@@ -184,6 +236,7 @@ export function createDashboardControl({
         apiUrl: pendingConnection.apiUrl,
         apiKey: result.apiKey,
         deviceId: result.deviceId,
+        connectedAt: new Date(now()).toISOString(),
         sessionSalt: config.sessionSalt || createSessionSalt(),
       });
       pendingConnection = null;
@@ -194,8 +247,31 @@ export function createDashboardControl({
       return { ...(await state()), action, status: 'cancelled' };
     }
     if (action === 'disconnect') {
+      if (!connected(config)) {
+        throw Object.assign(new Error('This device is not connected.'), { statusCode: 409, code: 'not_connected' });
+      }
+      try {
+        await remoteDeviceRevoker(config.apiUrl, config.apiKey);
+      } catch (error) {
+        throw Object.assign(new Error('The community device key could not be revoked.'), {
+          statusCode: 502,
+          code: 'remote_revoke_failed',
+          cause: error,
+        });
+      }
       if (daemonStatus().installed) daemonUninstaller();
-      const { apiKey: _apiKey, deviceId: _deviceId, ...remaining } = config;
+      const {
+        apiKey: _apiKey, deviceId: _deviceId, connectedAt: _connectedAt, ...remaining
+      } = config;
+      configSaver(remaining);
+      pendingConnection = null;
+      return { ...(await state()), action };
+    }
+    if (action === 'disconnect-local') {
+      if (daemonStatus().installed) daemonUninstaller();
+      const {
+        apiKey: _apiKey, deviceId: _deviceId, connectedAt: _connectedAt, ...remaining
+      } = config;
       configSaver(remaining);
       pendingConnection = null;
       return { ...(await state()), action };

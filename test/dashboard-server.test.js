@@ -223,6 +223,39 @@ test('browser APIs return a stable error contract without raw filesystem details
   }
 });
 
+test('control API explains failed remote revoke without leaking the underlying network error', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'kbu-dashboard-revoke-error-'));
+  const sentinel = 'https://private-proxy.invalid/secret';
+  writeFileSync(join(root, 'index.html'), '<main>local dashboard</main>');
+  const local = await startLocalDashboardServer({
+    launchBrowser: false,
+    buildRoot: root,
+    dataLoader: async () => ({}),
+    control: {
+      state: async () => ({ onboardingRequired: false, sources: [] }),
+      act: async () => { throw Object.assign(new Error(`failed via ${sentinel}`), { code: 'remote_revoke_failed' }); },
+    },
+  });
+  try {
+    const authorized = await http(local.port, new URL(local.url).pathname + new URL(local.url).search);
+    const cookie = authorized.headers['set-cookie'][0].split(';')[0];
+    const response = await http(local.port, '/api/control', {
+      Cookie: cookie, Origin: local.origin, 'Content-Type': 'application/json',
+    }, { method: 'POST', body: JSON.stringify({ action: 'disconnect' }) });
+    assert.equal(response.status, 502);
+    assert.deepEqual(JSON.parse(response.body), {
+      error: {
+        code: 'remote_revoke_failed',
+        message: 'The community device key could not be revoked. Your local connection was kept.',
+      },
+    });
+    assert.equal(response.body.includes(sentinel), false);
+  } finally {
+    await local.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('development API can authorize then redirect to a loopback Vite server without a build', async () => {
   let browserOrigin = 'http://127.0.0.1:5173';
   const local = await startLocalDashboardServer({
