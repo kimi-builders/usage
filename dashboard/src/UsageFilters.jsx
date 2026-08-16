@@ -102,14 +102,24 @@ export function UsageFilterBar({ filters, options, onChange, currency, onCurrenc
         {primary.map((dimension) => <DimensionDropdown key={dimension.key} dimension={dimension} values={options[dimension.key] || []} selected={filters[dimension.key] || []} onApply={(value) => update(dimension.key, value)} open={openMenu === dimension.key} setOpen={setOpenMenu} zh={zh}/>)}
         <button className="more-filter" type="button" onClick={() => setMoreOpen((value) => !value)} aria-expanded={moreOpen}><Settings2 size={13}/>{moreOpen ? (zh ? '收起筛选' : 'Fewer filters') : `${zh ? '更多筛选' : 'More filters'} +${secondary.length}`}</button>
         {moreOpen ? secondary.map((dimension) => <DimensionDropdown key={dimension.key} dimension={dimension} values={options[dimension.key] || []} selected={filters[dimension.key] || []} onApply={(value) => update(dimension.key, value)} open={openMenu === dimension.key} setOpen={setOpenMenu} zh={zh}/>) : null}
-        {activeCount ? <button className="clear-filters" type="button" onClick={() => onChange({ ...filters, ...Object.fromEntries(DIMENSIONS.map((dimension) => [dimension.key, []])) })}>{zh ? '清除筛选' : 'Clear filters'}</button> : null}
         <div className="currency-toggle" role="radiogroup" aria-label={zh ? '展示币种' : 'Display currency'}>
           <button type="button" role="radio" aria-checked={currency !== 'cny'} className={currency !== 'cny' ? 'active' : ''} onClick={() => onCurrency?.('usd')}>{zh ? '$' : '$'}</button>
           <button type="button" role="radio" aria-checked={currency === 'cny'} className={currency === 'cny' ? 'active' : ''} onClick={() => onCurrency?.('cny')}>¥</button>
         </div>
       </div>
+      {/* 筛选结果分组(20260816 与社区站同步):维度名每组一次(蓝)+ 值 token
+          (可单个移除,Agent 值带 ToolGlyph 图标),组内 flex-wrap 换行;
+          清除入口随行——移动端不展开筛选面板也能一键清除。 */}
       {activeCount ? <div className="filter-chips">
-        {DIMENSIONS.flatMap((dimension) => (filters[dimension.key] || []).map((value) => <span key={`${dimension.key}:${value}`}><small>{zh ? dimension.zh : dimension.en}</small>{optionLabel(dimension, value, zh)}<button type="button" aria-label={zh ? '移除此筛选' : 'Remove filter'} onClick={() => update(dimension.key, filters[dimension.key].filter((item) => item !== value))}><X size={11}/></button></span>))}
+        {activeDimensions.map((dimension) => <span key={dimension.key} className="filter-group">
+          <small className="filter-group-label">{zh ? dimension.zh : dimension.en}</small>
+          {(filters[dimension.key] || []).map((value) => <span key={`${dimension.key}:${value}`} className="filter-token">
+            {dimension.icon ? <ToolGlyph id={value} size={12}/> : null}
+            <span>{optionLabel(dimension, value, zh)}</span>
+            <button type="button" aria-label={zh ? '移除此筛选' : 'Remove filter'} onClick={() => update(dimension.key, filters[dimension.key].filter((item) => item !== value))}><X size={10}/></button>
+          </span>)}
+        </span>)}
+        <button className="clear-filters" type="button" onClick={() => onChange({ ...filters, ...Object.fromEntries(DIMENSIONS.map((dimension) => [dimension.key, []])) })}>{zh ? '清除筛选' : 'Clear filters'}</button>
       </div> : null}
     </div>
   </section>;

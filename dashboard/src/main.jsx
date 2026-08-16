@@ -4,6 +4,7 @@ import { App } from "./App.jsx";
 import "./styles.css";
 
 const savedTheme = localStorage.getItem("kbu.theme");
+document.documentElement.dataset.vibe = localStorage.getItem("kbu.vibe") || "poster";
 document.documentElement.dataset.theme = savedTheme
   || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
 
