@@ -169,6 +169,19 @@ function entitlementLabel(type, zh) {
   return labels[type] || labels.unknown;
 }
 
+/* 卡片徽标短词(20260816):权益标注并入各平台展开面板后,
+   列表卡只用一枚小徽标提示当前口径,详情在展开面板里改 */
+function entitlementBadge(type, zh) {
+  const badges = {
+    paid: zh ? '付费' : 'Paid',
+    free: zh ? '免费' : 'Free',
+    promotion: zh ? '试用' : 'Trial',
+    organization: zh ? '单位' : 'Org',
+    unknown: zh ? '未标注' : 'Untagged',
+  };
+  return badges[type] || badges.unknown;
+}
+
 function entitlementNote(type, zh) {
   if (type === 'paid') return zh ? '计入个人支出、续费与付费闲置分析。' : 'Included in personal spend, renewal, and paid-idle analysis.';
   if (type === 'free') return zh ? '保留 Token 价值分析，不计入个人支出。' : 'Usage value remains visible without entering personal spend.';
@@ -398,7 +411,7 @@ export function SubscriptionPulse({ data, usageData, settings, loading, error, o
   </section>;
 }
 
-export function SubscriptionCenter({ data, usageData, settings, loading, error, onRefresh, onSettings, onViewChange, view = 'overview', zh, currency }) {
+export function SubscriptionCenter({ data, usageData, settings, loading, error, onRefresh, onSettings, onViewChange, onRefreshIntervalChange, view = 'overview', zh, currency }) {
   const [accountSelections, setAccountSelections] = useState(storedAccountSelections);
   const effectiveData = useMemo(
     () => selectSubscriptionAccounts(data, accountSelections),
@@ -456,7 +469,7 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
     {error ? <div className="limits-banner">{error}</div> : null}
     <div className="provider-tabs"><ProviderSelect providers={providers} activeId={active?.id} onChange={setSelected} zh={zh} ariaLabel={zh ? '账户权益平台' : 'Account benefit providers'} tabIdFor={overviewProviderTabId} controlsId={OVERVIEW_PROVIDER_PANEL_ID} renderIcon={(id, size) => <ProviderIcon id={id} size={size}/>} statusFor={(provider) => (provider.status === 'error' && !provider.quotaObservation?.bestEffort) ? { label: zh ? '需处理' : 'Issue', tone: 'red' } : provider.quotaObservation?.state === 'unavailable' ? { label: zh ? '仅本机' : 'Local only', tone: 'amber' } : null}/><AccountPicker provider={active} onChange={selectAccount} zh={zh}/></div>
     <div className="limit-card-stage" id={OVERVIEW_PROVIDER_PANEL_ID} role="tabpanel" aria-labelledby={active ? overviewProviderTabId(active.id) : undefined} tabIndex={0}>{active ? <ProviderCard provider={active} zh={zh} currency={currency} onSettings={onSettings}/> : <div className="limit-card-empty">{zh ? '没有已启用的供应商' : 'No providers enabled'}</div>}</div>
-    <footer className="limits-privacy"><ShieldCheck size={13}/><span>{zh ? '凭据只在本地服务进程使用；Token 估算只读取本机统计，不进入导出文件或社区同步。' : 'Credentials stay in the local server process; token estimates use local statistics only and never enter exports or community sync.'}</span>{settings?.refreshMinutes ? <small>{zh ? `额度缓存 ${settings.refreshMinutes} 分钟` : `${settings.refreshMinutes}m quota cache`}</small> : null}</footer>
+    <footer className="limits-privacy"><ShieldCheck size={13}/><span>{zh ? '凭据只在本地服务进程使用；Token 估算只读取本机统计，不进入导出文件或社区同步。' : 'Credentials stay in the local server process; token estimates use local statistics only and never enter exports or community sync.'}</span>{settings?.refreshMinutes && onRefreshIntervalChange ? <span className="refresh-inline" role="radiogroup" aria-label={zh ? '额度缓存间隔' : 'Quota cache interval'}><small>{zh ? '缓存' : 'Cache'}</small>{[5, 10, 15, 30].map((minutes) => <button key={minutes} type="button" role="radio" aria-checked={settings.refreshMinutes === minutes} className={settings.refreshMinutes === minutes ? 'active' : ''} onClick={() => onRefreshIntervalChange(minutes)}>{minutes}m</button>)}</span> : null}</footer>
     </section>
     {active ? <details className="subscription-deep-dive"><summary><span><b>{zh ? `${active.label} 深度证据与推算` : `${active.label} evidence & estimates`}</b><small>{zh ? '额度历史、容量情景和只读建议' : 'Quota history, capacity scenarios, and read-only advice'}</small></span><ChevronRight size={16}/></summary><div><SubscriptionDecisionPanel provider={active} zh={zh} currency={currency} onSettings={onSettings}/></div></details> : null}
     <details className="subscription-deep-dive"><summary><span><b>{zh ? '账户组合与续费判断' : 'Portfolio & renewal review'}</b><small>{zh ? '按需查看跨账户重叠、闲置和组合证据' : 'Expand for cross-account overlap, underuse, and portfolio evidence'}</small></span><ChevronRight size={16}/></summary><div><SubscriptionPortfolioReview review={insights.portfolio} providers={providers} zh={zh} currency={currency} onSettings={onSettings}/></div></details>
@@ -562,6 +575,20 @@ function OpenCodeGoConnectionPanel({
   clearAccountSecrets, setClearAccountSecrets, enableMaster, zh,
 }) {
   const active = item.accounts.find((account) => account.id === item.activeAccountId) || item.accounts[0] || null;
+  /* 校验前置(20260816):Cookie 必填、Workspace 格式在失焦时即报,
+     不再等「保存并刷新」后才在底部冒错 */
+  const [touched, setTouched] = useState({});
+  const fieldError = (accountId, kind) => {
+    const account = item.accounts.find((entry) => entry.id === accountId);
+    if (!account) return '';
+    if (kind === 'cookie' && !(accountSecrets.opencode?.[accountId] || '').trim() && !account.hasSecret) {
+      return zh ? '需要粘贴 Cookie 才能查询该会话。' : 'Paste a Cookie to query this session.';
+    }
+    if (kind === 'workspace' && account.workspaceId && !/^wrk_[A-Za-z0-9_-]+$/.test(account.workspaceId)) {
+      return zh ? 'Workspace ID 需以 wrk_ 开头；留空则自动发现。' : 'Workspace ID must start with wrk_; leave blank for auto discovery.';
+    }
+    return '';
+  };
   const updateAccount = (accountId, patch) => updateProvider('opencode', {
     accounts: item.accounts.map((account) => account.id === accountId ? { ...account, ...patch } : account),
   });
@@ -582,9 +609,10 @@ function OpenCodeGoConnectionPanel({
     <SetupSteps provider={provider} zh={zh}/>
     <div className="opencode-account-list" role="radiogroup" aria-label={zh ? 'OpenCode Go 会话' : 'OpenCode Go sessions'}>{item.accounts.map((account, index) => {
         const credentialKey = `opencode:${account.id}`;
-        return <fieldset className={active?.id === account.id ? 'selected' : ''} key={account.id}><legend>{zh ? `会话 ${index + 1}` : `Session ${index + 1}`}</legend><label className="opencode-session-select"><input type="radio" name="opencode-active-account" checked={active?.id === account.id} onChange={() => updateProvider('opencode', { activeAccountId: account.id })}/><span className="sr-only">{zh ? `选择会话 ${index + 1}` : `Select session ${index + 1}`}</span></label><label><span>{zh ? '显示名称' : 'Label'}</span><input value={account.label} onChange={(event) => updateAccount(account.id, { label: event.target.value })} placeholder={zh ? '个人 / 工作' : 'Personal / work'}/></label><label><span>Cookie</span><input type="password" autoComplete="off" spellCheck="false" value={accountSecrets.opencode?.[account.id] || ''} onChange={(event) => setAccountSecrets((current) => ({ ...current, opencode: { ...current.opencode, [account.id]: event.target.value } }))} placeholder={account.hasSecret ? (zh ? '已安全保存 · 留空保持' : 'Saved securely · leave blank to keep') : 'auth=…'}/></label><button className="remove-account-btn" type="button" onClick={() => removeConnectedAccount('opencode', account, item, updateProvider, setClearAccountSecrets)}><X size={12}/>{zh ? '移除' : 'Remove'}</button><small className="opencode-cookie-hint">{zh ? '支持 Cookie 请求头或复制的 cURL。' : 'Accepts a Cookie header or copied cURL.'}</small>{clearAccountSecrets.includes(credentialKey) ? <small className="account-secret-warning">{zh ? '保存后会清除该会话凭据' : 'This session credential will be removed on save'}</small> : null}</fieldset>;
+        const cookieError = touched[`cookie:${account.id}`] ? fieldError(account.id, 'cookie') : '';
+        return <fieldset className={active?.id === account.id ? 'selected' : ''} key={account.id}><legend>{zh ? `会话 ${index + 1}` : `Session ${index + 1}`}</legend><label className="opencode-session-select"><input type="radio" name="opencode-active-account" checked={active?.id === account.id} onChange={() => updateProvider('opencode', { activeAccountId: account.id })}/><span className="sr-only">{zh ? `选择会话 ${index + 1}` : `Select session ${index + 1}`}</span></label><label><span>{zh ? '显示名称' : 'Label'}</span><input value={account.label} onChange={(event) => updateAccount(account.id, { label: event.target.value })} placeholder={zh ? '个人 / 工作' : 'Personal / work'}/></label><label><span>Cookie</span><input type="password" autoComplete="off" spellCheck="false" aria-invalid={cookieError ? 'true' : undefined} value={accountSecrets.opencode?.[account.id] || ''} onChange={(event) => setAccountSecrets((current) => ({ ...current, opencode: { ...current.opencode, [account.id]: event.target.value } }))} onBlur={() => setTouched((current) => ({ ...current, [`cookie:${account.id}`]: true }))} placeholder={account.hasSecret ? (zh ? '已安全保存 · 留空保持' : 'Saved securely · leave blank to keep') : 'auth=…'}/></label><button className="remove-account-btn" type="button" onClick={() => removeConnectedAccount('opencode', account, item, updateProvider, setClearAccountSecrets)}><X size={12}/>{zh ? '移除' : 'Remove'}</button><small className={`opencode-cookie-hint${cookieError ? ' field-error' : ''}`}>{cookieError || (zh ? '支持 Cookie 请求头或复制的 cURL。' : 'Accepts a Cookie header or copied cURL.')}</small>{clearAccountSecrets.includes(credentialKey) ? <small className="account-secret-warning">{zh ? '保存后会清除该会话凭据' : 'This session credential will be removed on save'}</small> : null}</fieldset>;
       })}{!item.accounts.length ? <p>{zh ? '添加账户并粘贴 Cookie 后即可查询；无需先找 Workspace ID。' : 'Add an account and paste its Cookie. Workspace discovery is automatic.'}</p> : null}</div>
-    <label className="opencode-workspace-field"><span>Workspace ID <em>{zh ? '可选覆盖' : 'optional override'}</em></span><input value={active?.workspaceId || ''} disabled={!active} onChange={(event) => updateAccount(active.id, { workspaceId: event.target.value })} placeholder="wrk_…"/><small>{active ? (zh ? `当前作用于“${active.label}”；留空会从该 Cookie 自动发现。` : `Applies to “${active.label}”; leave blank for automatic discovery.`) : (zh ? '先添加并选择一个会话。' : 'Add and select a session first.')}</small></label>
+    <label className="opencode-workspace-field"><span>Workspace ID <em>{zh ? '可选覆盖' : 'optional override'}</em></span><input value={active?.workspaceId || ''} disabled={!active} aria-invalid={touched[`workspace:${active?.id}`] && fieldError(active.id, 'workspace') ? 'true' : undefined} onChange={(event) => updateAccount(active.id, { workspaceId: event.target.value })} onBlur={() => active && setTouched((current) => ({ ...current, [`workspace:${active.id}`]: true }))} placeholder="wrk_…"/><small className={touched[`workspace:${active?.id}`] && fieldError(active?.id, 'workspace') ? 'field-error' : undefined}>{active ? (touched[`workspace:${active.id}`] && fieldError(active.id, 'workspace') || (zh ? `当前作用于“${active.label}”；留空会从该 Cookie 自动发现。` : `Applies to “${active.label}”; leave blank for automatic discovery.`)) : (zh ? '先添加并选择一个会话。' : 'Add and select a session first.')}</small></label>
   </div>;
 }
 
@@ -606,8 +634,33 @@ function StandardProviderConfig({
   </>;
 }
 
+/* 权益标注(20260816):随平台走——选择器与付费字段就在各平台展开面板里,
+   说明文字只出现一次;原独立的「权益来源与实际支出」大区块(738px)删除 */
+function EntitlementBlock({ provider, item, updateProvider, zh }) {
+  const isPaid = item.entitlementType === 'paid';
+  const setEntitlementType = (entitlementType) => updateProvider(provider.id, entitlementType === 'paid'
+    ? { entitlementType }
+    : { entitlementType, subscriptionPrice: null, renewsAt: '' });
+  return <div className={`provider-entitlement entitlement-${item.entitlementType || 'unknown'}`}>
+    <label className="entitlement-kind-field">
+      <span>{zh ? '权益类型' : 'Benefit type'}</span>
+      <select value={item.entitlementType || 'unknown'} onChange={(event) => setEntitlementType(event.target.value)}>
+        {ENTITLEMENT_TYPES.map((type) => <option value={type} key={type}>{entitlementLabel(type, zh)}</option>)}
+      </select>
+      <small>{entitlementNote(item.entitlementType, zh)}</small>
+    </label>
+    {isPaid ? <div className="subscription-paid-fields">
+      <label><span>{zh ? '实际价格' : 'Actual price'}</span><input type="number" inputMode="decimal" min="0" max="1000000" step="0.01" value={item.subscriptionPrice ?? ''} onChange={(event) => updateProvider(provider.id, { subscriptionPrice: event.target.value === '' ? null : Number(event.target.value) })} placeholder="—"/></label>
+      <label><span>{zh ? '货币' : 'Currency'}</span><select value={item.subscriptionCurrency} onChange={(event) => updateProvider(provider.id, { subscriptionCurrency: event.target.value })}><option value="usd">USD · $</option><option value="cny">CNY · ¥</option></select></label>
+      <label><span>{zh ? '账期' : 'Cycle'}</span><select value={item.billingCycle} onChange={(event) => updateProvider(provider.id, { billingCycle: event.target.value })}><option value="monthly">{zh ? '每月' : 'Monthly'}</option><option value="yearly">{zh ? '每年' : 'Yearly'}</option></select></label>
+      <label><span>{zh ? '下次续费' : 'Renewal'}</span><input type="date" value={item.renewsAt || ''} onChange={(event) => updateProvider(provider.id, { renewsAt: event.target.value })}/></label>
+    </div> : null}
+  </div>;
+}
+
 export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilotDeviceAction, saving, zh }) {
   const dialogRef = useRef(null);
+  const bodyRef = useRef(null);
   const [draft, setDraft] = useState(settings);
   const [secrets, setSecrets] = useState({});
   const [clearSecrets, setClearSecrets] = useState([]);
@@ -620,13 +673,43 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
   const [expanded, setExpanded] = useState('');
   const [draggingId, setDraggingId] = useState('');
   const [dragOverId, setDragOverId] = useState('');
-  useEffect(() => { if (open) { setDraft(settings); setSecrets({}); setClearSecrets([]); setAccountSecrets({}); setClearAccountSecrets([]); setMessage(''); setValidationErrors([]); setView('detected'); setQuery(''); setExpanded(''); setDraggingId(''); setDragOverId(''); } }, [open, settings]);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [activeAnchor, setActiveAnchor] = useState('providers');
+  useEffect(() => { if (open) { setDraft(settings); setSecrets({}); setClearSecrets([]); setAccountSecrets({}); setClearAccountSecrets([]); setMessage(''); setValidationErrors([]); setView('detected'); setQuery(''); setExpanded(''); setDraggingId(''); setDragOverId(''); setConfirmDiscard(false); setActiveAnchor('providers'); } }, [open, settings]);
+  /* dirty 守卫(20260816):草稿偏离已保存设置(或新输入过凭据)时,
+     关闭动作先出确认条,再放弃;提交成功照常直接关闭 */
+  const dirty = JSON.stringify(draft) !== JSON.stringify(settings)
+    || Object.values(secrets).some((value) => value.trim())
+    || clearSecrets.length > 0
+    || Object.values(accountSecrets).some((value) => value.trim())
+    || clearAccountSecrets.length > 0;
+  const requestClose = () => {
+    if (dirty && !confirmDiscard) { setConfirmDiscard(true); return; }
+    onClose();
+  };
+  /* 分区锚点:滚动时点亮当前段(连接平台 / 显示顺序) */
+  useEffect(() => {
+    if (!open) return undefined;
+    const body = bodyRef.current;
+    if (!body) return undefined;
+    const onScroll = () => {
+      const order = body.querySelector('.limit-provider-order');
+      if (!order) return;
+      /* 触底即视为进入末段(底部内容不足一屏时,段落顶到不了阈值线) */
+      const atBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 4;
+      const orderTop = order.getBoundingClientRect().top;
+      const bodyTop = body.getBoundingClientRect().top;
+      setActiveAnchor(atBottom || orderTop <= bodyTop + 120 ? 'order' : 'providers');
+    };
+    body.addEventListener('scroll', onScroll, { passive: true });
+    return () => body.removeEventListener('scroll', onScroll);
+  }, [open]);
   useEffect(() => {
     if (!open) return undefined;
     const previousFocus = document.activeElement;
     const focusable = () => [...(dialogRef.current?.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), [href], [tabindex]:not([tabindex="-1"])') || [])];
     const key = (event) => {
-      if (event.key === 'Escape') { onClose(); return; }
+      if (event.key === 'Escape') { event.preventDefault(); if (confirmDiscard) setConfirmDiscard(false); else requestClose(); return; }
       if (event.key !== 'Tab') return;
       const items = focusable();
       if (!items.length) return;
@@ -686,7 +769,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
     if (!matches) return false;
     if (view === 'detected') return ['detected', 'configured'].includes(provider.detection?.state) || draft.providers[provider.id]?.enabled;
     return true;
-  });
+  }).sort((a, b) => (draft.providers[b.id]?.enabled ? 1 : 0) - (draft.providers[a.id]?.enabled ? 1 : 0));
   const catalogById = new Map(draft.catalog.map((provider) => [provider.id, provider]));
   const orderedEnabled = draft.providerOrder
     .map((id) => catalogById.get(id))
@@ -702,9 +785,13 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
   const handleCopilotConnected = () => {
     setMessage(zh ? 'GitHub 账户已连接，正在刷新账户列表与额度。' : 'GitHub account connected. Refreshing accounts and quotas.');
   };
-  return <div className="dialog-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section ref={dialogRef} className="dialog dialog--limit-settings" role="dialog" aria-modal="true" aria-label={zh ? '账户权益与额度设置' : 'Account benefit and quota settings'}><header><div><h2>{zh ? '连接并标注账户权益' : 'Connect and classify account benefits'}</h2><p>{zh ? '先自动检测账户，再标注付费、免费、活动或单位权益。额度读取失败不影响本机 Token 分析。' : 'Detect accounts first, then classify them as paid, free, promotional, or organization-provided. Quota failures never block local Token analytics.'}</p></div><button autoFocus className="icon-btn" type="button" onClick={onClose} aria-label={zh ? '关闭账户权益设置' : 'Close account benefit settings'}><X size={18}/></button></header>
-    <div className="limit-settings-body"><section className="limit-setup-summary"><div className="limit-setup-score"><Sparkles size={18}/><div><b>{zh ? `自动检测到 ${ready.length} 个平台` : `${localizedCount(ready.length, false, '', 'provider', 'providers')} detected`}</b><span>{zh ? '无需复制 Token，推荐直接启用已检测平台。' : 'No token copying needed for detected providers.'}</span></div></div><button type="button" onClick={enableDetected} disabled={!ready.length}><Check size={14}/>{zh ? '一键启用已检测' : 'Enable detected'}</button><div className="limit-master-inline"><span>{zh ? `${enabledCount} 个已选择` : `${enabledCount} selected`}</span><Toggle checked={draft.enabled} onChange={(enabled) => setDraft((current) => ({ ...current, enabled }))} label={draft.enabled ? (zh ? '总开关已开启' : 'Master on') : (zh ? '总开关已关闭' : 'Master off')}/></div></section>
+  return <div className="dialog-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && requestClose()}><section ref={dialogRef} className="dialog dialog--limit-settings" role="dialog" aria-modal="true" aria-label={zh ? '账户权益与额度设置' : 'Account benefit and quota settings'}><header><div><h2>{zh ? '连接并标注账户权益' : 'Connect and classify account benefits'}</h2><p>{zh ? '先自动检测账户，再标注付费、免费、活动或单位权益。额度读取失败不影响本机 Token 分析。' : 'Detect accounts first, then classify them as paid, free, promotional, or organization-provided. Quota failures never block local Token analytics.'}</p></div><button autoFocus className="icon-btn" type="button" onClick={requestClose} aria-label={zh ? '关闭账户权益设置' : 'Close account benefit settings'}><X size={18}/></button></header>
+    <div className="limit-settings-body" ref={bodyRef}><section className="limit-setup-summary"><div className="limit-setup-score"><Sparkles size={18}/><div><b>{zh ? `自动检测到 ${ready.length} 个平台` : `${localizedCount(ready.length, false, '', 'provider', 'providers')} detected`}</b><span>{zh ? '无需复制 Token，推荐直接启用已检测平台。' : 'No token copying needed for detected providers.'}</span></div></div><button type="button" onClick={enableDetected} disabled={!ready.length}><Check size={14}/>{zh ? '一键启用已检测' : 'Enable detected'}</button><div className="limit-master-inline"><span>{zh ? `${enabledCount} 个已选择` : `${enabledCount} selected`}</span><Toggle checked={draft.enabled} onChange={(enabled) => setDraft((current) => ({ ...current, enabled }))} label={draft.enabled ? (zh ? '总开关已开启' : 'Master on') : (zh ? '总开关已关闭' : 'Master off')}/></div></section>
       <section className="limit-provider-toolbar"><div role="tablist" aria-orientation="horizontal" aria-label={zh ? '筛选账户平台' : 'Filter account providers'}>{settingsTabs.map(([id, label], index) => <button type="button" role="tab" id={settingsProviderTabId(id)} aria-controls={SETTINGS_PROVIDER_PANEL_ID} aria-selected={view === id} tabIndex={view === id ? 0 : -1} className={view === id ? 'active' : ''} onClick={() => setView(id)} onKeyDown={(event) => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? settingsTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + settingsTabs.length) % settingsTabs.length; setView(settingsTabs[nextIndex][0]); event.currentTarget.parentElement?.querySelectorAll('[role="tab"]')[nextIndex]?.focus(); }} key={id}>{label}</button>)}</div><label><Search size={13}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={zh ? '搜索平台' : 'Search providers'}/></label></section>
+      <nav className="limit-section-nav" aria-label={zh ? '设置分区' : 'Settings sections'}>
+        {[['providers', zh ? '① 连接平台' : '① Connect'], ['order', zh ? '② 显示顺序' : '② Order']].map(([id, label]) => <a key={id} href={`#limit-sec-${id}`} className={activeAnchor === id ? 'active' : ''} aria-current={activeAnchor === id ? 'location' : undefined} onClick={(event) => { event.preventDefault(); bodyRef.current?.querySelector(`#limit-sec-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{label}</a>)}
+      </nav>
+      <div id="limit-sec-providers" className="limit-section">
       <div className="limit-provider-settings" id={SETTINGS_PROVIDER_PANEL_ID} role="tabpanel" aria-labelledby={settingsProviderTabId(view)} tabIndex={0}>{visible.map((provider) => {
         const item = draft.providers[provider.id];
         const unavailable = provider.quotaSupport === 'unavailable';
@@ -727,19 +814,17 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
           }
         };
         return <article className={`${item.enabled ? 'enabled' : ''} ${isExpanded ? 'expanded' : ''} ${unavailable ? 'unavailable' : ''}`} id={`limit-account-provider-${provider.id}`} key={provider.id}>
-          <div className="provider-setting-head"><ProviderIcon id={provider.id}/><button type="button" className="provider-setting-copy" onClick={() => !unavailable && setExpanded(isExpanded ? '' : provider.id)}><span><b>{provider.label}{provider.popular ? <em>{zh ? '热门' : 'Popular'}</em> : null}</b><small>{provider.description}</small></span><ChevronDown className={isExpanded ? 'expanded' : ''} size={15}/></button><Toggle checked={item.enabled} onChange={setEnabled} label={zh ? `启用 ${provider.label}` : `Enable ${provider.label}`} disabled={unavailable}/></div>
+          <div className="provider-setting-head"><ProviderIcon id={provider.id}/><button type="button" className="provider-setting-copy" onClick={() => !unavailable && setExpanded(isExpanded ? '' : provider.id)}><span><b>{provider.label}{provider.popular ? <em>{zh ? '热门' : 'Popular'}</em> : null}{item.enabled ? <em className={`entitlement-badge entitlement-badge--${item.entitlementType || 'unknown'}`}>{entitlementBadge(item.entitlementType, zh)}</em> : null}</b><small>{provider.description}</small></span><ChevronDown className={isExpanded ? 'expanded' : ''} size={15}/></button><Toggle checked={item.enabled} onChange={setEnabled} label={zh ? `启用 ${provider.label}` : `Enable ${provider.label}`} disabled={unavailable}/></div>
           <div className={`provider-detection ${detectionClass(provider.detection?.state)}`}>{['detected', 'configured'].includes(provider.detection?.state) ? <Check size={12}/> : <CircleAlert size={12}/>}<span>{provider.detection?.label}</span>{provider.detection?.detail ? <small>{provider.detection.detail}</small> : null}</div>
           {unavailable ? <div className="provider-unavailable-copy"><p>{provider.localHint}</p>{provider.dashboardUrl ? <a href={provider.dashboardUrl} target="_blank" rel="noreferrer">{zh ? '打开官方页面' : 'Open official site'}<ExternalLink size={11}/></a> : null}</div> : null}
           {isExpanded && !unavailable ? <div className="provider-config-panel">
             {provider.id === 'copilot' ? <CopilotConnectionPanel item={item} updateProvider={updateProvider} setClearAccountSecrets={setClearAccountSecrets} enableMaster={() => setDraft((current) => ({ ...current, enabled: true }))} onCopilotDeviceAction={onCopilotDeviceAction} onCopilotConnected={handleCopilotConnected} zh={zh}/> : provider.id === 'opencode' ? <OpenCodeGoConnectionPanel item={item} provider={provider} updateProvider={updateProvider} accountSecrets={accountSecrets} setAccountSecrets={setAccountSecrets} clearAccountSecrets={clearAccountSecrets} setClearAccountSecrets={setClearAccountSecrets} enableMaster={() => setDraft((current) => ({ ...current, enabled: true }))} zh={zh}/> : <StandardProviderConfig provider={provider} item={item} updateProvider={updateProvider} secrets={secrets} setSecrets={setSecrets} clearSecrets={clearSecrets} setClearSecrets={setClearSecrets} zh={zh}/>}
+            {item.enabled ? <EntitlementBlock provider={provider} item={item} updateProvider={updateProvider} zh={zh}/> : null}
           </div> : null}
         </article>;
       })}</div>
-      {orderedEnabled.length ? <section className="subscription-cost-settings">
-        <header><div><b>{zh ? '账户权益来源与实际支出' : 'Benefit source and actual spend'}</b><span>{zh ? '大多数人会同时使用少数付费订阅和多项免费/活动权益。只有明确标注为“付费订阅”的账户才计入个人支出、续费和付费闲置分析。' : 'Most people mix a few paid subscriptions with several free or promotional benefits. Only explicitly paid accounts enter personal spend, renewal, and paid-idle analysis.'}</span></div></header>
-        <div>{orderedEnabled.map((provider) => { const item = draft.providers[provider.id]; const isPaid = item.entitlementType === 'paid'; const setEntitlementType = (entitlementType) => updateProvider(provider.id, entitlementType === 'paid' ? { entitlementType } : { entitlementType, subscriptionPrice: null, renewsAt: '' }); return <article className={`entitlement-${item.entitlementType || 'unknown'}`} key={provider.id}><div className="subscription-entitlement-head"><span className="subscription-cost-provider"><ProviderIcon id={provider.id} size={15}/><span><b>{provider.label}</b><small>{entitlementNote(item.entitlementType, zh)}</small></span></span><label className="entitlement-kind-field"><span>{zh ? '权益类型' : 'Benefit type'}</span><select value={item.entitlementType || 'unknown'} onChange={(event) => setEntitlementType(event.target.value)}>{ENTITLEMENT_TYPES.map((type) => <option value={type} key={type}>{entitlementLabel(type, zh)}</option>)}</select></label></div>{isPaid ? <div className="subscription-paid-fields"><label><span>{zh ? '实际价格' : 'Actual price'}</span><input type="number" inputMode="decimal" min="0" max="1000000" step="0.01" value={item.subscriptionPrice ?? ''} onChange={(event) => updateProvider(provider.id, { subscriptionPrice: event.target.value === '' ? null : Number(event.target.value) })} placeholder="—"/></label><label><span>{zh ? '货币' : 'Currency'}</span><select value={item.subscriptionCurrency} onChange={(event) => updateProvider(provider.id, { subscriptionCurrency: event.target.value })}><option value="usd">USD · $</option><option value="cny">CNY · ¥</option></select></label><label><span>{zh ? '账期' : 'Cycle'}</span><select value={item.billingCycle} onChange={(event) => updateProvider(provider.id, { billingCycle: event.target.value })}><option value="monthly">{zh ? '每月' : 'Monthly'}</option><option value="yearly">{zh ? '每年' : 'Yearly'}</option></select></label><label><span>{zh ? '下次续费' : 'Renewal'}</span><input type="date" value={item.renewsAt || ''} onChange={(event) => updateProvider(provider.id, { renewsAt: event.target.value })}/></label></div> : <p className="subscription-entitlement-note">{entitlementNote(item.entitlementType, zh)}</p>}</article>; })}</div>
-      </section> : null}
-      <section className="limit-provider-order">
+      </div>
+      <section className="limit-provider-order" id="limit-sec-order">
         <header><div><b>{zh ? '额度显示顺序' : 'Quota display order'}</b><span>{zh ? '拖动右侧手柄即可排序；触屏也可拖动，结果保存在本机。' : 'Drag the handle to reorder. Touch is supported and the result stays on this device.'}</span></div><small>{zh ? `${orderedEnabled.length} 个已启用平台` : `${orderedEnabled.length} enabled`}</small></header>
         {orderedEnabled.length ? <ol onMouseMove={(event) => { if (!draggingId) return; const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('[data-provider-order-id]')?.dataset.providerOrderId; if (!target || target === draggingId) return; setDragOverId(target); reorderProvider(draggingId, target); }} onMouseUp={finishDrag}>{orderedEnabled.map((provider, index) => <li key={provider.id} data-provider-order-id={provider.id} className={`${draggingId === provider.id ? 'dragging' : ''} ${dragOverId === provider.id && draggingId !== provider.id ? 'drag-over' : ''}`}>
           <span className="provider-order-index">{String(index + 1).padStart(2, '0')}</span>
@@ -747,8 +832,21 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
           <button type="button" className="provider-order-handle" onMouseDown={() => { setDraggingId(provider.id); setDragOverId(provider.id); }} onPointerDown={(event) => { if (event.button !== 0 && event.button !== -1) return; event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setDraggingId(provider.id); setDragOverId(provider.id); }} onPointerMove={(event) => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('[data-provider-order-id]')?.dataset.providerOrderId; if (!target || target === provider.id) return; setDragOverId(target); reorderProvider(provider.id, target); }} onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); finishDrag(); }} onPointerCancel={finishDrag} onKeyDown={(event) => { const direction = ['ArrowUp', 'ArrowLeft'].includes(event.key) ? -1 : ['ArrowDown', 'ArrowRight'].includes(event.key) ? 1 : 0; if (!direction) return; event.preventDefault(); setDraft((current) => moveEnabledProvider(current, provider.id, direction)); }} aria-label={zh ? `拖动调整 ${provider.label}；也可按方向键移动` : `Drag to reorder ${provider.label}; arrow keys also work`} title={zh ? '拖动排序' : 'Drag to reorder'}><GripVertical size={16}/></button>
         </li>)}</ol> : <p>{zh ? '启用至少一个平台后即可调整顺序。' : 'Enable a provider to arrange its position.'}</p>}
       </section>
-      <section className="refresh-setting"><span>{zh ? '自动刷新间隔' : 'Refresh interval'}</span><div>{[5, 10, 15, 30].map((minutes) => <button type="button" className={draft.refreshMinutes === minutes ? 'active' : ''} onClick={() => setDraft((current) => ({ ...current, refreshMinutes: minutes }))} key={minutes}>{minutes}m</button>)}</div><small>{zh ? '手动刷新始终绕过缓存；只有已启用平台才联网。' : 'Manual refresh bypasses cache; only enabled providers access the network.'}</small></section>
-      <div className="limit-security-note"><ShieldCheck size={17}/><div><b>{zh ? '敏感信息边界' : 'Sensitive-data boundary'}</b><p>{zh ? '浏览器只提交你主动输入的凭据一次；服务端把手动凭据交给 macOS 钥匙串，普通 config.json 只保存开关、来源和变量名。接口响应永远不包含 Token 或 Cookie，只显示不暴露主目录的来源提示。' : 'The browser submits manually entered secrets once. The local server stores them in macOS Keychain; config.json keeps only toggles, source modes, and variable names. Responses never contain tokens or cookies and show only home-redacted source hints.'}</p></div></div>{validationErrors.length ? <div className="provider-validation-errors" role="alert">{validationErrors.map((provider) => <div key={provider.id}><CircleAlert size={14}/><span><b>{provider.label}</b><small>{provider.error?.message || (zh ? '连接验证失败' : 'Connection validation failed')}</small></span><button type="button" onClick={() => { if (provider.id === 'copilot' || provider.id === 'opencode') { document.getElementById(`limit-account-provider-${provider.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; } setView('all'); setExpanded(provider.id); }}>{zh ? '去修复' : 'Fix'}</button></div>)}</div> : null}{message ? <p className="dialog-error" role="alert">{message}</p> : null}</div>
-    <footer className="dialog-actions"><button type="button" className="ghost-btn" onClick={onClose}>{zh ? '取消' : 'Cancel'}</button><button type="button" className="primary-btn" onClick={submit} disabled={saving}>{saving ? <RefreshCw className="spin" size={14}/> : <KeyRound size={14}/>} {zh ? '保存并刷新' : 'Save & refresh'}</button></footer>
+      <details className="limit-security-note">
+        <summary><ShieldCheck size={15}/><b>{zh ? '敏感信息边界' : 'Sensitive-data boundary'}</b><ChevronDown size={14}/></summary>
+        <p>{zh ? '浏览器只提交你主动输入的凭据一次；服务端把手动凭据交给 macOS 钥匙串，普通 config.json 只保存开关、来源和变量名。接口响应永远不包含 Token 或 Cookie，只显示不暴露主目录的来源提示。' : 'The browser submits manually entered secrets once. The local server stores them in macOS Keychain; config.json keeps only toggles, source modes, and variable names. Responses never contain tokens or cookies and show only home-redacted source hints.'}</p>
+      </details>
+      <div className="limit-sticky-alerts">
+        {validationErrors.length ? <div className="provider-validation-errors" role="alert">{validationErrors.map((provider) => <div key={provider.id}><CircleAlert size={14}/><span><b>{provider.label}</b><small>{provider.error?.message || (zh ? '连接验证失败' : 'Connection validation failed')}</small></span><button type="button" onClick={() => { if (provider.id === 'copilot' || provider.id === 'opencode') { document.getElementById(`limit-account-provider-${provider.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; } setView('all'); setExpanded(provider.id); }}>{zh ? '去修复' : 'Fix'}</button></div>)}</div> : null}
+        {message ? <p className="dialog-error" role="alert">{message}</p> : null}
+      </div></div>
+    {confirmDiscard ? <div className="dialog-dirty-bar" role="alertdialog" aria-label={zh ? '未保存的更改' : 'Unsaved changes'}>
+      <span>{zh ? '有未保存的更改' : 'You have unsaved changes'}</span>
+      <span className="dialog-dirty-actions">
+        <button type="button" autoFocus onClick={() => setConfirmDiscard(false)}>{zh ? '继续编辑' : 'Keep editing'}</button>
+        <button type="button" className="danger" onClick={onClose}>{zh ? '放弃并关闭' : 'Discard & close'}</button>
+      </span>
+    </div> : null}
+    <footer className="dialog-actions"><button type="button" className="ghost-btn" onClick={requestClose}>{zh ? '取消' : 'Cancel'}</button><button type="button" className="primary-btn" onClick={submit} disabled={saving}>{saving ? <RefreshCw className="spin" size={14}/> : <KeyRound size={14}/>} {zh ? '保存并刷新' : 'Save & refresh'}</button></footer>
   </section></div>;
 }
