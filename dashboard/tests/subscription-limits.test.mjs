@@ -6,6 +6,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 
 let module;
+let utils;
+let settings;
 let server;
 let originalLocalStorageDescriptor;
 
@@ -21,6 +23,8 @@ test.before(async () => {
     server: { middlewareMode: true },
   });
   module = await server.ssrLoadModule('/src/SubscriptionLimits.jsx');
+  utils = await server.ssrLoadModule('/src/subscription-limits-utils.js');
+  settings = await server.ssrLoadModule('/src/LimitSettingsDialog.jsx');
 });
 
 test.after(async () => {
@@ -30,25 +34,25 @@ test.after(async () => {
 });
 
 test('shows a value / limit detail only when both numbers are finite', () => {
-  assert.equal(module.limitWindowDetail({ value: 12, limit: 50, unit: 'credits' }), '12 / 50 credits');
-  assert.equal(module.limitWindowDetail({ value: 0, limit: 50, unit: 'credits' }), '0 / 50 credits');
-  assert.equal(module.limitWindowDetail({ value: null, limit: 50, unit: 'credits' }), null);
-  assert.equal(module.limitWindowDetail({ value: '', limit: 50, unit: 'credits' }), null);
-  assert.equal(module.limitWindowDetail({ value: Number.NaN, limit: 50, detail: 'Provider detail' }), 'Provider detail');
-  assert.equal(module.limitWindowDetail({ value: 12, limit: Number.POSITIVE_INFINITY }), null);
+  assert.equal(utils.limitWindowDetail({ value: 12, limit: 50, unit: 'credits' }), '12 / 50 credits');
+  assert.equal(utils.limitWindowDetail({ value: 0, limit: 50, unit: 'credits' }), '0 / 50 credits');
+  assert.equal(utils.limitWindowDetail({ value: null, limit: 50, unit: 'credits' }), null);
+  assert.equal(utils.limitWindowDetail({ value: '', limit: 50, unit: 'credits' }), null);
+  assert.equal(utils.limitWindowDetail({ value: Number.NaN, limit: 50, detail: 'Provider detail' }), 'Provider detail');
+  assert.equal(utils.limitWindowDetail({ value: 12, limit: Number.POSITIVE_INFINITY }), null);
 });
 
 test('reset-credit UI distinguishes available, observed zero, and unknown counts', () => {
-  assert.deepEqual(module.resetCreditPresentation({ availableCount: 2 }, false), {
+  assert.deepEqual(utils.resetCreditPresentation({ availableCount: 2 }, false), {
     state: 'available', value: '2', detail: null,
   });
-  assert.deepEqual(module.resetCreditPresentation({ availableCount: 0 }, false), {
+  assert.deepEqual(utils.resetCreditPresentation({ availableCount: 0 }, false), {
     state: 'zero', value: '0', detail: 'Observed available count: 0',
   });
-  assert.deepEqual(module.resetCreditPresentation({ availableCount: null }, false), {
+  assert.deepEqual(utils.resetCreditPresentation({ availableCount: null }, false), {
     state: 'unknown', value: '—', detail: 'Available count is not observable',
   });
-  assert.equal(module.resetCreditPresentation({ availableCount: '0' }, false).state, 'unknown');
+  assert.equal(utils.resetCreditPresentation({ availableCount: '0' }, false).state, 'unknown');
 });
 
 test('overview provider tabs control a panel labelled by the active tab', () => {
@@ -129,7 +133,7 @@ test('benefits center follows Chinese compact units while English keeps K/M/B', 
 });
 
 test('settings filter tabs control their labelled provider panel', () => {
-  const markup = renderToStaticMarkup(createElement(module.LimitSettingsDialog, {
+  const markup = renderToStaticMarkup(createElement(settings.LimitSettingsDialog, {
     open: true,
     settings: {
       enabled: false,

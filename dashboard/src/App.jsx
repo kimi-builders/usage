@@ -10,7 +10,8 @@ import { Dialog, ExportDialog, MethodDialog, ShareDialog } from './UsageDialogs.
 import { UsageFilterBar } from './UsageFilters.jsx';
 import { UsageManagement } from './UsageManagement.jsx';
 import { RecordsSection } from './UsageRecords.jsx';
-import { LimitSettingsDialog, SubscriptionCenter, SubscriptionPulse } from './SubscriptionLimits.jsx';
+import { LimitSettingsDialog } from './LimitSettingsDialog.jsx';
+import { SubscriptionCenter, SubscriptionPulse } from './SubscriptionLimits.jsx';
 import { SyncDialog } from './SyncDialog.jsx';
 import { Onboarding } from './Onboarding.jsx';
 import { analyzeBudget, analyzeMilestones, analyzeSpikes } from './usage-insights.js';
