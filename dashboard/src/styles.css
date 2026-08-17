@@ -686,8 +686,9 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .provider-config-panel, .provider-unavailable-copy { padding: 14px 16px 16px; border-top: 1px solid var(--line); }.provider-config-panel > p, .provider-unavailable-copy p { margin: 0; color: var(--grey); font-size: 11px; line-height: 1.65; }
 .provider-auth-modes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }.provider-auth-modes button { min-height: 36px; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: transparent; color: var(--grey); font: 500 11px/1 'JetBrains Mono', monospace; }.provider-auth-modes button.active { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 9%, transparent); color: var(--blue); }.provider-auth-modes button:disabled { opacity: .35; cursor: not-allowed; }
 .provider-setup-steps { margin-top: 12px; padding: 11px 12px; border: 1px solid color-mix(in srgb, var(--blue) 24%, var(--line)); border-radius: var(--radius-btn); background: color-mix(in srgb, var(--blue) 4%, transparent); }.provider-setup-steps > b { color: var(--paper); font-size: 11px; }.provider-setup-steps ol { display: grid; gap: 6px; margin: 8px 0 0; padding-left: 18px; color: var(--grey); font-size: 11px; line-height: 1.55; }.provider-setup-steps a, .provider-dashboard-link, .provider-unavailable-copy a { display: inline-flex; align-items: center; gap: 4px; color: var(--blue); text-decoration: none; }.provider-setup-steps a:hover, .provider-dashboard-link:hover, .provider-unavailable-copy a:hover { text-decoration: underline; }
+.provider-setup-steps, .provider-setup-steps li { min-width: 0; }.provider-setup-steps li { overflow-wrap: anywhere; }
 .provider-config-panel .provider-auth-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }.provider-config-panel .provider-auth-fields label:only-child { grid-column: 1 / -1; }.provider-auth-fields label > small { color: var(--grey-soft); font-size: 11px; line-height: 1.5; }.provider-dashboard-link { margin-top: 12px; font-size: 11px; }.provider-unavailable-copy a { margin-top: 9px; font-size: 11px; }
-.account-provider-config { display: grid; gap: 12px; }
+.account-provider-config { min-width: 0; display: grid; gap: 12px; }
 .account-config-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .account-config-heading > div { display: grid; gap: 4px; }
 .account-config-heading b { color: var(--paper-strong); font-size: 11px; }
@@ -706,24 +707,22 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .limit-account-list small, .limit-account-list > p, .opencode-account-list > p { margin: 0; color: var(--grey); font-size: 11px; line-height: 1.55; }
 .limit-account-list button, .remove-account-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px; border: 0; background: transparent; color: var(--grey); font: 500 11px/1 'JetBrains Mono', monospace; }
 .limit-account-list button:hover, .remove-account-btn:hover { color: var(--red); }
-.opencode-account-list { display: grid; gap: 10px; margin-top: 12px; }
-.opencode-account-list fieldset { display: grid; grid-template-columns: 24px minmax(130px,.72fr) minmax(260px,1.65fr) auto; align-items: end; gap: 10px; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--bg); }
+.opencode-account-list { min-width: 0; display: grid; gap: 10px; margin-top: 12px; }
+.opencode-account-list fieldset { min-width: 0; max-width: 100%; display: grid; grid-template-columns: 24px minmax(0,1fr) auto; align-items: end; gap: 10px; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--bg); }
 .opencode-account-list fieldset.selected { border-color: color-mix(in srgb, var(--blue) 55%, var(--line)); background: color-mix(in srgb, var(--blue) 4%, var(--bg)); }
 .opencode-account-list legend { padding: 0 5px; color: var(--grey); font-size: 10px; }
 .opencode-account-list label { display: grid; gap: 5px; min-width: 0; }
 .opencode-account-list label > span { color: var(--grey); font-size: 11px; }
 .opencode-account-list input { width: 100%; min-width: 0; height: 36px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--bg); color: var(--paper); font: 500 11px/1 'JetBrains Mono', monospace; }
-.opencode-account-list .opencode-session-select { align-self: center; }
+.opencode-account-list .opencode-session-select { grid-column: 1; grid-row: 1; align-self: center; }
+.opencode-account-list .opencode-account-label { grid-column: 2; grid-row: 1; }
+.opencode-account-list .opencode-cookie-field { grid-column: 2 / -1; grid-row: 2; }
+.opencode-account-list .opencode-workspace-field { grid-column: 2 / -1; grid-row: 3; }
 .opencode-account-list .opencode-session-select input { width: 15px; height: 15px; margin: 0; padding: 0; accent-color: var(--blue); }
-.opencode-account-list label > small, .opencode-account-list .opencode-cookie-hint, .account-secret-warning { color: var(--grey-soft); font-size: 11px; line-height: 1.4; }
-/* Cookie 提示放到第 3 列第 2 行:控件行(单选/名称/Cookie/移除)以 align-items:end
-   底线对齐,提示与清除警告在其下方单独成行,不再抬高 Cookie 输入框 */
-.opencode-account-list .opencode-cookie-hint, .opencode-account-list .account-secret-warning { grid-column: 3; }
-.opencode-account-list .remove-account-btn { min-height: 36px; border: 1px solid var(--line); border-radius: var(--radius-btn); }
-.opencode-workspace-field { display: grid; grid-template-columns: minmax(180px,.65fr) minmax(240px,1fr); align-items: center; gap: 6px 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: color-mix(in srgb, var(--card) 82%, transparent); }
-.opencode-workspace-field > span { color: var(--paper-strong); font-size: 11px; font-weight: 600; }.opencode-workspace-field > span em { margin-left: 5px; color: var(--grey); font-size: 11px; font-style: normal; font-weight: 400; }
-.opencode-workspace-field input { min-width: 0; width: 100%; height: 36px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--bg); color: var(--paper); font: 500 11px/1 'JetBrains Mono', monospace; }
-.opencode-workspace-field small { grid-column: 2; color: var(--grey-soft); font-size: 11px; line-height: 1.45; }
+.opencode-account-list label > small, .account-secret-warning { min-width: 0; overflow-wrap: anywhere; color: var(--grey-soft); font-size: 11px; line-height: 1.4; }
+.opencode-account-list .remove-account-btn { grid-column: 3; grid-row: 1; min-height: 36px; border: 1px solid var(--line); border-radius: var(--radius-btn); white-space: nowrap; }
+.opencode-account-list .account-entitlement { grid-column: 2 / -1; grid-row: 4; margin-top: 2px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: color-mix(in srgb, var(--paper) 2%, transparent); }
+.opencode-account-list .account-entitlement::before { content: 'SUBSCRIPTION'; color: var(--blue); font: 600 10px/1 'JetBrains Mono', monospace; letter-spacing: .13em; }
 .benefit-account-picker { display: grid; grid-template-columns: auto minmax(120px,auto); align-items: center; gap: 3px 8px; margin-left: auto; }
 .benefit-account-picker > span, .benefit-account-picker > small { color: var(--grey); font-size: 11px; }
 .benefit-account-picker > small { grid-column: 1 / -1; text-align: right; }
@@ -816,7 +815,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
   .limits-privacy { align-items: flex-start; min-height: 0; padding: 12px; line-height: 1.55; }.limits-privacy small { display: none; }
   .dialog--limit-settings { width: 100%; max-height: calc(100vh - 24px); border-radius: var(--radius) 16px 0 0; }.limit-master { min-height: 104px; padding: 16px; }.limit-master .switch-control em { display: none; }
   .limit-provider-settings { display: block; }.limit-provider-settings > article { border-right: 0; padding: 16px; }.limit-provider-settings header span { white-space: normal; line-height: 1.4; }.limit-provider-settings article > p { min-height: 0; }
-  .limit-security-note { margin-inline: 14px; }.dialog--limit-settings > .dialog-actions { min-height: 72px; }.dialog--limit-settings > .dialog-actions button { min-height: 42px; }
+  .limit-security-note { margin-inline: 14px; }.dialog--limit-settings > .dialog-actions { min-height: 72px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }.dialog--limit-settings > .dialog-actions button { min-height: 42px; margin: 0; justify-content: center; }.dialog--limit-settings > .dialog-actions .limit-cancel-action { display: none; }
   .limit-setup-summary { grid-template-columns: minmax(0,1fr) auto; gap: 10px; padding: 14px 16px; }.limit-setup-summary > button { grid-column: 1 / -1; width: 100%; justify-content: center; }.limit-master-inline { min-width: 0; }.limit-master-inline > span { display: inline; font-size: 11px; }
   .limit-provider-toolbar { align-items: stretch; flex-direction: column; padding: 12px 16px; }.limit-provider-toolbar > div { width: 100%; }.limit-provider-toolbar > div button { flex: 1; padding-inline: 5px; }.limit-provider-toolbar > label { width: 100%; min-height: 40px; }
   .limit-provider-settings { display: grid; grid-template-columns: 1fr; gap: 9px; padding: 10px; }.limit-provider-settings > article, .limit-provider-settings > article:nth-child(even) { padding: 0; border: 1px solid var(--line); }.limit-provider-settings > article.expanded { grid-column: auto; }.provider-setting-copy small { white-space: normal; line-height: 1.4; }.provider-detection { align-items: flex-start; flex-wrap: wrap; padding-block: 9px; }.provider-detection small { flex-basis: 100%; margin-left: 18px; white-space: normal; }
@@ -829,10 +828,9 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
   .copilot-device-state { grid-template-columns: 1fr; }
   .copilot-device-state > strong { grid-row: auto; grid-column: auto; }
   .opencode-account-list fieldset { grid-template-columns: 1fr; }
-  .opencode-account-list .opencode-cookie-hint, .opencode-account-list .account-secret-warning { grid-column: auto; }
+  .opencode-account-list .opencode-session-select, .opencode-account-list .opencode-account-label, .opencode-account-list .opencode-cookie-field, .opencode-account-list .opencode-workspace-field, .opencode-account-list .account-secret-warning, .opencode-account-list .remove-account-btn, .opencode-account-list .account-entitlement { grid-column: auto; grid-row: auto; }
   .opencode-account-list .opencode-session-select { justify-self: start; }.opencode-account-list .remove-account-btn { min-height: 42px; justify-content: center; }
   .opencode-account-list input { height: 42px; }
-  .opencode-workspace-field { grid-template-columns: 1fr; }.opencode-workspace-field input { height: 42px; }.opencode-workspace-field small { grid-column: auto; }
   .provider-tabs { flex-wrap: wrap; gap: 8px; }
   .benefit-account-picker { width: 100%; grid-template-columns: auto 1fr; margin: 0; }
   .benefit-account-picker select { width: 100%; height: 40px; }

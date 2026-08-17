@@ -13,20 +13,20 @@ const center = () => read('../src/SubscriptionLimits.jsx');
 test('entitlement classification lives inside each provider panel, not a standalone block', async () => {
   const jsx = await dialog();
   assert.match(jsx, /function EntitlementBlock\(/);
-  assert.match(jsx, /item\.enabled \? <EntitlementBlock/);
+  assert.match(jsx, /item\.enabled && provider\.id !== 'opencode' \? <EntitlementBlock/);
   // 权益说明只在面板里出现一次;独立的成本大区块与重复说明已删除
   assert.doesNotMatch(jsx, /subscription-cost-settings/);
   assert.doesNotMatch(jsx, /subscription-entitlement-note/);
   // 列表卡用徽标提示口径
-  assert.match(jsx, /entitlement-badge--\$\{item\.entitlementType \|\| 'unknown'\}/);
+  assert.match(jsx, /entitlement-badge--\$\{entitlementItem\.entitlementType \|\| 'unknown'\}/);
 });
 
 test('provider cards render an entitlement badge only when enabled', async () => {
   const jsx = await dialog();
   assert.match(jsx, /\{item\.enabled \? <em className=\{`entitlement-badge/);
-  assert.match(jsx, /entitlementBadge\(item\.entitlementType, zh\)/);
+  assert.match(jsx, /entitlementBadge\(entitlementItem\.entitlementType, zh\)/);
   // 缩写徽标悬浮/读屏给全称
-  assert.match(jsx, /title=\{entitlementLabel\(item\.entitlementType, zh\)\}/);
+  assert.match(jsx, /title=\{entitlementLabel\(entitlementItem\.entitlementType, zh\)\}/);
 });
 
 test('section anchor nav sticks to the scroll body and tracks the active section', async () => {
@@ -49,11 +49,50 @@ test('dirty guard intercepts close and escape instead of discarding silently', a
   assert.match(jsx, /放弃并关闭/);
 });
 
-test('openCode cookie and workspace validation fires on blur', async () => {
+test('openCode account name, cookie, and workspace validation fires on blur', async () => {
   const jsx = await dialog();
   assert.match(jsx, /const fieldError = \(accountId, kind\) => \{/);
   assert.equal((jsx.match(/isValidOpenCodeWorkspaceId\(account\.workspaceId\)/g) || []).length, 2);
+  assert.match(jsx, /\[`label:\$\{account\.id\}`\]: true/);
   assert.match(jsx, /onBlur=\{\(\) => setTouched\(\(current\) => \(\{ \.\.\.current, \[`cookie:\$\{account\.id\}`\]: true \}\)\)\}/);
+  assert.match(jsx, /\[`workspace:\$\{account\.id\}`\]: true/);
+  assert.match(jsx, /每个账户都必须填写名称、Cookie 与有效的 wrk_… Workspace ID/);
+});
+
+test('every OpenCode account card owns its name, Cookie, and Workspace fields', async () => {
+  const jsx = await dialog();
+  const css = await read('../src/styles.css');
+  assert.match(jsx, /className="opencode-account-label"/);
+  assert.match(jsx, /className="opencode-cookie-field"/);
+  assert.match(jsx, /className="opencode-workspace-field"/);
+  assert.match(css, /\.opencode-account-list fieldset \{[^}]*grid-template-columns: 24px minmax\(0,1fr\) auto/);
+  assert.match(css, /\.opencode-account-list \.opencode-cookie-field \{ grid-column: 2 \/ -1;/);
+  assert.match(css, /\.opencode-account-list \.opencode-workspace-field \{ grid-column: 2 \/ -1; grid-row: 3;/);
+  assert.doesNotMatch(jsx, /Workspace discovery is automatic/);
+});
+
+test('every OpenCode account owns subscription metadata instead of sharing a provider block', async () => {
+  const jsx = await dialog();
+  const css = await read('../src/styles.css');
+  assert.match(jsx, /<EntitlementFields className="account-entitlement" item=\{account\}/);
+  assert.match(jsx, /item\.enabled && provider\.id !== 'opencode'/);
+  assert.match(css, /\.opencode-account-list \.account-entitlement \{[^}]*grid-column: 2 \/ -1;[^}]*grid-row: 4;/);
+});
+
+test('save actions separate in-place quota refresh from save-and-close', async () => {
+  const jsx = await dialog();
+  assert.match(jsx, /保存并刷新额度/);
+  assert.match(jsx, /保存并关闭/);
+  assert.match(jsx, /submit\(\{ closeAfterSave: true \}\)/);
+  assert.match(jsx, /if \(closeAfterSave\) \{ onClose\(\); return; \}/);
+});
+
+test('dialog backdrops never dismiss settings or generic dialogs', async () => {
+  const settingsDialog = await dialog();
+  const genericDialogs = await read('../src/UsageDialogs.jsx');
+  for (const source of [settingsDialog, genericDialogs]) {
+    assert.doesNotMatch(source, /className="dialog-layer"[^>]*onMouseDown/);
+  }
 });
 
 test('refresh interval moved from the dialog to the benefit center footer', async () => {

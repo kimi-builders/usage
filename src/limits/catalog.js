@@ -51,8 +51,8 @@ export const LIMIT_PROVIDER_CATALOG = [
     description: '5 小时、每周与每月 Go 订阅额度', quotaSupport: 'manual',
     defaultAuthMode: 'keychain', authModes: ['environment', 'keychain'],
     defaultEnvironmentVariable: 'OPENCODE_SESSION_COOKIE', dashboardUrl: 'https://opencode.ai/auth',
-    secretKind: 'OpenCode Go Session Cookie', extraFields: ['workspaceId'], accountMode: 'cookie-workspace-optional',
-    localHint: '每个账户保存一份 Cookie；Workspace 通常会自动发现，只在自动发现失败时填写覆盖值。',
+    secretKind: 'OpenCode Go Session Cookie', extraFields: ['workspaceId'], accountMode: 'cookie-workspace-required',
+    localHint: '每个账户独立保存名称、Cookie 与 Workspace ID；三项齐全后才会查询该账户额度。',
   },
   {
     id: 'qoder', label: 'Qoder', group: 'more', popular: true,
@@ -132,19 +132,58 @@ function safeWorkspaceId(value) {
   return workspace.slice(0, 240);
 }
 
-function normalizeAccounts(candidate, provider) {
+function normalizeSubscription(candidate) {
+  const subscriptionPrice = candidate?.subscriptionPrice == null || candidate.subscriptionPrice === ''
+    ? Number.NaN
+    : Number(candidate.subscriptionPrice);
+  const validPrice = Number.isFinite(subscriptionPrice) && subscriptionPrice > 0 && subscriptionPrice <= 1_000_000
+    ? Math.round(subscriptionPrice * 100) / 100
+    : null;
+  const entitlementType = LIMIT_ENTITLEMENT_TYPES.includes(candidate?.entitlementType)
+    ? candidate.entitlementType
+    : validPrice != null ? 'paid' : 'unknown';
+  const isPaid = entitlementType === 'paid';
+  return {
+    entitlementType,
+    subscriptionPrice: isPaid ? validPrice : null,
+    subscriptionCurrency: candidate?.subscriptionCurrency === 'cny' ? 'cny' : 'usd',
+    billingCycle: candidate?.billingCycle === 'yearly' ? 'yearly' : 'monthly',
+    renewsAt: isPaid && /^\d{4}-\d{2}-\d{2}$/.test(candidate?.renewsAt || '') ? candidate.renewsAt : '',
+  };
+}
+
+function hasAccountSubscription(candidate) {
+  return ['entitlementType', 'subscriptionPrice', 'subscriptionCurrency', 'billingCycle', 'renewsAt']
+    .some((key) => Object.prototype.hasOwnProperty.call(candidate || {}, key));
+}
+
+function normalizeAccounts(candidate, provider, legacySubscription) {
   if (!provider.accountMode || !Array.isArray(candidate?.accounts)) return [];
   const seen = new Set();
+  const requestedActiveId = safeAccountId(candidate?.activeAccountId);
+  const legacyAccountId = candidate.accounts.some((account) => safeAccountId(account?.id) === requestedActiveId)
+    ? requestedActiveId
+    : safeAccountId(candidate.accounts[0]?.id);
   return candidate.accounts.slice(0, 20).map((account, index) => {
     const id = safeAccountId(account?.id);
     if (!id || seen.has(id)) return null;
     seen.add(id);
-    const label = safeText(account?.label, 80) || `Account ${index + 1}`;
+    const label = safeText(account?.label, 80)
+      || (provider.id === 'opencode' ? '' : `Account ${index + 1}`);
+    // OpenCode subscription metadata used to live on the provider. Migrate it
+    // once to the active (or first) account so multi-account spend is not
+    // duplicated. New account records always own their own subscription.
+    const subscription = provider.id === 'opencode'
+      ? hasAccountSubscription(account)
+        ? normalizeSubscription(account)
+        : id === legacyAccountId ? legacySubscription : normalizeSubscription(null)
+      : {};
     return {
       id,
       label,
       externalIdentifier: safeText(account?.externalIdentifier, 160),
       workspaceId: provider.id === 'opencode' ? safeWorkspaceId(account?.workspaceId) : '',
+      ...subscription,
     };
   }).filter(Boolean);
 }
@@ -161,20 +200,12 @@ export function normalizeLimitSettings(value) {
     const authMode = provider.authModes.includes(candidate?.authMode)
       ? candidate.authMode
       : provider.defaultAuthMode;
-    const subscriptionPrice = candidate?.subscriptionPrice == null || candidate.subscriptionPrice === ''
-      ? Number.NaN
-      : Number(candidate.subscriptionPrice);
-    const validPrice = Number.isFinite(subscriptionPrice) && subscriptionPrice > 0 && subscriptionPrice <= 1_000_000
-      ? Math.round(subscriptionPrice * 100) / 100
-      : null;
     // Before entitlementType existed, a positive entered price was the only
     // explicit evidence that an account was paid. Preserve that intent while
     // leaving price-less accounts unknown instead of guessing "free".
-    const entitlementType = LIMIT_ENTITLEMENT_TYPES.includes(candidate?.entitlementType)
-      ? candidate.entitlementType
-      : validPrice != null ? 'paid' : 'unknown';
-    const isPaid = entitlementType === 'paid';
-    const accounts = normalizeAccounts(candidate, provider);
+    const legacySubscription = normalizeSubscription(candidate);
+    const accounts = normalizeAccounts(candidate, provider, legacySubscription);
+    const subscription = provider.id === 'opencode' ? normalizeSubscription(null) : legacySubscription;
     const activeAccountId = safeAccountId(candidate?.activeAccountId);
     providers[provider.id] = {
       enabled: provider.quotaSupport !== 'unavailable' && candidate?.enabled === true,
@@ -189,11 +220,7 @@ export function normalizeLimitSettings(value) {
       activeAccountId: accounts.some((account) => account.id === activeAccountId)
         ? activeAccountId
         : accounts[0]?.id || '',
-      entitlementType,
-      subscriptionPrice: isPaid ? validPrice : null,
-      subscriptionCurrency: candidate?.subscriptionCurrency === 'cny' ? 'cny' : 'usd',
-      billingCycle: candidate?.billingCycle === 'yearly' ? 'yearly' : 'monthly',
-      renewsAt: isPaid && /^\d{4}-\d{2}-\d{2}$/.test(candidate?.renewsAt || '') ? candidate.renewsAt : '',
+      ...subscription,
     };
   }
   const refreshMinutes = Number(input.refreshMinutes);

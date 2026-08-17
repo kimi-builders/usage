@@ -32,7 +32,7 @@ export function Dialog({ open, onClose, title, subtitle, children, wide = false,
     };
   }, [open, onClose]);
   if (!open) return null;
-  return <div className="dialog-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section ref={dialogRef} className={`dialog ${wide ? 'dialog--wide' : ''} ${method ? 'dialog--method' : ''} ${className}`} role="dialog" aria-modal="true" aria-labelledby={titleId}><header><div><h2 id={titleId}>{title}</h2>{subtitle ? <p>{subtitle}</p> : null}</div><button className="icon-btn" type="button" onClick={onClose} aria-label="Close"><X size={18}/></button></header>{children}</section></div>;
+  return <div className="dialog-layer" role="presentation"><section ref={dialogRef} className={`dialog ${wide ? 'dialog--wide' : ''} ${method ? 'dialog--method' : ''} ${className}`} role="dialog" aria-modal="true" aria-labelledby={titleId}><header><div><h2 id={titleId}>{title}</h2>{subtitle ? <p>{subtitle}</p> : null}</div><button className="icon-btn" type="button" onClick={onClose} aria-label="Close"><X size={18}/></button></header>{children}</section></div>;
 }
 
 function downloadBlob(blob, filename) {

@@ -378,7 +378,7 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
   </section>;
   return <section className="subscription-center" id="subscriptions">
     <section className="subscription-overview-grid">
-      <article><span>{zh ? '已连接账户权益' : 'CONNECTED BENEFITS'}</span><strong>{providers.length}</strong><p>{zh ? `${insights.summary.classifiedProviders} 项已标注权益类型` : `${insights.summary.classifiedProviders} classified`}</p></article>
+      <article><span>{zh ? '已连接账户权益' : 'CONNECTED BENEFITS'}</span><strong>{insights.summary.subscriptionAccounts}</strong><p>{zh ? `${insights.summary.classifiedProviders} 项已标注权益类型` : `${insights.summary.classifiedProviders} classified`}</p></article>
       <article><span>{zh ? '个人付费核心' : 'PERSONALLY PAID'}</span><strong>{insights.summary.entitlementCounts.paid}</strong><p>{zh ? `月均实际支出 ${portfolioSpend(insights.summary, zh)}` : `${portfolioSpend(insights.summary, zh)} actual monthly spend`}</p></article>
       <article><span>{zh ? '零新增支出权益' : 'NON-PAID BENEFITS'}</span><strong>{insights.summary.benefitProviders}</strong><p>{zh ? '免费、活动或单位提供' : 'free, promotional, or organization-provided'}</p></article>
       <article><span>{zh ? '已关联本机 TOKEN' : 'LINKED LOCAL TOKENS'}</span><strong>{localizedCompact(insights.summary.trackedTokens, zh)}</strong><p>{zh ? `${insights.summary.trackedProviders} 个账户有本机用量` : `${localizedCount(insights.summary.trackedProviders, false, '', 'account', 'accounts')} ${insights.summary.trackedProviders === 1 ? 'has' : 'have'} local usage`}</p></article>
@@ -396,4 +396,3 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
     <section className="subscription-method-note"><Info size={16}/><div><b>{zh ? '为什么有些账户只有 Token，没有“剩余额度”？' : 'Why do some accounts show Tokens without remaining quota?'}</b><p>{zh ? 'ChatGPT Pro、Claude Max 等可能只返回消耗比例，Warp、JetBrains AI 等在部分账户上甚至没有稳定可读的额度窗口。本工具只有拿到可验证比例时才反推容量；否则保留本机 Token、模型与标准 API 等价价值，但明确把官方余额标成不可观测。账号在网页端、其他设备上的用量和供应商内部权重仍不在本机证据中。' : 'Some products expose only utilization, while platforms such as Warp or JetBrains AI may expose no stable quota window for a given account. Capacity is inferred only from a verifiable ratio; otherwise local Tokens, models, and standard API-equivalent value remain while official balance is marked unobservable. Web, other-device usage, and provider weighting remain outside local evidence.'}</p></div></section>
   </section>;
 }
-

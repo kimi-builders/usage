@@ -159,20 +159,21 @@ function providerDetection(provider, settings, { environment, hasKeychainSecret,
   if (provider.quotaSupport === 'unavailable') return detected('unavailable', '订阅额度暂不可查');
   const local = detectLocalProvider(provider.id, settings, environment);
   if (local?.state === 'detected') return local;
-  const variable = settings.environmentVariable || provider.defaultEnvironmentVariable;
-  if (variable && environmentSecret(variable, environment)) return detected('configured', `已配置环境变量 ${variable}`);
-  if (hasKeychainSecret) return detected('configured', '已安全保存到 macOS 钥匙串');
   if (provider.id === 'opencode') {
     if (settings.accounts?.length) {
       const ready = settings.accounts.filter((account) => (
-        hasSecret(providerAccountCredentialKey(provider.id, account.id))
+        Boolean(account.label && account.workspaceId)
+        && hasSecret(providerAccountCredentialKey(provider.id, account.id))
       )).length;
       return ready === settings.accounts.length
         ? detected('configured', `${ready} 个 OpenCode Go 账户已配置`)
-        : detected('manual', `${ready}/${settings.accounts.length} 个 OpenCode Go 账户已配置`, '每个账户只需 Cookie；Workspace 可选');
+        : detected('manual', `${ready}/${settings.accounts.length} 个 OpenCode Go 账户已配置`, '每个账户都需要名称、Cookie 与 Workspace ID');
     }
-    return detected('manual', '需要连接 OpenCode Go 账户', '添加 Cookie 会话；Workspace 通常自动发现');
+    return detected('manual', '需要连接 OpenCode Go 账户', '添加账户并填写名称、Cookie 与 Workspace ID');
   }
+  const variable = settings.environmentVariable || provider.defaultEnvironmentVariable;
+  if (variable && environmentSecret(variable, environment)) return detected('configured', `已配置环境变量 ${variable}`);
+  if (hasKeychainSecret) return detected('configured', '已安全保存到 macOS 钥匙串');
   return local || detected('manual', '需要一次手动连接');
 }
 
@@ -181,8 +182,12 @@ export function getPublicLimitSettings(config = loadConfig(), options = {}) {
   const environment = options.environment || process.env;
   const keychainProviders = new Set(LIMIT_PROVIDER_CATALOG
     .filter((provider) => provider.authModes.includes('keychain')).map((provider) => provider.id));
+  const readSecret = options.readSecret || readKeychainSecret;
   const hasSecret = options.hasSecret
-    || ((providerId) => keychainProviders.has(providerId) && Boolean(readKeychainSecret(providerId)));
+    || ((credentialKey) => {
+      const providerId = String(credentialKey || '').split(':', 1)[0];
+      return keychainProviders.has(providerId) && Boolean(readSecret(credentialKey));
+    });
   const secretStates = Object.fromEntries(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id, hasSecret(provider.id)]));
   const detections = options.detections || Object.fromEntries(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id,
     providerDetection(provider, settings.providers[provider.id], {
@@ -356,6 +361,11 @@ async function fetchEnabled(settings, options = {}) {
       if (provider.accountMode && configuredAccounts.length) {
         const accounts = await Promise.all(configuredAccounts.map(async (account) => {
           try {
+            if (provider.id === 'opencode' && (!account.label || !account.workspaceId)) {
+              const error = new Error('OpenCode Go 账户需要名称、Cookie 与 Workspace ID 才能查询额度。');
+              error.code = 'not_configured';
+              throw error;
+            }
             const result = await fetchProvider({
               settings: accountSettings(provider.id, settings.providers[provider.id], account),
               environment: options.environment || process.env,

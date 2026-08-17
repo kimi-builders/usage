@@ -99,6 +99,41 @@ test('keeps actual subscription spend separate from API-equivalent value', () =>
   assert.equal(result.summary.pricedSubscriptions, 1);
 });
 
+test('uses the selected OpenCode account subscription without sharing metadata', () => {
+  const openCodeLimits = {
+    generatedAt,
+    providers: [{
+      id: 'opencode', label: 'OpenCode Go', activeAccountId: 'personal',
+      accounts: [
+        { id: 'opencode', accountId: 'personal', accountLabel: 'Personal', status: 'ok', windows: [] },
+        { id: 'opencode', accountId: 'work', accountLabel: 'Work', status: 'ok', windows: [] },
+      ],
+    }],
+  };
+  const settings = { providers: { opencode: {
+    activeAccountId: 'personal', entitlementType: 'paid', subscriptionPrice: 999,
+    accounts: [
+      { id: 'personal', entitlementType: 'free', subscriptionPrice: null },
+      { id: 'work', entitlementType: 'paid', subscriptionPrice: 30, subscriptionCurrency: 'usd', billingCycle: 'monthly' },
+    ],
+  } } };
+  const personal = buildSubscriptionInsights(snapshot, selectSubscriptionAccounts(openCodeLimits, { opencode: 'personal' }), { settings }).providers[0];
+  const personalResult = buildSubscriptionInsights(snapshot, selectSubscriptionAccounts(openCodeLimits, { opencode: 'personal' }), { settings });
+  const workResult = buildSubscriptionInsights(snapshot, selectSubscriptionAccounts(openCodeLimits, { opencode: 'work' }), { settings });
+  const work = workResult.providers[0];
+  assert.equal(personal.subscription.entitlementType, 'free');
+  assert.equal(personal.subscription.monthlyPrice, null);
+  assert.equal(work.subscription.entitlementType, 'paid');
+  assert.equal(work.subscription.monthlyPrice, 30);
+  assert.equal(personalResult.summary.subscriptionAccounts, 2);
+  assert.deepEqual(personalResult.summary.entitlementCounts, {
+    paid: 1, free: 1, promotion: 0, organization: 0, unknown: 0,
+  });
+  assert.deepEqual(personalResult.summary.spendByCurrency, { usd: 30, cny: 0 });
+  assert.equal(personalResult.summary.pricedSubscriptions, 1);
+  assert.equal(personalResult.summary.trackedTokens, workResult.summary.trackedTokens);
+});
+
 test('links sanitized quota history to local tokens and calculates current-cycle pace', () => {
   const value = structuredClone(limits);
   value.providers[0].windows[0].usedPercent = 30;

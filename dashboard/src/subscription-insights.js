@@ -38,6 +38,42 @@ function normalizedEntitlementType(subscription) {
   return finite(subscription?.subscriptionPrice) > 0 ? 'paid' : 'unknown';
 }
 
+function subscriptionSettingsForProvider(provider, settings) {
+  const providerSettings = settings?.providers?.[provider.id] || {};
+  if (provider.id !== 'opencode' || !Array.isArray(providerSettings.accounts)) return providerSettings;
+  const accountId = provider.accountId || providerSettings.activeAccountId;
+  return providerSettings.accounts.find((account) => account.id === accountId)
+    || providerSettings.accounts.find((account) => account.id === providerSettings.activeAccountId)
+    || providerSettings.accounts[0]
+    || {};
+}
+
+function normalizedSubscriptionFacts(subscription = {}) {
+  const entitlementType = normalizedEntitlementType(subscription);
+  const isPaid = entitlementType === 'paid';
+  const enteredPrice = finite(subscription.subscriptionPrice);
+  const price = isPaid && enteredPrice > 0 ? enteredPrice : null;
+  const billingCycle = subscription.billingCycle === 'yearly' ? 'yearly' : 'monthly';
+  return {
+    entitlementType,
+    isPaid,
+    price,
+    monthlyPrice: price == null ? null : billingCycle === 'yearly' ? price / 12 : price,
+    currency: subscription.subscriptionCurrency === 'cny' ? 'cny' : 'usd',
+    billingCycle,
+    renewsAt: isPaid ? subscription.renewsAt || null : null,
+  };
+}
+
+function subscriptionRecordsForSummary(providers, settings) {
+  return providers.flatMap((provider) => {
+    if (provider.id !== 'opencode') return [provider.subscription];
+    const accounts = settings?.providers?.opencode?.accounts;
+    if (!Array.isArray(accounts) || !accounts.length) return [provider.subscription];
+    return accounts.map((account) => normalizedSubscriptionFacts(account));
+  });
+}
+
 function hasQuotaFact(window) {
   return finite(window?.usedPercent) != null
     || finite(window?.remainingPercent) != null
@@ -549,12 +585,11 @@ export function buildSubscriptionInsights(snapshot, limits, {
       usageObservedAt,
       providerStale,
     ));
-    const subscription = settings?.providers?.[provider.id] || {};
-    const entitlementType = normalizedEntitlementType(subscription);
-    const isPaid = entitlementType === 'paid';
-    const enteredPrice = finite(subscription.subscriptionPrice);
-    const price = isPaid && enteredPrice > 0 ? enteredPrice : null;
-    const monthlyPrice = price == null ? null : subscription.billingCycle === 'yearly' ? price / 12 : price;
+    // OpenCode Go connection, quota facts, and subscription metadata all
+    // belong to the selected account. Never read provider-shared cost fields.
+    const subscription = subscriptionSettingsForProvider(provider, settings);
+    const subscriptionFacts = normalizedSubscriptionFacts(subscription);
+    const { monthlyPrice } = subscriptionFacts;
     const normalizedHistoryStart = Number.isFinite(sourceHistoryStart) ? sourceHistoryStart : null;
     const history = historyWindows(
       limits?.history, provider.id, provider.accountId || null,
@@ -623,15 +658,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
       windows: enrichedWindows,
       primaryWindow,
       hasLocalUsage: lifetimeTotals.totalTokens > 0,
-      subscription: {
-        entitlementType,
-        isPaid,
-        price,
-        monthlyPrice,
-        currency: subscription.subscriptionCurrency === 'cny' ? 'cny' : 'usd',
-        billingCycle: subscription.billingCycle === 'yearly' ? 'yearly' : 'monthly',
-        renewsAt: isPaid ? subscription.renewsAt || null : null,
-      },
+      subscription: subscriptionFacts,
       economics,
       quotaObservation,
       evidenceClock: {
@@ -650,7 +677,16 @@ export function buildSubscriptionInsights(snapshot, limits, {
     }) };
     return { ...withReview, decisionSignals: decisionSignals(withReview) };
   });
-  const spendByCurrency = providers.reduce((totals, provider) => {
+  // Subscription counts and spend are account facts. OpenCode Go may have
+  // multiple accounts, so count every configured account once. Local Token
+  // evidence remains provider-level and is intentionally not duplicated.
+  const subscriptionRecords = subscriptionRecordsForSummary(providers, settings);
+  const spendByCurrency = subscriptionRecords.reduce((totals, subscription) => {
+    const price = subscription.monthlyPrice;
+    if (subscription.isPaid && price != null) totals[subscription.currency] += price;
+    return totals;
+  }, { usd: 0, cny: 0 });
+  const selectedSpendByCurrency = providers.reduce((totals, provider) => {
     const price = provider.subscription.monthlyPrice;
     if (provider.subscription.isPaid && price != null) totals[provider.subscription.currency] += price;
     return totals;
@@ -658,7 +694,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
   const portfolio = buildPortfolioReview(providers, usageReferenceAt);
   const entitlementCounts = Object.fromEntries(
     ['paid', 'free', 'promotion', 'organization', 'unknown'].map((type) => [
-      type, providers.filter((provider) => provider.subscription.entitlementType === type).length,
+      type, subscriptionRecords.filter((subscription) => subscription.entitlementType === type).length,
     ]),
   );
   return {
@@ -669,22 +705,23 @@ export function buildSubscriptionInsights(snapshot, limits, {
       trackedProviders: providers.filter((provider) => provider.hasLocalUsage).length,
       estimableWindows: providers.flatMap((provider) => provider.windows)
         .filter((window) => window.estimatedCapacityTokens != null).length,
+      subscriptionAccounts: subscriptionRecords.length,
       spendByCurrency,
-      pricedSubscriptions: providers.filter((provider) => (
-        provider.subscription.isPaid && provider.subscription.monthlyPrice != null
+      pricedSubscriptions: subscriptionRecords.filter((subscription) => (
+        subscription.isPaid && subscription.monthlyPrice != null
       )).length,
       entitlementCounts,
-      classifiedProviders: providers.length - entitlementCounts.unknown,
+      classifiedProviders: subscriptionRecords.length - entitlementCounts.unknown,
       benefitProviders: entitlementCounts.free + entitlementCounts.promotion + entitlementCounts.organization,
       quotaObservableProviders: providers.filter((provider) => provider.quotaObservation.state === 'current').length,
       quotaHistoricalProviders: providers.filter((provider) => provider.quotaObservation.state === 'historical').length,
       quotaUnavailableProviders: providers.filter((provider) => provider.quotaObservation.state === 'unavailable').length,
       recentTokens: providers.reduce((sum, provider) => sum + provider.recentTotals.totalTokens, 0),
       apiEquivalentUsd: providers.reduce((sum, provider) => sum + provider.economics.apiEquivalentUsd, 0),
-      portfolioValueRatio: spendByCurrency.usd > 0
+      portfolioValueRatio: selectedSpendByCurrency.usd > 0
         ? providers.filter((provider) => provider.subscription.isPaid
           && provider.subscription.currency === 'usd' && provider.subscription.monthlyPrice > 0)
-          .reduce((sum, provider) => sum + provider.economics.apiEquivalentUsd, 0) / spendByCurrency.usd
+          .reduce((sum, provider) => sum + provider.economics.apiEquivalentUsd, 0) / selectedSpendByCurrency.usd
         : null,
       historyObservations: limits?.history?.observations?.length || 0,
     },

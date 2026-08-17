@@ -50,9 +50,9 @@ test('secret dirty detection supports flat and nested account credential maps', 
   assert.equal(utils.hasEnteredSecrets(null), false);
 });
 
-test('OpenCode Go workspace validation is exact and consistently allows auto-discovery', () => {
-  assert.equal(utils.isValidOpenCodeWorkspaceId(''), true);
-  assert.equal(utils.isValidOpenCodeWorkspaceId(null), true);
+test('OpenCode Go workspace validation requires an exact per-account ID', () => {
+  assert.equal(utils.isValidOpenCodeWorkspaceId(''), false);
+  assert.equal(utils.isValidOpenCodeWorkspaceId(null), false);
   assert.equal(utils.isValidOpenCodeWorkspaceId('wrk_01M027SPTN5G825MYDRZ0Q0TS2'), true);
   assert.equal(utils.isValidOpenCodeWorkspaceId('xwrk_example'), false);
   assert.equal(utils.isValidOpenCodeWorkspaceId('wrk_example!'), false);

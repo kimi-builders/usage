@@ -1,10 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import { normalizeCookieSecret, resolveProviderSecret } from '../credentials.js';
 import { asDate, asPercent, requestText } from '../http.js';
 
 const BASE_URL = 'https://opencode.ai';
-const SERVER_URL = `${BASE_URL}/_server`;
-const WORKSPACES_SERVER_ID = 'def39973159c7f0483d8793a822b8dbb10d067e12c65455fcb4608459ba0234f';
 
 const PERCENT_KEYS = [
   'usagePercent', 'usedPercent', 'percentUsed', 'percent', 'usage_percent', 'used_percent',
@@ -127,39 +124,9 @@ export function parseOpenCodeGoUsage(text, { now = new Date(), source = 'OpenCod
 // provider label and network implementation now accurately target OpenCode Go.
 export const parseOpenCodeUsage = parseOpenCodeGoUsage;
 
-function serverHeaders(id, cookie, referer) {
-  return {
-    Cookie: cookie,
-    'X-Server-Id': id,
-    'X-Server-Instance': `server-fn:${randomUUID()}`,
-    Origin: BASE_URL,
-    Referer: referer,
-    Accept: 'text/javascript, application/json;q=0.9, */*;q=0.8',
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/143 Safari/537.36',
-  };
-}
-
-async function serverRequest(id, cookie, fetcher, method = 'GET') {
-  const url = new URL(SERVER_URL);
-  if (method === 'GET') url.searchParams.set('id', id);
-  const headers = serverHeaders(id, cookie, BASE_URL);
-  if (method !== 'GET') headers['Content-Type'] = 'application/json';
-  return requestText(url, {
-    method,
-    headers,
-    body: method === 'GET' ? undefined : [],
-    fetcher,
-  });
-}
-
 function workspaceId(value) {
   const match = String(value || '').match(/wrk_[A-Za-z0-9_-]+/);
   return match?.[0] || null;
-}
-
-function workspaceIds(text) {
-  const ids = String(text || '').match(/wrk_[A-Za-z0-9_-]+/g) || [];
-  return [...new Set(ids)];
 }
 
 function looksSignedOut(text) {
@@ -167,31 +134,6 @@ function looksSignedOut(text) {
   return lower.includes('auth/authorize')
     || lower.includes('not associated with an account')
     || lower.includes('actor of type "public"');
-}
-
-async function discoverWorkspaceId(cookie, fetcher) {
-  let text = await serverRequest(WORKSPACES_SERVER_ID, cookie, fetcher);
-  if (looksSignedOut(text)) {
-    const error = new Error('OpenCode Go Cookie 已失效，请重新复制登录会话。');
-    error.code = 'unauthorized';
-    throw error;
-  }
-  let ids = workspaceIds(text);
-  if (!ids.length) {
-    text = await serverRequest(WORKSPACES_SERVER_ID, cookie, fetcher, 'POST');
-    if (looksSignedOut(text)) {
-      const error = new Error('OpenCode Go Cookie 已失效，请重新复制登录会话。');
-      error.code = 'unauthorized';
-      throw error;
-    }
-    ids = workspaceIds(text);
-  }
-  if (!ids.length) {
-    const error = new Error('OpenCode Go 未返回 Workspace；可在设置中填写 Workspace ID 作为覆盖值。');
-    error.code = 'workspace_unavailable';
-    throw error;
-  }
-  return ids[0];
 }
 
 async function fetchUsagePage(workspace, cookie, fetcher) {
@@ -222,7 +164,12 @@ export async function fetchOpenCodeGoLimits({ settings, environment = process.en
     error.code = 'not_configured';
     throw error;
   }
-  const workspace = workspaceId(settings.workspaceId) || await discoverWorkspaceId(cookie, fetcher);
+  const workspace = workspaceId(settings.workspaceId);
+  if (!workspace) {
+    const error = new Error('未配置 OpenCode Go Workspace ID；每个账户都需要与 Cookie 配套的 wrk_… ID。');
+    error.code = 'not_configured';
+    throw error;
+  }
   const text = await fetchUsagePage(workspace, cookie, fetcher);
   const source = settings.authMode === 'keychain'
     ? (settings.accountLabel ? `OpenCode Go 账户 · ${settings.accountLabel}` : '本工具 macOS 钥匙串')

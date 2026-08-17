@@ -16,7 +16,8 @@ import { fetchOpenCodeGoLimits, parseOpenCodeGoUsage } from '../src/limits/provi
 import { parseQoderUsage } from '../src/limits/providers/qoder.js';
 import { parseWarpUsage } from '../src/limits/providers/warp.js';
 import {
-  clearLimitCache, createCopilotDeviceController, loadSubscriptionLimits, saveLimitSettings,
+  clearLimitCache, createCopilotDeviceController, getPublicLimitSettings,
+  loadSubscriptionLimits, saveLimitSettings,
 } from '../src/limits/service.js';
 
 const NOW = new Date('2026-08-11T12:00:00.000Z');
@@ -78,12 +79,71 @@ test('normalizes multi-account settings and keeps OpenCode Cookie separate from 
   assert.equal(value.providers.opencode.workspaceId, '');
   assert.deepEqual(value.providers.opencode.accounts, [{
     id: 'personal', label: 'Personal', externalIdentifier: '', workspaceId: 'wrk_personal',
+    entitlementType: 'unknown', subscriptionPrice: null, subscriptionCurrency: 'usd',
+    billingCycle: 'monthly', renewsAt: '',
   }]);
   const exposed = publicLimitSettings(value, {
     keychainAvailable: true, hasSecret: (key) => key === 'opencode:personal',
   });
   assert.equal(exposed.providers.opencode.accounts[0].hasSecret, true);
   assert.equal(JSON.stringify(exposed).includes('must-not-persist'), false);
+});
+
+test('keeps OpenCode subscription metadata per account and migrates legacy spend only once', () => {
+  const migrated = normalizeLimitSettings({ providers: { opencode: {
+    entitlementType: 'paid', subscriptionPrice: 20, subscriptionCurrency: 'usd',
+    billingCycle: 'monthly', renewsAt: '2026-09-01', activeAccountId: 'work',
+    accounts: [
+      { id: 'personal', label: 'Personal', workspaceId: 'wrk_personal' },
+      { id: 'work', label: 'Work', workspaceId: 'wrk_work' },
+    ],
+  } } });
+  const provider = migrated.providers.opencode;
+  assert.equal(provider.entitlementType, 'unknown');
+  assert.equal(provider.subscriptionPrice, null);
+  assert.equal(provider.accounts[0].entitlementType, 'unknown');
+  assert.equal(provider.accounts[0].subscriptionPrice, null);
+  assert.equal(provider.accounts[1].entitlementType, 'paid');
+  assert.equal(provider.accounts[1].subscriptionPrice, 20);
+  assert.equal(provider.accounts[1].renewsAt, '2026-09-01');
+
+  const isolated = normalizeLimitSettings({ providers: { opencode: {
+    activeAccountId: 'personal', accounts: [
+      {
+        id: 'personal', label: 'Personal', workspaceId: 'wrk_personal',
+        entitlementType: 'free', subscriptionPrice: 99,
+      },
+      {
+        id: 'work', label: 'Work', workspaceId: 'wrk_work',
+        entitlementType: 'paid', subscriptionPrice: 45, subscriptionCurrency: 'cny',
+        billingCycle: 'yearly', renewsAt: '2027-01-02',
+      },
+    ],
+  } } });
+  assert.equal(isolated.providers.opencode.accounts[0].entitlementType, 'free');
+  assert.equal(isolated.providers.opencode.accounts[0].subscriptionPrice, null);
+  assert.equal(isolated.providers.opencode.accounts[1].subscriptionPrice, 45);
+  assert.equal(isolated.providers.opencode.accounts[1].subscriptionCurrency, 'cny');
+  assert.equal(isolated.providers.opencode.accounts[1].billingCycle, 'yearly');
+});
+
+test('public settings recognize a saved OpenCode account Cookie after reload', () => {
+  const config = { subscriptionLimits: normalizeLimitSettings({ providers: { opencode: {
+    enabled: true,
+    accounts: [{ id: 'personal', label: 'Personal', workspaceId: 'wrk_personal' }],
+    activeAccountId: 'personal',
+  } } }) };
+  const reads = [];
+  const exposed = getPublicLimitSettings(config, {
+    keychainAvailable: true,
+    readSecret: (key) => {
+      reads.push(key);
+      return key === 'opencode:personal' ? 'auth=saved-cookie' : null;
+    },
+  });
+  assert.equal(exposed.providers.opencode.accounts[0].hasSecret, true);
+  assert.equal(exposed.catalog.find((provider) => provider.id === 'opencode').detection.state, 'configured');
+  assert.ok(reads.includes('opencode:personal'));
 });
 
 test('saves each account credential under its own key and deletes removed accounts', () => {
@@ -326,48 +386,7 @@ test('maps OpenCode Go rolling, weekly, and monthly quota payloads', () => {
   assert.equal(result.windows[0].resetsAt, '2026-08-11T12:30:00.000Z');
 });
 
-test('OpenCode Go discovers a workspace and fetches its Go usage page', async () => {
-  const requests = [];
-  const responses = [
-    ';0x00000041;({id:"wrk_demo",name:"Personal"})',
-    '<script>rollingUsage:{usagePercent:10,resetInSec:300},weeklyUsage:{usagePercent:20,resetInSec:600}</script>',
-  ];
-  const result = await fetchOpenCodeGoLimits({
-    settings: { authMode: 'environment', environmentVariable: 'OPENCODE_COOKIE', workspaceId: '' },
-    environment: { OPENCODE_COOKIE: 'auth=session' },
-    fetcher: async (url, init) => {
-      requests.push({ url: String(url), method: init.method, body: init.body });
-      return new Response(responses.shift(), { status: 200 });
-    },
-  });
-  assert.deepEqual(requests.map((request) => request.method), ['GET', 'GET']);
-  assert.match(requests[0].url, /_server\?id=/);
-  assert.equal(new URL(requests[1].url).pathname, '/workspace/wrk_demo/go');
-  assert.deepEqual(result.windows.map((window) => window.remainingPercent), [90, 80]);
-});
-
-test('OpenCode Go retries workspace discovery with POST when GET is incomplete', async () => {
-  const requests = [];
-  const responses = [
-    '{}',
-    '[{id:"wrk_fallback",name:"Work"}]',
-    '<script>rollingUsage:{usagePercent:25,resetInSec:900}</script>',
-  ];
-  const result = await fetchOpenCodeGoLimits({
-    settings: { authMode: 'environment', environmentVariable: 'OPENCODE_COOKIE', workspaceId: '' },
-    environment: { OPENCODE_COOKIE: 'auth=session' },
-    fetcher: async (url, init) => {
-      requests.push({ url: String(url), method: init.method, body: init.body });
-      return new Response(responses.shift(), { status: 200 });
-    },
-  });
-  assert.deepEqual(requests.map((request) => request.method), ['GET', 'POST', 'GET']);
-  assert.equal(requests[1].body, '[]');
-  assert.equal(new URL(requests[2].url).pathname, '/workspace/wrk_fallback/go');
-  assert.equal(result.windows[0].remainingPercent, 75);
-});
-
-test('OpenCode Go accepts a Workspace override and skips discovery', async () => {
+test('OpenCode Go queries the Workspace paired with its Cookie', async () => {
   const requests = [];
   const result = await fetchOpenCodeGoLimits({
     settings: { authMode: 'environment', environmentVariable: 'OPENCODE_COOKIE', workspaceId: 'wrk_override' },
@@ -382,12 +401,42 @@ test('OpenCode Go accepts a Workspace override and skips discovery', async () =>
   assert.equal(result.windows[0].remainingPercent, 70);
 });
 
-test('OpenCode Go reports an actionable error when workspace discovery fails', async () => {
+test('OpenCode Go refuses quota lookup when its account Workspace is missing', async () => {
+  let requested = false;
   await assert.rejects(fetchOpenCodeGoLimits({
     settings: { authMode: 'environment', environmentVariable: 'OPENCODE_COOKIE', workspaceId: '' },
     environment: { OPENCODE_COOKIE: 'auth=session' },
-    fetcher: async () => new Response('{}', { status: 200 }),
-  }), (error) => error.code === 'workspace_unavailable');
+    fetcher: async () => { requested = true; return new Response('{}', { status: 200 }); },
+  }), (error) => error.code === 'not_configured' && /Workspace ID/.test(error.message));
+  assert.equal(requested, false);
+});
+
+test('OpenCode Go rejects a malformed Workspace before any network request', async () => {
+  let requested = false;
+  await assert.rejects(fetchOpenCodeGoLimits({
+    settings: { authMode: 'environment', environmentVariable: 'OPENCODE_COOKIE', workspaceId: 'workspace_wrong' },
+    environment: { OPENCODE_COOKIE: 'auth=session' },
+    fetcher: async () => { requested = true; return new Response('{}', { status: 200 }); },
+  }), (error) => error.code === 'not_configured');
+  assert.equal(requested, false);
+});
+
+test('OpenCode Go keeps each Cookie paired with its own Workspace request', async () => {
+  const pairs = [];
+  for (const [workspaceId, cookie] of [['wrk_personal', 'auth=personal'], ['wrk_work', 'auth=work']]) {
+    await fetchOpenCodeGoLimits({
+      settings: { authMode: 'environment', environmentVariable: 'OPENCODE_COOKIE', workspaceId },
+      environment: { OPENCODE_COOKIE: cookie },
+      fetcher: async (url, init) => {
+        pairs.push([new URL(url).pathname, init.headers.Cookie]);
+        return new Response('<script>weeklyUsage:{usagePercent:30,resetInSec:600}</script>', { status: 200 });
+      },
+    });
+  }
+  assert.deepEqual(pairs, [
+    ['/workspace/wrk_personal/go', 'auth=personal'],
+    ['/workspace/wrk_work/go', 'auth=work'],
+  ]);
 });
 
 test('normalizes OpenCode Go fractional percentages and used-limit payloads', () => {
@@ -584,4 +633,25 @@ test('subscription limit service queries and isolates every configured account',
   assert.equal(result.providers[0].activeAccountId, 'work');
   assert.equal(result.providers[0].windows[0].usedPercent, 70);
   assert.deepEqual(result.providers[0].accounts.map((account) => account.accountId), ['personal', 'work']);
+});
+
+test('subscription limit service never queries an incomplete OpenCode account', async () => {
+  clearLimitCache();
+  let requested = false;
+  const result = await loadSubscriptionLimits({
+    force: true,
+    config: { subscriptionLimits: {
+      enabled: true, providerOrder: ['opencode'], providers: { opencode: {
+        enabled: true,
+        accounts: [{ id: 'unnamed', label: '', workspaceId: 'wrk_personal' }],
+        activeAccountId: 'unnamed',
+      } },
+    } },
+    historyLoader: () => ({ schemaVersion: 1, observations: [] }),
+    historyRecorder: () => {},
+    fetchers: { opencode: async () => { requested = true; } },
+  });
+  assert.equal(requested, false);
+  assert.equal(result.providers[0].accounts[0].status, 'error');
+  assert.equal(result.providers[0].accounts[0].error.code, 'not_configured');
 });

@@ -19,7 +19,7 @@ export function hasEnteredSecrets(value) {
 }
 
 export function isValidOpenCodeWorkspaceId(value) {
-  return !value || /^wrk_[A-Za-z0-9_-]+$/.test(String(value));
+  return /^wrk_[A-Za-z0-9_-]+$/.test(String(value || '').trim());
 }
 
 export function localizedCompact(value, zh) {
