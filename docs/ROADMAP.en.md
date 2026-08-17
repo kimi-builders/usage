@@ -2,7 +2,7 @@
 
 > [中文](./ROADMAP.md)
 >
-> Current version: `0.5.1` (public Beta feature release)
+> Current version: `0.5.2` (public Beta feature release)
 >
 > This roadmap states priorities and acceptance criteria, not release dates.
 > Provider facts, local observations, user-declared goals, and assumption-bound

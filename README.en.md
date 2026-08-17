@@ -181,7 +181,7 @@ browser and is never uploaded to the community or a third party.
 **Project status:** public Beta. Stable sources are covered by cross-platform
 fixtures and contract tests; sources with limited log-format evidence remain
 explicitly labelled Beta. [Roadmap](./docs/ROADMAP.en.md) ·
-[Release notes](./docs/RELEASE_NOTES_0.5.1.en.md) · [All docs](./docs/README.en.md)
+[Release notes](./docs/RELEASE_NOTES_0.5.2.en.md) · [All docs](./docs/README.en.md)
 
 ## Run from source
 

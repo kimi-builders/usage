@@ -18,6 +18,7 @@
 - [威胁模型](../THREAT_MODEL.zh.md)
 - [安全政策](../SECURITY.zh.md)
 - [发布清单](../PUBLISHING.zh.md)
+- [0.5.2 发布说明](./RELEASE_NOTES_0.5.2.md)
 - [0.5.1 发布说明](./RELEASE_NOTES_0.5.1.md)
 - [0.5.0 发布说明](./RELEASE_NOTES_0.5.0.md)
 - [0.4.1 发布说明](./RELEASE_NOTES_0.4.1.md)

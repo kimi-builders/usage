@@ -151,7 +151,7 @@ npx @kimi.builders/usage@latest sync
 
 **项目状态：** 当前是公开 Beta。稳定来源经过跨平台 fixture 与 contract test；日志格式
 覆盖有限的来源会明确标为 Beta。[Roadmap](./docs/ROADMAP.md) ·
-[发布说明](./docs/RELEASE_NOTES_0.5.1.md) · [全部文档](./docs/README.md)
+[发布说明](./docs/RELEASE_NOTES_0.5.2.md) · [全部文档](./docs/README.md)
 
 ## 从源码运行
 
