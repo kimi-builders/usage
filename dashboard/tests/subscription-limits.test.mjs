@@ -50,6 +50,15 @@ test('secret dirty detection supports flat and nested account credential maps', 
   assert.equal(utils.hasEnteredSecrets(null), false);
 });
 
+test('OpenCode Go workspace validation is exact and consistently allows auto-discovery', () => {
+  assert.equal(utils.isValidOpenCodeWorkspaceId(''), true);
+  assert.equal(utils.isValidOpenCodeWorkspaceId(null), true);
+  assert.equal(utils.isValidOpenCodeWorkspaceId('wrk_01M027SPTN5G825MYDRZ0Q0TS2'), true);
+  assert.equal(utils.isValidOpenCodeWorkspaceId('xwrk_example'), false);
+  assert.equal(utils.isValidOpenCodeWorkspaceId('wrk_example!'), false);
+  assert.equal(utils.isValidOpenCodeWorkspaceId('wrk_'), false);
+});
+
 test('reset-credit UI distinguishes available, observed zero, and unknown counts', () => {
   assert.deepEqual(utils.resetCreditPresentation({ availableCount: 2 }, false), {
     state: 'available', value: '2', detail: null,

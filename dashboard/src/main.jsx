@@ -1,10 +1,11 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.jsx";
+import { normalizeVibe } from "./visual-preferences.js";
 import "./styles.css";
 
 const savedTheme = localStorage.getItem("kbu.theme");
-document.documentElement.dataset.vibe = localStorage.getItem("kbu.vibe") || "poster";
+document.documentElement.dataset.vibe = normalizeVibe(localStorage.getItem("kbu.vibe"));
 document.documentElement.dataset.theme = savedTheme
   || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
 

@@ -20,6 +20,7 @@ import { compactNumber, delta, DISPLAY_CURRENCIES, DISPLAY_FX_AS_OF, DISPLAY_FX_
 import { resolveCommunityStatus } from './device-authorization.js';
 import { isBenefitSection, isStandaloneSection, sectionFromHash, titleForSection, USAGE_SECTION_IDS } from './navigation.js';
 import { Button, PageState } from './ui.jsx';
+import { normalizeVibe } from './visual-preferences.js';
 
 const COPY = {
   zh: {
@@ -132,7 +133,7 @@ export function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [theme, setTheme] = useState(() => localStorage.getItem('kbu.theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
-  const [vibe, setVibe] = useState(() => localStorage.getItem('kbu.vibe') || 'poster');
+  const [vibe, setVibe] = useState(() => normalizeVibe(localStorage.getItem('kbu.vibe')));
   useEffect(() => { document.documentElement.dataset.vibe = vibe; localStorage.setItem('kbu.vibe', vibe); }, [vibe]);
   const [locale, setLocale] = useState(() => localStorage.getItem('kbu.locale') || 'zh');
   const compactValue = (value) => compactNumber(value, locale);

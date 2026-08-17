@@ -52,6 +52,7 @@ test('dirty guard intercepts close and escape instead of discarding silently', a
 test('openCode cookie and workspace validation fires on blur', async () => {
   const jsx = await dialog();
   assert.match(jsx, /const fieldError = \(accountId, kind\) => \{/);
+  assert.equal((jsx.match(/isValidOpenCodeWorkspaceId\(account\.workspaceId\)/g) || []).length, 2);
   assert.match(jsx, /onBlur=\{\(\) => setTouched\(\(current\) => \(\{ \.\.\.current, \[`cookie:\$\{account\.id\}`\]: true \}\)\)\}/);
 });
 

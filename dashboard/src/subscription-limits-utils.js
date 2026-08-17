@@ -18,6 +18,10 @@ export function hasEnteredSecrets(value) {
   return Object.values(value).some((entry) => hasEnteredSecrets(entry));
 }
 
+export function isValidOpenCodeWorkspaceId(value) {
+  return !value || /^wrk_[A-Za-z0-9_-]+$/.test(String(value));
+}
+
 export function localizedCompact(value, zh) {
   return compactNumber(value, zh ? 'zh' : 'en');
 }

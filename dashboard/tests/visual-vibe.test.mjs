@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { normalizeVibe } from '../src/visual-preferences.js';
 
 /* 源码钉测试(20260816):看板与社区站共享的「视觉气质」与筛选分组语言。
    只钉源码结构,不渲染——构建产物与运行时行为由其余套件覆盖。 */
@@ -21,7 +22,11 @@ test('vibe poster override zeroes the radius and shadow tokens', async () => {
 
 test('vibe bootstraps before first paint and defaults to poster', async () => {
   const main = await read('../src/main.jsx');
-  assert.match(main, /dataset\.vibe\s*=\s*localStorage\.getItem\("kbu\.vibe"\)\s*\|\|\s*"poster"/);
+  assert.match(main, /dataset\.vibe\s*=\s*normalizeVibe\(localStorage\.getItem\("kbu\.vibe"\)\)/);
+  assert.equal(normalizeVibe('poster'), 'poster');
+  assert.equal(normalizeVibe('soft'), 'soft');
+  assert.equal(normalizeVibe('legacy-value'), 'poster');
+  assert.equal(normalizeVibe(null), 'poster');
 });
 
 test('topbar and mobile drawer both expose the vibe toggle with persistence', async () => {

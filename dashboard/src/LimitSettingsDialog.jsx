@@ -7,7 +7,7 @@ import { ProviderIcon } from './SubscriptionLimits.jsx';
 import { moveEnabledProvider, reorderEnabledProviders } from './provider-order.js';
 import {
   ENTITLEMENT_TYPES, entitlementBadge, entitlementLabel, entitlementNote,
-  hasEnteredSecrets, idSegment, localizedCount,
+  hasEnteredSecrets, idSegment, isValidOpenCodeWorkspaceId, localizedCount,
 } from './subscription-limits-utils.js';
 
 /* 权益设置弹窗(20260816 自 SubscriptionLimits.jsx 拆出,只导出组件) */
@@ -125,7 +125,7 @@ function OpenCodeGoConnectionPanel({
     if (kind === 'cookie' && !(accountSecrets.opencode?.[accountId] || '').trim() && !account.hasSecret) {
       return zh ? '需要粘贴 Cookie 才能查询该会话。' : 'Paste a Cookie to query this session.';
     }
-    if (kind === 'workspace' && account.workspaceId && !/^wrk_[A-Za-z0-9_-]+$/.test(account.workspaceId)) {
+    if (kind === 'workspace' && !isValidOpenCodeWorkspaceId(account.workspaceId)) {
       return zh ? 'Workspace ID 需以 wrk_ 开头；留空则自动发现。' : 'Workspace ID must start with wrk_; leave blank for auto discovery.';
     }
     return '';
@@ -280,7 +280,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
         ? 'OpenCode Go 已启用，请先添加至少一个 Cookie 会话。'
         : 'OpenCode Go is enabled. Add at least one Cookie session.');
       const incompleteOpenCode = openCode.accounts.filter((account) => (
-        (account.workspaceId && !/wrk_[A-Za-z0-9_-]+/.test(account.workspaceId))
+        !isValidOpenCodeWorkspaceId(account.workspaceId)
         || (!account.hasSecret && !(accountSecrets.opencode?.[account.id] || '').trim())
       ));
       if (incompleteOpenCode.length) throw new Error(zh
