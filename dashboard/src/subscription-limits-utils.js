@@ -12,6 +12,12 @@ export function idSegment(value) {
   return String(value).replace(/[^a-zA-Z0-9_-]/g, '-');
 }
 
+export function hasEnteredSecrets(value) {
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (!value || typeof value !== 'object') return false;
+  return Object.values(value).some((entry) => hasEnteredSecrets(entry));
+}
+
 export function localizedCompact(value, zh) {
   return compactNumber(value, zh ? 'zh' : 'en');
 }

@@ -42,6 +42,14 @@ test('shows a value / limit detail only when both numbers are finite', () => {
   assert.equal(utils.limitWindowDetail({ value: 12, limit: Number.POSITIVE_INFINITY }), null);
 });
 
+test('secret dirty detection supports flat and nested account credential maps', () => {
+  assert.equal(utils.hasEnteredSecrets({ codex: '  ' }), false);
+  assert.equal(utils.hasEnteredSecrets({ codex: 'token' }), true);
+  assert.equal(utils.hasEnteredSecrets({ opencode: { accountA: '  ', accountB: 'auth=cookie' } }), true);
+  assert.equal(utils.hasEnteredSecrets({ opencode: { accountA: '' }, copilot: {} }), false);
+  assert.equal(utils.hasEnteredSecrets(null), false);
+});
+
 test('reset-credit UI distinguishes available, observed zero, and unknown counts', () => {
   assert.deepEqual(utils.resetCreditPresentation({ availableCount: 2 }, false), {
     state: 'available', value: '2', detail: null,

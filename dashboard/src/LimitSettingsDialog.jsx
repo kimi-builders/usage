@@ -7,7 +7,7 @@ import { ProviderIcon } from './SubscriptionLimits.jsx';
 import { moveEnabledProvider, reorderEnabledProviders } from './provider-order.js';
 import {
   ENTITLEMENT_TYPES, entitlementBadge, entitlementLabel, entitlementNote,
-  idSegment, localizedCount,
+  hasEnteredSecrets, idSegment, localizedCount,
 } from './subscription-limits-utils.js';
 
 /* 权益设置弹窗(20260816 自 SubscriptionLimits.jsx 拆出,只导出组件) */
@@ -220,12 +220,15 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
   /* dirty 守卫(20260816):草稿偏离已保存设置(或新输入过凭据)时,
      关闭动作先出确认条,再放弃;提交成功照常直接关闭 */
   const dirty = JSON.stringify(draft) !== JSON.stringify(settings)
-    || Object.values(secrets).some((value) => value.trim())
+    || hasEnteredSecrets(secrets)
     || clearSecrets.length > 0
-    || Object.values(accountSecrets).some((value) => value.trim())
+    || hasEnteredSecrets(accountSecrets)
     || clearAccountSecrets.length > 0;
+  const closeStateRef = useRef({ dirty: false, confirmDiscard: false });
+  closeStateRef.current = { dirty, confirmDiscard };
   const requestClose = () => {
-    if (dirty && !confirmDiscard) { setConfirmDiscard(true); return; }
+    const current = closeStateRef.current;
+    if (current.dirty && !current.confirmDiscard) { setConfirmDiscard(true); return; }
     onClose();
   };
   /* 分区锚点:滚动时点亮当前段(连接平台 / 显示顺序) */
@@ -250,7 +253,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
     const previousFocus = document.activeElement;
     const focusable = () => [...(dialogRef.current?.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), [href], [tabindex]:not([tabindex="-1"])') || [])];
     const key = (event) => {
-      if (event.key === 'Escape') { event.preventDefault(); if (confirmDiscard) setConfirmDiscard(false); else requestClose(); return; }
+      if (event.key === 'Escape') { event.preventDefault(); if (closeStateRef.current.confirmDiscard) setConfirmDiscard(false); else requestClose(); return; }
       if (event.key !== 'Tab') return;
       const items = focusable();
       if (!items.length) return;

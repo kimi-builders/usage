@@ -41,6 +41,9 @@ test('section anchor nav sticks to the scroll body and tracks the active section
 test('dirty guard intercepts close and escape instead of discarding silently', async () => {
   const jsx = await dialog();
   assert.match(jsx, /const dirty = JSON\.stringify\(draft\) !== JSON\.stringify\(settings\)/);
+  assert.match(jsx, /hasEnteredSecrets\(accountSecrets\)/);
+  assert.match(jsx, /closeStateRef\.current = \{ dirty, confirmDiscard \}/);
+  assert.match(jsx, /closeStateRef\.current\.confirmDiscard/);
   assert.match(jsx, /const requestClose = \(\) => \{/);
   assert.match(jsx, /dialog-dirty-bar/);
   assert.match(jsx, /放弃并关闭/);
