@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { analyze, EMPTY_FILTERS, filterOptions } from './analytics.js';
 import { ActivityHeatmap, DailyTrend, DistributionCard, WeeklyTrend } from './UsageCharts.jsx';
+import { UsageAttributionSummary } from './UsageAttributionSummary.jsx';
 import { Dialog, ExportDialog, MethodDialog, ShareDialog } from './UsageDialogs.jsx';
 import { UsageFilterBar } from './UsageFilters.jsx';
 import { UsageManagement } from './UsageManagement.jsx';
@@ -482,6 +483,7 @@ export function App() {
 
       <section className="stats-grid"><Stat zh={zh} label={t.peak} value={compactValue(report.peakTokens)} sub={lastSeries?.label}/><Stat zh={zh} label={t.active} value={duration(report.activeSeconds, zh)} previousValue={duration(previous?.activeSeconds || 0, zh)} change={delta(report.activeSeconds, previous?.activeSeconds)} onHelp={() => setDialog('method')}/><Stat zh={zh} label={t.engaged} value={duration(report.engagedSeconds, zh)} previousValue={duration(previous?.engagedSeconds || 0, zh)} change={delta(report.engagedSeconds, previous?.engagedSeconds)} sub={zh ? '单次空闲最多计 30 分钟' : 'idle gaps capped at 30m'}/><Stat zh={zh} label={t.sessions} value={integer(report.sessions.length)} previousValue={integer(previous?.sessions || 0)} change={delta(report.sessions.length, previous?.sessions)}/><Stat zh={zh} label={t.messages} value={compactValue(report.messageCount)} previousValue={compactValue(previous?.messageCount || 0)} change={delta(report.messageCount, previous?.messageCount)}/><Stat zh={zh} label={t.userMessages} value={compactValue(report.userMessageCount)} previousValue={compactValue(previous?.userMessageCount || 0)} change={delta(report.userMessageCount, previous?.userMessageCount)}/><Stat zh={zh} label={t.avg} value={`${report.avgRequestSeconds.toFixed(1)}s`} sub={zh ? '≈ 活跃时长 ÷ 请求数' : '≈ active time ÷ requests'}/><Stat zh={zh} label={t.requests} value={compactValue(report.totals.requestCount)}/><Stat zh={zh} label={t.lifetime} value={compactValue(report.lifetimeTotals.totalTokens)} sub={zh ? '全部本地历史 · 保留维度筛选' : 'all local history · filters apply'}/><Stat zh={zh} label={t.reasoning} value={compactValue(report.totals.reasoningOutputTokens)} sub={report.topReasoning || (zh ? '未记录强度' : 'Effort not recorded')}/></section>
       <UsageInsightSummary budget={budgetInsight} milestones={milestoneInsight} spikes={spikeInsight} zh={zh} currency={currency} onEditBudget={() => setDialog('budget')}/>
+      <UsageAttributionSummary report={report} zh={zh} currency={currency}/>
       <SubscriptionPulse data={limitData} usageData={data} settings={limitSettings} loading={limitLoading} error={limitError} onRetry={() => loadLimits(true)} onOpen={(event) => navigateSection(event, '#subscriptions')} onSettings={openLimitSettings} zh={zh}/>
       {dimensionFiltersActive ? <p className="metric-scope-note">{zh ? '会话与时长指标无法按模型或推理强度拆分，仍显示当前 Agent 范围。' : 'Sessions and time cannot be split by model or effort; the current Agent scope is shown.'}</p> : null}
 

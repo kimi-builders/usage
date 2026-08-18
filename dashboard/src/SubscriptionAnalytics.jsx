@@ -120,6 +120,19 @@ function tooltipLeft(event, viewport, tipWidth) {
   return center < container.width / 2 ? Math.max(8, container.width - tipWidth - 8) : 8;
 }
 
+function tooltipAbove(event, viewport, tipWidth = 258, tipHeight = 194) {
+  if (!viewport) return { left: 8, top: 8, arrowX: tipWidth / 2 };
+  const container = viewport.getBoundingClientRect();
+  const target = event.currentTarget.getBoundingClientRect();
+  const anchorX = target.left + target.width / 2 - container.left;
+  const maxLeft = Math.max(8, container.width - tipWidth - 8);
+  const left = Math.min(maxLeft, Math.max(8, anchorX - tipWidth / 2));
+  const targetTop = target.top - container.top;
+  const top = Math.max(tipHeight + 8 - container.top, targetTop - 10);
+  const arrowX = Math.min(tipWidth - 16, Math.max(16, anchorX - left));
+  return { left, top, arrowX };
+}
+
 function localTrendFacts(item, zh, currency) {
   const facts = [
     `${localizedCompact(Number(item?.requestCount || 0), zh)} ${requestUnit(item?.requestCount || 0, zh)}`,
@@ -279,23 +292,23 @@ function BenefitTrendTooltip({ active, zh, currency }) {
   if (!active) return null;
   if (active.kind === 'local') {
     const item = active.datum;
-    return <aside className="trend-tooltip benefit-trend-tooltip" role="tooltip" style={{ left: active.left }}>
+    return <aside className="trend-tooltip benefit-trend-tooltip" role="tooltip" style={{ left: active.left, top: active.top, '--tooltip-arrow-left': `${active.arrowX}px` }}>
       <strong>{dateLabel(item.key, zh)}</strong>
       <div className="trend-tooltip-total"><span>{localizedCompact(item.totalTokens, zh)} tokens</span><small>{zh ? '命中率' : 'hit'} {cacheHit(item)}</small></div>
       <TokenBreakdown row={item} zh={zh}/>
       <footer>{localTrendFacts(item, zh, currency)}</footer>
-      <span className="benefit-tooltip-affordance">{zh ? '点击查看证据 →' : 'Click to view evidence →'}</span>
+      <span className="benefit-tooltip-affordance">{zh ? '点击数据条查看证据 ↗' : 'Click to view evidence →'}</span>
     </aside>;
   }
   const point = active.datum;
   const localObserved = point.localObserved ?? finiteNumber(point.localObservedCoverage ?? point.localCoverage) > 0;
   const localTotals = localObserved ? point.localTotals : null;
-  return <aside className="trend-tooltip benefit-trend-tooltip" role="tooltip" style={{ left: active.left }}>
+    return <aside className="trend-tooltip benefit-trend-tooltip" role="tooltip" style={{ left: active.left, top: active.top, '--tooltip-arrow-left': `${active.arrowX}px` }}>
     <strong>{dateLabel(point.observedAt, zh, true)}</strong>
     <div className="trend-tooltip-total"><span>{zh ? '官方已用' : 'Official used'} {point.usedPercent.toFixed(1)}%</span><small>{zh ? '额度事实' : 'quota fact'}</small></div>
     {localTotals ? <TokenBreakdown row={localTotals} zh={zh}/> : <p className="trend-tooltip-note">{zh ? '该观测时刻没有可连接的本机 Token 事实。' : 'No joinable local Token facts at this observation.'}</p>}
     <footer>{localTotals ? `${localizedCompact(Number(localTotals.requestCount || 0), zh)} ${requestUnit(localTotals.requestCount || 0, zh)} · ${zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} ${money((localTotals.costMicros || 0) / 1e6, currency)} · ` : ''}{zh ? '官方观测' : 'Official observation'} {dateLabel(point.observedAt, zh, true)}{point.localEvidenceState === 'local-stale' ? ` · ${zh ? '本机快照较旧，不参与跨源推算' : 'local snapshot is stale and excluded from cross-source estimates'}` : ''}</footer>
-    <span className="benefit-tooltip-affordance">{zh ? '点击查看证据 →' : 'Click to view evidence →'}</span>
+    <span className="benefit-tooltip-affordance">{zh ? '点击数据条查看证据 ↗' : 'Click to view evidence →'}</span>
   </aside>;
 }
 
@@ -329,7 +342,7 @@ export function BenefitTrendView({ provider, zh, currency, onDrilldown }) {
   const panelProps = providerPanelProps(provider);
   const activateTooltip = (event, value) => setActiveTooltip({
     ...value,
-    left: tooltipLeft(event, tooltipHost.current, 258),
+    ...tooltipAbove(event, tooltipHost.current, 258, 244),
   });
 
   return <section className="benefit-view-stack" {...panelProps}>
@@ -476,13 +489,13 @@ export function BenefitActivityView({ provider, usageData, zh, currency }) {
           data-level={level}
           aria-label={title}
           onKeyDown={(event) => onHeatmapKeyDown(event, day, hour)}
-          onMouseEnter={() => setHovered({ day, hour })}
-          onFocus={() => { setFocusCell({ day, hour }); setHovered({ day, hour }); }}
+          onMouseEnter={(event) => setHovered({ day, hour, ...tooltipAbove(event, event.currentTarget.closest('.benefit-activity-panel')) })}
+          onFocus={(event) => { setFocusCell({ day, hour }); setHovered({ day, hour, ...tooltipAbove(event, event.currentTarget.closest('.benefit-activity-panel')) }); }}
           onBlur={() => setHovered(null)}
           key={hour}
         />;
       })}</div></div>)}<div className="benefit-heat-hours">{Array.from({ length: 24 }, (_, hour) => <span key={hour}>{hour % 3 === 0 ? String(hour).padStart(2, '0') : ''}</span>)}</div></div></div>
-      {hovered && selectedCell ? <aside className="heatmap-tooltip benefit-heat-tooltip" data-dock={hovered.hour < 12 ? 'r' : 'l'} role="tooltip">
+      {hovered && selectedCell ? <aside className="heatmap-tooltip benefit-heat-tooltip" role="tooltip" style={{ left: hovered.left, top: hovered.top, '--tooltip-arrow-left': `${hovered.arrowX}px` }}>
         <header><strong>{weekdays[hovered.day]} {String(hovered.hour).padStart(2, '0')}:00</strong><span>{localizedCompact(selectedCell.totalTokens, zh)} tokens</span><small>{zh ? '命中率' : 'hit'} {cacheHit(selectedCell)}</small></header>
         {tokenBreakdownRows(selectedCell, zh, true).map(([label, value, color]) => <div key={label}><span><i style={{ background: color }}/>{label}</span><b>{localizedCompact(value, zh)}</b></div>)}
         <footer>{zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} {money(selectedCell.costMicros / 1e6, currency)} · {localizedCompact(Number(selectedCell.requestCount || 0), zh)} {requestUnit(selectedCell.requestCount || 0, zh)} · {zh ? '本机归因事实' : 'local attributed facts'}</footer>

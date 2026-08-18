@@ -1,7 +1,6 @@
-/* Chart palette — aligned with the kimi.builders usage center:
-   input = brand blue, cache read = emerald, output = paper, reasoning = amber.
-   Values are CSS custom properties (defined per theme in styles.css) so SVG
-   fills must receive them via inline style, never a presentation attribute. */
+/* Kimi chart palette. Token composition stays in one sequential blue family;
+   status pastels are reserved for health, warning, and risk states. Values are
+   CSS custom properties so dark/light themes share the same chart grammar. */
 export const CHART_COLORS = Object.freeze({
   input: 'var(--chart-input)',
   cacheWrite: 'var(--chart-cache-write)',

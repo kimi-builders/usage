@@ -35,20 +35,21 @@ const TOOL_ICONS = {
   workbuddy: { src: codeBuddyIcon, tone: 'workbuddy', label: 'WorkBuddy' },
 };
 
-export function ToolGlyph({ id, size = 16, className = '' }) {
+export function ToolGlyph({ id, size, context = 'inline', className = '' }) {
   const item = TOOL_ICONS[id];
-  const frame = Math.max(18, Math.round(size + 7));
+  const glyphSize = size ?? (context === 'inline' ? 14 : 12);
+  const frame = context === 'chart' ? 16 : context === 'badge' ? 20 : Math.max(18, Math.round(glyphSize + 7));
   if (!item) {
     return createElement('span', {
-      className: `tool-glyph tool-glyph--fallback ${className}`,
-      style: { width: frame, height: frame, fontSize: Math.max(8, size * 0.55) },
+      className: `tool-glyph tool-glyph--${context} tool-glyph--fallback ${className}`,
+      style: { width: frame, height: frame, fontSize: Math.max(8, glyphSize * 0.55) },
       'aria-hidden': true,
     }, String(id || '?').slice(0, 1).toUpperCase());
   }
   const { svg, src, tone, label } = item;
   return createElement('span', {
-    className: `tool-glyph tool-glyph--${tone} ${className}`,
-    style: { width: frame, height: frame, fontSize: size },
+    className: `tool-glyph tool-glyph--${context} tool-glyph--${tone} ${className}`,
+    style: { width: frame, height: frame, fontSize: glyphSize },
     title: label,
     'aria-hidden': true,
   }, svg
@@ -57,5 +58,5 @@ export function ToolGlyph({ id, size = 16, className = '' }) {
       style: { display: 'contents' },
       dangerouslySetInnerHTML: { __html: svg },
     })
-    : createElement('img', { src, width: size, height: size, alt: '' }));
+    : createElement('img', { src, width: glyphSize, height: glyphSize, alt: '' }));
 }
