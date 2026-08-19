@@ -83,7 +83,7 @@ npx @kimi.builders/usage@latest inspect --dry-run
 除非我另行明确批准，否则不要安装、重启或移除后台 daemon。
 ```
 
-![用量中心总览](./docs/assets/screenshots/dashboard-overview.png)
+![用量中心总览](./docs/assets/screenshots/dashboard-overview-zh.webp)
 
 ## 先看重点
 
@@ -137,21 +137,21 @@ npx @kimi.builders/usage@latest sync
 
 截图和海报均由真实本机 Agent 日志生成，不是设计稿或模拟数据。
 
-![每日趋势、自然周趋势与分时活跃](./docs/assets/screenshots/dashboard-trends.png)
+![每日趋势、自然周趋势与分时活跃](./docs/assets/screenshots/dashboard-trends-zh.webp)
 
-![账户权益、官方额度与本机 Token 容量](./docs/assets/screenshots/dashboard-benefits.png)
+![账户权益、官方额度与本机 Token 容量](./docs/assets/screenshots/dashboard-benefits-zh.webp)
 
 分享海报不会包含项目、设备、路径或对话内容，也不会放置外部无法访问的本地二维码。
 自定义头像只保存在当前浏览器，不会上传到社区或第三方服务。
 
 <p align="center">
-  <img src="./docs/assets/screenshots/kimi-builders-usage-24h.png" alt="近 24 小时用量海报" width="48%">
-  <img src="./docs/assets/screenshots/kimi-builders-usage-30d.png" alt="近 30 天用量海报" width="48%">
+  <img src="./docs/assets/screenshots/kimi-builders-usage-24h-zh.webp" alt="近 24 小时用量海报" width="48%">
+  <img src="./docs/assets/screenshots/kimi-builders-usage-30d-zh.webp" alt="近 30 天用量海报" width="48%">
 </p>
 
 **项目状态：** 当前是公开 Beta。稳定来源经过跨平台 fixture 与 contract test；日志格式
 覆盖有限的来源会明确标为 Beta。[Roadmap](./docs/ROADMAP.md) ·
-[发布说明](./docs/RELEASE_NOTES_0.5.2.md) · [全部文档](./docs/README.md)
+[发布说明](./docs/RELEASE_NOTES_0.5.3.md) · [全部文档](./docs/README.md)
 
 ## 从源码运行
 

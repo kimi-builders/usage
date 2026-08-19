@@ -18,6 +18,7 @@ Trust and release documentation:
 - [Threat model](../THREAT_MODEL.md)
 - [Security policy](../SECURITY.md)
 - [Publishing checklist](../PUBLISHING.md)
+- [0.5.3 release notes](./RELEASE_NOTES_0.5.3.en.md)
 - [0.5.2 release notes](./RELEASE_NOTES_0.5.2.en.md)
 - [0.5.1 release notes](./RELEASE_NOTES_0.5.1.en.md)
 - [0.5.0 release notes](./RELEASE_NOTES_0.5.0.en.md)

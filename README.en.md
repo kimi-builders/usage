@@ -101,7 +101,7 @@ paths, session identifiers, or conversation content. Do not install, restart,
 or remove the background daemon unless I explicitly approve that separate step.
 ```
 
-![Usage Center overview](./docs/assets/screenshots/dashboard-overview.png)
+![Usage Center overview](./docs/assets/screenshots/dashboard-overview-en.webp)
 
 ## The short answers
 
@@ -165,23 +165,23 @@ for every network target and trigger.
 Every screenshot and poster below was generated from real local agent logs, not
 mockups or seeded demo data.
 
-![Daily trend, natural-week trend, and hourly activity](./docs/assets/screenshots/dashboard-trends.png)
+![Daily trend, natural-week trend, and hourly activity](./docs/assets/screenshots/dashboard-trends-en.webp)
 
-![Account benefits, official quotas, and local token capacity](./docs/assets/screenshots/dashboard-benefits.png)
+![Account benefits, official quotas, and local token capacity](./docs/assets/screenshots/dashboard-benefits-en.webp)
 
 Share posters exclude projects, devices, paths, and conversation content. They
 also omit unreachable localhost QR codes. A custom avatar stays in the current
 browser and is never uploaded to the community or a third party.
 
 <p align="center">
-  <img src="./docs/assets/screenshots/kimi-builders-usage-24h.png" alt="Last 24 hours usage poster" width="48%">
-  <img src="./docs/assets/screenshots/kimi-builders-usage-30d.png" alt="Last 30 days usage poster" width="48%">
+  <img src="./docs/assets/screenshots/kimi-builders-usage-24h-en.webp" alt="Last 24 hours usage poster" width="48%">
+  <img src="./docs/assets/screenshots/kimi-builders-usage-30d-en.webp" alt="Last 30 days usage poster" width="48%">
 </p>
 
 **Project status:** public Beta. Stable sources are covered by cross-platform
 fixtures and contract tests; sources with limited log-format evidence remain
 explicitly labelled Beta. [Roadmap](./docs/ROADMAP.en.md) ·
-[Release notes](./docs/RELEASE_NOTES_0.5.2.en.md) · [All docs](./docs/README.en.md)
+[Release notes](./docs/RELEASE_NOTES_0.5.3.en.md) · [All docs](./docs/README.en.md)
 
 ## Run from source
 
