@@ -13,8 +13,10 @@ function printHelp() {
   console.log(`
 ${c.bold(c.cyan('@kimi.builders/usage'))} ${c.dim('— 本地优先的 AI Coding Agent 用量分析与额度监控工具')}
 
-${c.bold('▸ 用量分析与看板')}
+${c.bold('▸ 用量分析与额度')}
   npx @kimi.builders/usage stats [--period today|24h|7d|30d|all] [--source agent] [--json]
+  npx @kimi.builders/usage quota [--provider claude|codex|kimi|cursor] [--all] [--json]
+  npx @kimi.builders/usage export [--format csv|json|jsonl] [--output PATH]
   npx @kimi.builders/usage top [--period 30d]
   npx @kimi.builders/usage summary [--days 7] [--remote]
   npx @kimi.builders/usage dashboard [--no-open] [--port 43120]
@@ -37,7 +39,8 @@ ${c.bold('▸ 来源检测与诊断')}
   npx @kimi.builders/usage sources disable cursor
   npx @kimi.builders/usage reset --local
 
-${c.bold('▸ 通用选项')}
+${c.bold('▸ 辅助与自动补全')}
+  npx @kimi.builders/usage completion [zsh|bash|fish]
   npx @kimi.builders/usage --help / -h
   npx @kimi.builders/usage --version / -v
   npx @kimi.builders/usage [--lang en|zh] [--no-color|--plain]
@@ -131,6 +134,16 @@ export async function run(args) {
       plain: args.includes('--plain'),
     });
   }
+  if (command === 'quota' || command === 'limits') {
+    const { runQuota } = await import('./quota.js');
+    return runQuota({
+      provider: option(args, 'provider') || option(args, 'agent'),
+      all: args.includes('--all'),
+      force: args.includes('--force') || args.includes('--refresh'),
+      json: args.includes('--json'),
+      plain: args.includes('--plain'),
+    });
+  }
   if (command === 'top') {
     const { runStats } = await import('./stats.js');
     return runStats({
@@ -145,6 +158,23 @@ export async function run(args) {
     if (!Number.isInteger(raw) || raw < 1 || raw > 90) throw new Error('--days 必须是 1–90。');
     const { runSummary } = await import('./summary.js');
     return runSummary(raw, { remote: args.includes('--remote'), json: args.includes('--json') });
+  }
+  if (command === 'export') {
+    const { runExport } = await import('./export.js');
+    return runExport({
+      format: option(args, 'format') || 'csv',
+      type: option(args, 'type') || 'buckets',
+      output: option(args, 'output') || option(args, 'o'),
+      period: option(args, 'period'),
+      days: option(args, 'days') ? Number(option(args, 'days')) : undefined,
+      source: option(args, 'source') || option(args, 'agent'),
+      model: option(args, 'model'),
+      project: option(args, 'project'),
+    });
+  }
+  if (command === 'completion') {
+    const { runCompletion } = await import('./completion.js');
+    return runCompletion(args[1]);
   }
   if (command === 'reset' && args.includes('--local')) {
     const { clearState } = await import('./state.js');
