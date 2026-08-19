@@ -8,7 +8,6 @@ import { parseClaudeUsage } from '../src/limits/providers/claude.js';
 import { parseCodexUsage } from '../src/limits/providers/codex.js';
 import { parseCopilotUsage } from '../src/limits/providers/copilot.js';
 import { parseCursorUsage } from '../src/limits/providers/cursor.js';
-import { parseGeminiQuota } from '../src/limits/providers/gemini.js';
 import { parseJetBrainsQuota } from '../src/limits/providers/jetbrains.js';
 import { parseKimiCodeUsage } from '../src/limits/providers/kimi.js';
 import { parseOpenCodeGoUsage } from '../src/limits/providers/opencode.js';
@@ -27,7 +26,6 @@ const PARSERS = {
   'kimi-code': (input) => parseKimiCodeUsage(input, { now: NOW }),
   cursor: (input) => parseCursorUsage(input, {}, { now: NOW }),
   copilot: (input) => parseCopilotUsage(input, {}, { now: NOW }),
-  'gemini-cli': (input) => parseGeminiQuota(input, { claims: {}, plan: 'free' }, { now: NOW }),
   antigravity: (input) => parseAntigravityQuota(input, {}, { now: NOW }),
   opencode: (input) => parseOpenCodeGoUsage(JSON.stringify(input), { now: NOW }),
   qoder: (input) => parseQoderUsage(input, {}, { now: NOW }),

@@ -4,6 +4,7 @@ import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { LIMIT_ALLOWED_HOSTS } from '../src/limits/http.js';
+import { requestAntigravityLoopback } from '../src/limits/providers/antigravity-local.js';
 
 const providerDirectory = fileURLToPath(new URL('../src/limits/providers/', import.meta.url));
 const fixturesDirectory = fileURLToPath(new URL('./fixtures/', import.meta.url));
@@ -37,4 +38,15 @@ test('test fixtures remain bounded and do not contain credential-shaped material
     assert.doesNotMatch(text, /\b(?:access|refresh)[_-]?token\b\s*["'=:\s]+[A-Za-z0-9._-]{20,}/i);
     assert.doesNotMatch(text, /\bBearer\s+[A-Za-z0-9._-]{20,}/i);
   }
+});
+
+test('Antigravity local quota requests reject arbitrary ports and paths before connecting', async () => {
+  await assert.rejects(
+    requestAntigravityLoopback({ port: 0, path: '/exa.language_server_pb.LanguageServerService/GetUserStatus' }),
+    (error) => error?.code === 'blocked_endpoint',
+  );
+  await assert.rejects(
+    requestAntigravityLoopback({ port: 63130, path: '/arbitrary' }),
+    (error) => error?.code === 'blocked_endpoint',
+  );
 });

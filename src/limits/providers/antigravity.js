@@ -2,6 +2,7 @@ import {
   loadAntigravityCredentials, parseOAuthCredentials, resolveProviderSecret,
 } from '../credentials.js';
 import { asDate, asPercent, requestJson } from '../http.js';
+import { fetchAntigravityLocalQuota } from './antigravity-local.js';
 
 const LOAD_CODE_ASSIST_URL = 'https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist';
 const MODELS_URL = 'https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels';
@@ -27,6 +28,15 @@ function labelForFamily(value) {
 
 function quotaRows(payload) {
   if (Array.isArray(payload?.buckets)) return payload.buckets;
+  const userStatus = payload?.userStatus || payload?.response?.userStatus || payload?.response;
+  const configs = userStatus?.cascadeModelConfigData?.clientModelConfigs
+    || payload?.clientModelConfigs || payload?.response?.clientModelConfigs;
+  if (Array.isArray(configs)) return configs.map((model) => ({
+    modelId: model?.modelId || model?.modelOrAlias,
+    label: model?.label || model?.modelId || model?.modelOrAlias,
+    remainingFraction: model?.quotaInfo?.remainingFraction,
+    resetTime: model?.quotaInfo?.resetTime,
+  }));
   const models = payload?.models && typeof payload.models === 'object' ? payload.models : {};
   return Object.entries(models).map(([modelId, model]) => ({
     modelId,
@@ -36,9 +46,48 @@ function quotaRows(payload) {
   }));
 }
 
+function summaryWindows(payload) {
+  const groups = payload?.response?.groups || payload?.groups;
+  if (!Array.isArray(groups)) return [];
+  const familyRank = ['gemini', 'claude-gpt', 'other'];
+  const windowRank = ['5h', 'weekly'];
+  return groups.flatMap((group) => {
+    const groupFamily = family('', group?.displayName || group?.description || '');
+    return Array.isArray(group?.buckets) ? group.buckets.map((bucket) => {
+      const remaining = Number(bucket?.remainingFraction ?? bucket?.remaining?.remainingFraction);
+      if (!Number.isFinite(remaining)) return null;
+      const id = text(bucket?.bucketId) || `${groupFamily}-${text(bucket?.window) || 'quota'}`;
+      const window = text(bucket?.window) || (/5\s*hour|5h/i.test(`${id} ${bucket?.displayName || ''}`) ? '5h'
+        : /week/i.test(`${id} ${bucket?.displayName || ''}`) ? 'weekly' : 'quota');
+      const windowLabel = window === '5h' ? '5 小时' : window === 'weekly' ? '每周' : '额度';
+      const percent = asPercent(Math.max(0, Math.min(1, remaining)) * 100);
+      return {
+        id,
+        label: `${labelForFamily(groupFamily)} · ${windowLabel}`,
+        remainingPercent: percent,
+        usedPercent: 100 - percent,
+        resetsAt: asDate(bucket?.resetTime ?? bucket?.remaining?.resetTime),
+        windowSeconds: window === '5h' ? 18_000 : window === 'weekly' ? 604_800 : null,
+        detail: `Antigravity 返回的 ${windowLabel}额度池`,
+        _family: groupFamily,
+        _window: window,
+      };
+    }).filter(Boolean) : [];
+  }).sort((a, b) => familyRank.indexOf(a._family) - familyRank.indexOf(b._family)
+    || windowRank.indexOf(a._window) - windowRank.indexOf(b._window))
+    .map(({ _family, _window, ...window }) => window);
+}
+
+function summaryCandidate(row) {
+  const value = `${row?.modelId || ''} ${row?.label || ''}`.toLowerCase();
+  return !/(?:image|imagen|autocomplete|lite)/.test(value);
+}
+
 export function parseAntigravityQuota(payload, identity = {}, { now = new Date() } = {}) {
-  const rows = quotaRows(payload).filter((row) => text(row?.modelId)
+  const exactWindows = summaryWindows(payload);
+  const parsedRows = quotaRows(payload).filter((row) => text(row?.modelId)
     && Number.isFinite(Number(row?.remainingFraction)));
+  const rows = parsedRows.filter(summaryCandidate);
   const constrained = new Map();
   for (const row of rows) {
     const id = text(row.modelId);
@@ -52,7 +101,7 @@ export function parseAntigravityQuota(payload, identity = {}, { now = new Date()
     });
   }
   const rank = ['gemini', 'claude-gpt', 'other'];
-  const windows = [...constrained.entries()]
+  const legacyWindows = [...constrained.entries()]
     .sort(([a], [b]) => rank.indexOf(a) - rank.indexOf(b))
     .map(([group, quota]) => ({
       id: group,
@@ -62,11 +111,14 @@ export function parseAntigravityQuota(payload, identity = {}, { now = new Date()
       resetsAt: quota.resetsAt,
       detail: `最紧张：${quota.modelId}`,
     }));
+  const windows = exactWindows.length ? exactWindows : legacyWindows;
   return {
     id: 'antigravity', label: 'Antigravity', status: windows.length ? 'ok' : 'empty',
     account: identity.email || null, plan: identity.plan || null,
     source: identity.source || 'Antigravity OAuth', updatedAt: now.toISOString(), windows,
-    notice: '同一模型家族显示剩余比例最低的额度，避免高估可用量。',
+    notice: exactWindows.length
+      ? '本机服务返回 Gemini 与 Claude/GPT 的 5 小时和每周额度池。'
+      : '同一模型家族显示剩余比例最低的文本模型额度，避免高估可用量。',
   };
 }
 
@@ -128,8 +180,30 @@ function projectFromCodeAssist(payload) {
   return text(typeof project === 'string' ? project : project?.id || project?.projectId);
 }
 
-export async function fetchAntigravityLimits({ settings, environment = process.env, fetcher = fetch } = {}) {
-  const credentials = await providerCredentials(settings, environment, fetcher);
+export async function fetchAntigravityLimits({
+  settings,
+  environment = process.env,
+  fetcher = fetch,
+  run,
+  platform,
+  localRequester,
+} = {}) {
+  let localError = null;
+  if (settings.authMode === 'local') {
+    try {
+      const local = await fetchAntigravityLocalQuota({ run, platform, requester: localRequester });
+      return parseAntigravityQuota(local.payload, { source: local.source });
+    } catch (error) {
+      localError = error;
+    }
+  }
+  let credentials;
+  try {
+    credentials = await providerCredentials(settings, environment, fetcher);
+  } catch (error) {
+    if (localError && localError.code !== 'not_configured') throw localError;
+    throw error;
+  }
   const authHeaders = headers(credentials.accessToken);
   const codeAssist = await requestJson(LOAD_CODE_ASSIST_URL, {
     method: 'POST', headers: authHeaders, body: {

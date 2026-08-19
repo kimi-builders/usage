@@ -9,7 +9,6 @@ const PROVIDER_SOURCES = {
   'claude-code': ['claude-code'],
   cursor: ['cursor'],
   copilot: ['copilot-cli'],
-  'gemini-cli': ['gemini-cli'],
   opencode: ['opencode'],
   antigravity: ['antigravity'],
   qoder: ['qoder'],

@@ -3,7 +3,7 @@
 import { compactNumber, pluralUnit } from './format.js';
 
 export const PROVIDER_TONES = {
-  codex: 'blue', 'kimi-code': 'amber', warp: 'violet', 'gemini-cli': 'violet',
+  codex: 'blue', 'kimi-code': 'amber', warp: 'violet',
   antigravity: 'green', 'jetbrains-ai': 'pink', 'claude-code': 'amber', cursor: 'blue',
   copilot: 'violet', opencode: 'amber', qoder: 'green', trae: 'blue',
 };

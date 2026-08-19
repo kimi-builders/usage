@@ -137,22 +137,6 @@ export function loadCopilotCredentials(environment = process.env, { run = spawnS
   return { found: Boolean(token), token, source: token ? 'GitHub CLI 登录' : null };
 }
 
-export function loadGeminiCredentials(environment = process.env) {
-  const root = configuredHome(environment, 'GEMINI_CLI_HOME', join(homedir(), '.gemini'));
-  const path = join(root, 'oauth_creds.json');
-  const payload = jsonFile(path);
-  const accessToken = text(payload?.access_token || payload?.accessToken);
-  const expiry = Number(payload?.expiry_date ?? payload?.expiryDate);
-  const fresh = accessToken && (!Number.isFinite(expiry) || expiry > Date.now() + 60_000);
-  return {
-    found: Boolean(accessToken),
-    fresh: Boolean(fresh),
-    path,
-    accessToken,
-    claims: decodeJwtPayload(payload?.id_token || payload?.idToken),
-  };
-}
-
 function normalizeOAuthCredentials(payload, path = null) {
   const accessToken = text(payload?.access_token || payload?.accessToken);
   const rawExpiry = Number(payload?.expiry_date ?? payload?.expiryDate ?? payload?.expiresAt);

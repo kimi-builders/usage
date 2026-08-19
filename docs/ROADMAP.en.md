@@ -41,7 +41,7 @@ GitHub Release configuration were completed; releases now use npm Trusted Publis
 
 - [x] Usage and Subscription Centers are peers; subscription analysis ignores
   temporary Usage filters.
-- [x] Codex, Claude Code, Kimi Code, Cursor, GitHub Copilot, Gemini CLI, Antigravity,
+- [x] Codex, Claude Code, Kimi Code, Cursor, GitHub Copilot, Antigravity,
   OpenCode Go, Qoder, Warp, and JetBrains AI; Trae is explicitly unavailable
   without a reliable interface.
 - [x] Official quota windows, same-period local Tokens, burn pace, capacity range,

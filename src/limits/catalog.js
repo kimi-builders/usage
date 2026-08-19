@@ -41,10 +41,13 @@ export const LIMIT_PROVIDER_CATALOG = [
     localHint: '推荐通过 GitHub 设备授权连接；可添加多个 GitHub 账户并随时切换查看额度。GitHub CLI 登录只作为兼容回退。',
   },
   {
-    id: 'gemini-cli', label: 'Gemini CLI', group: 'recommended', popular: true,
-    description: 'Gemini 模型级剩余额度与重置时间', quotaSupport: 'automatic',
-    defaultAuthMode: 'local', authModes: ['local'], dashboardUrl: 'https://aistudio.google.com/usage',
-    localHint: '自动复用 Gemini CLI OAuth 登录。',
+    id: 'antigravity', label: 'Antigravity', group: 'recommended', popular: true,
+    description: 'Gemini 与 Claude/GPT 的 5 小时和每周额度池', quotaSupport: 'automatic',
+    defaultAuthMode: 'local', authModes: ['local', 'environment', 'keychain'],
+    defaultEnvironmentVariable: 'ANTIGRAVITY_OAUTH_CREDENTIALS_JSON',
+    dashboardUrl: 'https://antigravity.google',
+    secretKind: 'OAuth 凭据 JSON',
+    localHint: '优先复用已运行的 Antigravity 或 agy 本机服务；也可复用 CodexBar OAuth，或提供 OAuth 凭据 JSON。',
   },
   {
     id: 'opencode', label: 'OpenCode Go', group: 'more', popular: true,
@@ -61,14 +64,6 @@ export const LIMIT_PROVIDER_CATALOG = [
     defaultEnvironmentVariable: 'QODER_SESSION_COOKIE', dashboardUrl: 'https://qoder.com/account/usage',
     secretKind: 'Qoder Session Cookie', extraFields: ['site'],
     localHint: '登录 Qoder 用量页后粘贴请求 Cookie；国际站和中国站可分别选择。',
-  },
-  {
-    id: 'antigravity', label: 'Antigravity', group: 'more',
-    description: 'Gemini 与 Claude/GPT 模型额度池', quotaSupport: 'automatic',
-    defaultAuthMode: 'local', authModes: ['local', 'environment', 'keychain'],
-    defaultEnvironmentVariable: 'ANTIGRAVITY_OAUTH_CREDENTIALS_JSON',
-    secretKind: 'OAuth 凭据 JSON',
-    localHint: '可复用 ~/.codexbar/antigravity/oauth_creds.json，或提供 OAuth 凭据 JSON。',
   },
   {
     id: 'warp', label: 'Warp', group: 'more',
@@ -99,8 +94,8 @@ export const LIMIT_ENTITLEMENT_TYPES = ['unknown', 'paid', 'free', 'promotion', 
 // Kimi is the product's primary subscription view. Keep the rest of the order
 // explicit so new providers never reshuffle a user's existing dashboard.
 export const DEFAULT_LIMIT_PROVIDER_ORDER = [
-  'kimi-code', 'codex', 'claude-code', 'cursor', 'copilot', 'gemini-cli',
-  'opencode', 'qoder', 'antigravity', 'warp', 'jetbrains-ai', 'trae',
+  'kimi-code', 'codex', 'claude-code', 'cursor', 'copilot', 'antigravity',
+  'opencode', 'qoder', 'warp', 'jetbrains-ai', 'trae',
 ];
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -157,6 +152,13 @@ function hasAccountSubscription(candidate) {
     .some((key) => Object.prototype.hasOwnProperty.call(candidate || {}, key));
 }
 
+function hasExplicitSubscription(candidate) {
+  if (!candidate || typeof candidate !== 'object') return false;
+  return candidate.entitlementType && candidate.entitlementType !== 'unknown'
+    || Number(candidate.subscriptionPrice) > 0
+    || Boolean(candidate.renewsAt);
+}
+
 function normalizeAccounts(candidate, provider, legacySubscription) {
   if (!provider.accountMode || !Array.isArray(candidate?.accounts)) return [];
   const seen = new Set();
@@ -194,6 +196,7 @@ export function defaultLimitSettings() {
 
 export function normalizeLimitSettings(value) {
   const input = value && typeof value === 'object' ? value : {};
+  const retiredGemini = input.providers?.['gemini-cli'];
   const providers = {};
   for (const provider of LIMIT_PROVIDER_CATALOG) {
     const candidate = input.providers?.[provider.id];
@@ -203,7 +206,14 @@ export function normalizeLimitSettings(value) {
     // Before entitlementType existed, a positive entered price was the only
     // explicit evidence that an account was paid. Preserve that intent while
     // leaving price-less accounts unknown instead of guessing "free".
-    const legacySubscription = normalizeSubscription(candidate);
+    // Gemini CLI's consumer quota surface was retired. Preserve only the
+    // user's declared benefit classification on Antigravity when that card has
+    // no newer declaration; never copy credentials, quota history, or silently
+    // enable the replacement provider.
+    const subscriptionCandidate = provider.id === 'antigravity'
+      && !hasExplicitSubscription(candidate) && hasExplicitSubscription(retiredGemini)
+      ? retiredGemini : candidate;
+    const legacySubscription = normalizeSubscription(subscriptionCandidate);
     const accounts = normalizeAccounts(candidate, provider, legacySubscription);
     const subscription = provider.id === 'opencode' ? normalizeSubscription(null) : legacySubscription;
     const activeAccountId = safeAccountId(candidate?.activeAccountId);
@@ -224,7 +234,9 @@ export function normalizeLimitSettings(value) {
     };
   }
   const refreshMinutes = Number(input.refreshMinutes);
-  const requestedOrder = Array.isArray(input.providerOrder) ? input.providerOrder : [];
+  const requestedOrder = Array.isArray(input.providerOrder)
+    ? input.providerOrder.map((id) => id === 'gemini-cli' ? 'antigravity' : id)
+    : [];
   const providerOrder = [...new Set([
     ...requestedOrder.filter((id) => LIMIT_PROVIDER_IDS.includes(id)),
     ...DEFAULT_LIMIT_PROVIDER_ORDER,

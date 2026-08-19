@@ -6,7 +6,7 @@ import {
 import {
   deleteKeychainSecret, environmentSecret, keychainAvailable, loadAntigravityCredentials,
   loadClaudeCredentials, loadCodexCredentials, loadCopilotCredentials, loadCursorCredentials,
-  loadGeminiCredentials, loadKimiCredentials, providerAccountCredentialKey,
+  loadKimiCredentials, providerAccountCredentialKey,
   readKeychainSecret, writeKeychainSecret,
 } from './credentials.js';
 import { detectJetBrainsQuotaFile } from './providers/jetbrains.js';
@@ -16,8 +16,8 @@ import {
   fetchCopilotIdentity, fetchCopilotLimits, pollCopilotDeviceToken, requestCopilotDeviceCode,
 } from './providers/copilot.js';
 import { fetchCursorLimits } from './providers/cursor.js';
-import { fetchGeminiLimits } from './providers/gemini.js';
 import { fetchAntigravityLimits } from './providers/antigravity.js';
+import { detectAntigravityLocalRuntime } from './providers/antigravity-local.js';
 import { fetchJetBrainsLimits } from './providers/jetbrains.js';
 import { fetchKimiLimits } from './providers/kimi.js';
 import { fetchOpenCodeGoLimits } from './providers/opencode.js';
@@ -34,7 +34,6 @@ const FETCHERS = {
   cursor: fetchCursorLimits,
   copilot: fetchCopilotLimits,
   warp: fetchWarpLimits,
-  'gemini-cli': fetchGeminiLimits,
   opencode: fetchOpenCodeGoLimits,
   qoder: fetchQoderLimits,
   antigravity: fetchAntigravityLimits,
@@ -103,7 +102,7 @@ function detected(state, label, detail = '') {
   return { state, label, detail };
 }
 
-function detectLocalProvider(providerId, providerSettings, environment) {
+function detectLocalProvider(providerId, providerSettings, environment, options = {}) {
   try {
     if (providerId === 'codex') {
       const value = loadCodexCredentials(environment);
@@ -134,15 +133,13 @@ function detectLocalProvider(providerId, providerSettings, environment) {
       return value.found ? detected('detected', `已检测到 ${value.source || 'GitHub 登录'}`)
         : detected('needs_login', '未检测到 GitHub CLI 登录', '推荐运行 gh auth login');
     }
-    if (providerId === 'gemini-cli') {
-      const value = loadGeminiCredentials(environment);
-      return value.found && value.fresh ? detected('detected', '已检测到 Gemini CLI 登录')
-        : value.found ? detected('expired', 'Gemini 登录已过期') : detected('needs_login', '请先登录 Gemini CLI');
-    }
     if (providerId === 'antigravity') {
+      const runtime = detectAntigravityLocalRuntime({ run: options.run, platform: options.platform });
+      if (runtime.found) return detected('detected', `已检测到 ${runtime.label}`, '将优先读取 127.0.0.1 本机额度接口');
       const value = loadAntigravityCredentials(environment);
       return value.found && value.fresh ? detected('detected', '已检测到 Antigravity OAuth')
-        : value.found ? detected('expired', 'Antigravity 登录已过期') : detected('not_detected', '未检测到 Antigravity OAuth');
+        : value.found ? detected('expired', 'Antigravity 登录已过期')
+          : detected('not_detected', '未检测到 Antigravity 或 agy', '请先启动并登录 Antigravity，或运行 agy');
     }
     if (providerId === 'jetbrains-ai') {
       return detectJetBrainsQuotaFile(providerSettings.customPath)
@@ -155,9 +152,9 @@ function detectLocalProvider(providerId, providerSettings, environment) {
   return null;
 }
 
-function providerDetection(provider, settings, { environment, hasKeychainSecret, hasSecret }) {
+function providerDetection(provider, settings, { environment, hasKeychainSecret, hasSecret, run, platform }) {
   if (provider.quotaSupport === 'unavailable') return detected('unavailable', '订阅额度暂不可查');
-  const local = detectLocalProvider(provider.id, settings, environment);
+  const local = detectLocalProvider(provider.id, settings, environment, { run, platform });
   if (local?.state === 'detected') return local;
   if (provider.id === 'opencode') {
     if (settings.accounts?.length) {
@@ -192,6 +189,7 @@ export function getPublicLimitSettings(config = loadConfig(), options = {}) {
   const detections = options.detections || Object.fromEntries(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id,
     providerDetection(provider, settings.providers[provider.id], {
       environment, hasKeychainSecret: secretStates[provider.id], hasSecret,
+      run: options.run, platform: options.platform,
     }),
   ]));
   return publicLimitSettings(settings, {
@@ -370,6 +368,7 @@ async function fetchEnabled(settings, options = {}) {
               settings: accountSettings(provider.id, settings.providers[provider.id], account),
               environment: options.environment || process.env,
               fetcher: options.fetcher || fetch,
+              run: options.run, platform: options.platform, localRequester: options.localRequester,
             });
             return accountResult(provider, account, assertProviderContract(provider.id, result));
           } catch (error) {
@@ -391,6 +390,7 @@ async function fetchEnabled(settings, options = {}) {
         settings: settings.providers[provider.id],
         environment: options.environment || process.env,
         fetcher: options.fetcher || fetch,
+        run: options.run, platform: options.platform, localRequester: options.localRequester,
       });
       return {
         ...assertProviderContract(provider.id, result),

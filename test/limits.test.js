@@ -8,8 +8,7 @@ import {
   fetchCopilotIdentity, parseCopilotUsage, pollCopilotDeviceToken, requestCopilotDeviceCode,
 } from '../src/limits/providers/copilot.js';
 import { parseCursorUsage } from '../src/limits/providers/cursor.js';
-import { parseAntigravityQuota } from '../src/limits/providers/antigravity.js';
-import { parseGeminiQuota } from '../src/limits/providers/gemini.js';
+import { fetchAntigravityLimits, parseAntigravityQuota } from '../src/limits/providers/antigravity.js';
 import { parseJetBrainsQuota } from '../src/limits/providers/jetbrains.js';
 import { parseKimiCodeUsage, parseKimiWebUsage } from '../src/limits/providers/kimi.js';
 import { fetchOpenCodeGoLimits, parseOpenCodeGoUsage } from '../src/limits/providers/opencode.js';
@@ -46,6 +45,26 @@ test('normalizes quota settings without accepting unknown providers or auth mode
   assert.deepEqual(exposed.catalog.slice(0, 3).map((item) => item.id), ['codex', 'kimi-code', 'claude-code']);
   assert.equal(exposed.catalog.find((item) => item.id === 'warp').hasSecret, true);
   assert.equal(JSON.stringify(exposed).includes('raw-token'), false);
+});
+
+test('retires Gemini quota settings without losing the user-declared Antigravity benefit', () => {
+  const value = normalizeLimitSettings({
+    providerOrder: ['codex', 'gemini-cli', 'antigravity', 'kimi-code'],
+    providers: {
+      'gemini-cli': {
+        enabled: true, entitlementType: 'paid', subscriptionPrice: 19.99,
+        subscriptionCurrency: 'usd', billingCycle: 'monthly', renewsAt: '2026-09-01',
+      },
+      antigravity: { enabled: false, authMode: 'local', entitlementType: 'unknown' },
+    },
+  });
+  assert.equal(value.providers['gemini-cli'], undefined);
+  assert.equal(value.providerOrder.includes('gemini-cli'), false);
+  assert.equal(value.providerOrder.indexOf('antigravity'), 1);
+  assert.equal(value.providers.antigravity.enabled, false);
+  assert.equal(value.providers.antigravity.entitlementType, 'paid');
+  assert.equal(value.providers.antigravity.subscriptionPrice, 19.99);
+  assert.equal(value.providers.antigravity.renewsAt, '2026-09-01');
 });
 
 test('public settings redact local paths and preserve the private value on an unchanged round trip', () => {
@@ -524,17 +543,6 @@ test('maps Warp GraphQL request and bonus credits', () => {
   assert.equal(result.windows[1].limit, 200);
 });
 
-test('keeps the most constrained Gemini quota bucket per model', () => {
-  const result = parseGeminiQuota({ buckets: [
-    { modelId: 'gemini-2.5-pro', remainingFraction: 0.8, resetTime: '2026-08-12T00:00:00Z' },
-    { modelId: 'gemini-2.5-pro', remainingFraction: 0.45, resetTime: '2026-08-11T18:00:00Z' },
-    { modelId: 'gemini-2.5-flash', remainingFraction: 1 },
-  ] }, { claims: { email: 'g@example.com' } }, { now: NOW });
-  assert.equal(result.account, 'g@example.com');
-  assert.equal(result.windows.length, 2);
-  assert.equal(result.windows.find((item) => item.id === 'gemini-2.5-pro').remainingPercent, 45);
-});
-
 test('groups Antigravity quotas by model family and keeps the tightest model', () => {
   const result = parseAntigravityQuota({ buckets: [
     { modelId: 'gemini-3-pro', remainingFraction: 0.9, resetTime: '2026-08-12T00:00:00Z' },
@@ -547,6 +555,47 @@ test('groups Antigravity quotas by model family and keeps the tightest model', (
   assert.equal(result.windows[0].remainingPercent, 62);
   assert.equal(result.windows[1].remainingPercent, 41);
   assert.match(result.windows[1].detail, /gpt-oss-120b/);
+});
+
+test('maps Antigravity local quota summary to exact five-hour and weekly pools', () => {
+  const result = parseAntigravityQuota({ response: { groups: [
+    { displayName: 'Gemini Models', buckets: [
+      { bucketId: 'gemini-weekly', window: 'weekly', remainingFraction: 0.9, resetTime: '2026-08-18T00:00:00Z' },
+      { bucketId: 'gemini-5h', window: '5h', remainingFraction: 0.62, resetTime: '2026-08-11T15:00:00Z' },
+    ] },
+    { displayName: 'Claude and GPT models', buckets: [
+      { bucketId: '3p-weekly', window: 'weekly', remainingFraction: 0.74, resetTime: '2026-08-18T00:00:00Z' },
+      { bucketId: '3p-5h', window: '5h', remainingFraction: 0.41, resetTime: '2026-08-11T14:00:00Z' },
+    ] },
+  ] } }, { source: 'agy 本机服务' }, { now: NOW });
+  assert.deepEqual(result.windows.map((item) => item.id), ['gemini-5h', 'gemini-weekly', '3p-5h', '3p-weekly']);
+  assert.deepEqual(result.windows.map((item) => item.windowSeconds), [18_000, 604_800, 18_000, 604_800]);
+  assert.deepEqual(result.windows.map((item) => item.remainingPercent), [62, 90, 41, 74]);
+  assert.equal(result.source, 'agy 本机服务');
+});
+
+test('prefers a running agy loopback quota service without reading OAuth credentials', async () => {
+  const calls = [];
+  const run = (command) => {
+    if (command === 'ps') return { status: 0, stdout: '71061 /Users/test/.local/bin/agy\n' };
+    if (command === 'lsof') return { status: 0, stdout: 'agy 71061 user 10u IPv4 0t0 TCP 127.0.0.1:63130 (LISTEN)\n' };
+    return { status: 1, stdout: '' };
+  };
+  const localRequester = async (request) => {
+    calls.push(request);
+    return { response: { groups: [{ displayName: 'Gemini Models', buckets: [
+      { bucketId: 'gemini-5h', window: '5h', remainingFraction: 0.5 },
+    ] }] } };
+  };
+  const result = await fetchAntigravityLimits({
+    settings: { authMode: 'local' }, environment: { CODEXBAR_HOME: '/definitely/absent' },
+    run, platform: 'darwin', localRequester,
+  });
+  assert.equal(result.source, 'agy 本机服务');
+  assert.equal(result.windows[0].id, 'gemini-5h');
+  assert.equal(calls[0].port, 63130);
+  assert.equal(calls[0].protocol, 'https:');
+  assert.match(calls[0].path, /RetrieveUserQuotaSummary$/);
 });
 
 test('parses JetBrains local XML without network access', () => {

@@ -75,8 +75,13 @@ points; only a fresh provider refresh can append a sanitized observation.
 - Qoder: `https://qoder.com/api/v2/me/usages/big_model_credits`, or the
   equivalent `qoder.com.cn` endpoint when the user selects the China site;
 - Warp: `https://app.warp.dev/graphql/v2?op=GetRequestLimitInfo`;
-- Gemini CLI: `https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota`;
-- Antigravity: `https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`,
+- Antigravity first reuses an already-running Antigravity or `agy` process. It
+  discovers that process's listening loopback ports and sends fixed-path POSTs
+  only to `127.0.0.1` for `RetrieveUserQuotaSummary`, `GetUserStatus`, or
+  `GetCommandModelConfigs`. Self-signed TLS is accepted only on this fixed
+  loopback boundary; the dashboard never starts or stops the process. If no
+  usable local service exists, an explicitly configured OAuth source may use
+  `https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`,
   `v1internal:fetchAvailableModels`, and, when needed, `v1internal:retrieveUserQuota`;
   expired OAuth credentials may refresh through `https://oauth2.googleapis.com/token`;
 - JetBrains AI: no network; the latest local IDE quota file is read.

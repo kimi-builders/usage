@@ -63,8 +63,11 @@ CSP 和 no-store 响应。Token 分析始终离线。只有用户点击相应控
 - Qoder：`https://qoder.com/api/v2/me/usages/big_model_credits`；用户选择中国站时使用等价的
   `qoder.com.cn` 端点；
 - Warp：`https://app.warp.dev/graphql/v2?op=GetRequestLimitInfo`；
-- Gemini CLI：`https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota`；
-- Antigravity：`https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`、
+- Antigravity 优先复用已运行的 Antigravity 或 `agy` 进程：只发现该进程监听的回环端口，
+  并仅向固定的 `127.0.0.1` 路径发送 `RetrieveUserQuotaSummary`、`GetUserStatus` 或
+  `GetCommandModelConfigs` POST。本机自签名 TLS 只在这个固定回环边界内接受；看板不会启动
+  或终止用户进程。没有可用本机服务时，用户明确配置的 OAuth 来源才可能访问
+  `https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`、
   `v1internal:fetchAvailableModels`，必要时还会调用 `v1internal:retrieveUserQuota`；过期 OAuth
   凭据可能通过 `https://oauth2.googleapis.com/token` 刷新；
 - JetBrains AI：不联网，只读取最新的本地 IDE 额度文件。

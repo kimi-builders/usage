@@ -31,7 +31,7 @@ GitHub Release 配置均已确认；首发完成后立即迁移到 npm Trusted P
 ### 订阅中心
 
 - [x] 用量中心与订阅中心同级，订阅分析不继承临时用量筛选。
-- [x] Codex、Claude Code、Kimi Code、Cursor、GitHub Copilot、Gemini CLI、Antigravity、
+- [x] Codex、Claude Code、Kimi Code、Cursor、GitHub Copilot、Antigravity、
   OpenCode Go、Qoder、Warp、JetBrains AI；Trae 无可靠接口时明确不可查。
 - [x] 官方额度窗口、本机同周期 Token、消耗节奏、容量区间、续费预测、价值和集中度分析。
 - [x] 用户自填实际价格/币种/账期，免费与促销权益不混入已支付订阅支出。

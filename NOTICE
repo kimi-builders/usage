@@ -50,7 +50,7 @@ Provider-specific endpoint knowledge, request shapes, response mapping, local
 credential discovery, and related test cases in the subscription-limit layer
 were adapted or reimplemented from CodexBar's provider integrations. This
 particularly applies to Codex, Claude, Cursor, GitHub Copilot, OpenCode Go,
-Qoder, Warp, Gemini, Antigravity, and JetBrains AI where the corresponding
+Qoder, Warp, Antigravity, and JetBrains AI where the corresponding
 source exists upstream.
 
 The implementation here translates those provider facts into JavaScript and a
@@ -94,9 +94,10 @@ from that repository is bundled in this package.
 CodexBar also served as the product reference for broad provider coverage,
 quota-window terminology, reset countdowns, authentication choices, failure
 isolation, and setup guidance. Kimi Builders Usage intentionally understands
-CodexBar's local Antigravity credential location so a user can reuse an existing
-login. Its code relationship is recorded separately in the code-adaptation
-section above.
+CodexBar's local Antigravity credential location and fixed loopback quota-service
+strategy so a user can reuse an existing login or an already-running Antigravity
+process. It does not launch, manage, or terminate that process. The code
+relationship is recorded separately in the code-adaptation section above.
 
 
 FIRST-PARTY DESIGN BASELINE
