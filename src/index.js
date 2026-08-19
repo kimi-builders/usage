@@ -1,3 +1,4 @@
+import { c, setColorEnabled } from './cli-ui.js';
 import { getConfigPath, loadConfig } from './config.js';
 
 function option(args, name) {
@@ -10,29 +11,44 @@ function option(args, name) {
 
 function printHelp() {
   console.log(`
-@kimi.builders/usage
+${c.bold(c.cyan('@kimi.builders/usage'))} ${c.dim('— 本地优先的 AI Coding Agent 用量分析与额度监控工具')}
 
+${c.bold('📊 用量分析与看板')}
+  npx @kimi.builders/usage dashboard [--no-open] [--port 43120]
+  npx @kimi.builders/usage summary [--days 7]
+  npx @kimi.builders/usage status
+
+${c.bold('🔄 社区同步与后台服务')}
   npx @kimi.builders/usage init [--api-url URL] [--sync]
   npx @kimi.builders/usage sync [--full]
   npx @kimi.builders/usage daemon install [--interval 15]
   npx @kimi.builders/usage daemon status [--json]
   npx @kimi.builders/usage daemon restart [--interval 15]
   npx @kimi.builders/usage daemon uninstall
+
+${c.bold('⚙️ 来源检测与诊断')}
   npx @kimi.builders/usage inspect --dry-run
   npx @kimi.builders/usage doctor [--json]
-  npx @kimi.builders/usage dashboard [--no-open] [--port 43120]
-  npx @kimi.builders/usage summary [--days 7]
-  npx @kimi.builders/usage status
   npx @kimi.builders/usage sources list
   npx @kimi.builders/usage sources set <agent> off|local|private
   npx @kimi.builders/usage sources enable cursor --csv PATH
   npx @kimi.builders/usage sources disable cursor
   npx @kimi.builders/usage reset --local
-  npx @kimi.builders/usage --version
+
+${c.bold('ℹ️ 通用选项')}
+  npx @kimi.builders/usage --help / -h
+  npx @kimi.builders/usage --version / -v
+  npx @kimi.builders/usage [--no-color|--plain]
 `);
 }
 
 export async function run(args) {
+  if (args.includes('--no-color') || args.includes('--plain')) {
+    setColorEnabled(false);
+  } else if (args.includes('--color')) {
+    setColorEnabled(true);
+  }
+
   const command = args[0];
   if (!command) {
     printHelp();
