@@ -240,9 +240,11 @@ export function buildPortfolioReview(providers, now = Date.now()) {
   const overlaps = [];
   for (let leftIndex = 0; leftIndex < providers.length; leftIndex += 1) {
     const left = providers[leftIndex];
+    if (left.attribution?.kind === 'model-family') continue;
     if (!(left.recentTotals?.totalTokens > 0)) continue;
     for (let rightIndex = leftIndex + 1; rightIndex < providers.length; rightIndex += 1) {
       const right = providers[rightIndex];
+      if (right.attribution?.kind === 'model-family') continue;
       if (!(right.recentTotals?.totalTokens > 0)) continue;
       const result = overlap(left.recentModelRows, right.recentModelRows);
       if (result.score < 0.5 || !result.families.length) continue;

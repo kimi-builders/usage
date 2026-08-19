@@ -55,7 +55,8 @@ and cohort benchmarks.
 - Global switch and every platform are off by default.
 - Credentials prefer the provider's existing local login. Manual secrets use an
   environment variable or system keychain where supported.
-- The browser receives normalized quota windows, never raw cookies, tokens, or provider responses.
+- The browser receives normalized quota windows or money-balance facts, never raw cookies, tokens, or provider responses.
+- Money balances, credits, subscription limits, and locally observed Tokens stay separately labeled and are never converted into provider-certified Token facts.
 - Quota data never enters the Token snapshot, exports, posters, or community sync.
 
 ### Community sync

@@ -17,6 +17,7 @@ import {
 } from './providers/copilot.js';
 import { fetchCursorLimits } from './providers/cursor.js';
 import { fetchAntigravityLimits } from './providers/antigravity.js';
+import { fetchDeepSeekLimits } from './providers/deepseek.js';
 import { detectAntigravityLocalRuntime } from './providers/antigravity-local.js';
 import { fetchJetBrainsLimits } from './providers/jetbrains.js';
 import { fetchKimiLimits } from './providers/kimi.js';
@@ -37,6 +38,7 @@ const FETCHERS = {
   opencode: fetchOpenCodeGoLimits,
   qoder: fetchQoderLimits,
   antigravity: fetchAntigravityLimits,
+  deepseek: fetchDeepSeekLimits,
   'jetbrains-ai': fetchJetBrainsLimits,
 };
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight, BarChart3, Check, ChevronDown, ChevronRight, CircleAlert, Code2,
   ExternalLink, Gauge, GripVertical, Info, KeyRound, RefreshCw, Search, Settings2,
-  ShieldCheck, Sparkles, Terminal, TrendingUp, X,
+    ShieldCheck, Sparkles, Terminal, TrendingUp, WalletCards, X,
 } from 'lucide-react';
 import { compactNumber, displayDollars, pluralUnit } from './format.js';
 import {
@@ -102,6 +102,28 @@ function estimateText(value, zh) {
 function subscriptionMoney(value, currency, suffix = '') {
   if (value == null) return '—';
   return `${currency === 'cny' ? '¥' : '$'}${Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 })}${suffix}`;
+}
+
+function providerBalanceMoney(value, currency, zh) {
+  try {
+    return new Intl.NumberFormat(zh ? 'zh-CN' : 'en-US', {
+      style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${currency} ${Number(value).toLocaleString(zh ? 'zh-CN' : 'en-US', { maximumFractionDigits: 2 })}`;
+  }
+}
+
+function ProviderBalances({ provider, zh }) {
+  if (!provider.balances?.length) return null;
+  return <section className="provider-balance-facts">
+    <header><div><WalletCards size={21}/><span><b>{zh ? 'DeepSeek API 账户余额' : 'DeepSeek API account balance'}</b><small>{zh ? '供应商返回的货币事实，不是 Token 额度' : 'Provider-reported money, not a Token quota'}</small></span></div><em>{provider.balances.length} {zh ? '种币种' : provider.balances.length === 1 ? 'currency' : 'currencies'}</em></header>
+    <div>{provider.balances.map((balance) => <article key={balance.currency} data-available={balance.available ? 'true' : 'false'}>
+      <span><b>{balance.currency}</b><small>{balance.available ? (zh ? '可用于 API 调用' : 'Available for API calls') : (zh ? '当前不可用于 API 调用' : 'Unavailable for API calls')}</small></span>
+      <dl><div><dt>{zh ? '总余额' : 'TOTAL'}</dt><dd>{providerBalanceMoney(balance.total, balance.currency, zh)}</dd></div><div><dt>{zh ? '充值余额' : 'TOPPED UP'}</dt><dd>{providerBalanceMoney(balance.toppedUp, balance.currency, zh)}</dd></div><div><dt>{zh ? '赠送余额' : 'GRANTED'}</dt><dd>{providerBalanceMoney(balance.granted, balance.currency, zh)}</dd></div></dl>
+    </article>)}</div>
+    <footer><ShieldCheck size={12}/><span>{zh ? 'DeepSeek 公开接口不提供 5 小时、每周或 Token 上限；下方本机用量按 DeepSeek 模型标识跨 Agent 汇总，不能证明使用了当前 API Key 账户。' : 'The public endpoint exposes no 5-hour, weekly, or Token cap. Local usage below is grouped by DeepSeek model identity across Agents and does not prove it used this API-key account.'}</span></footer>
+  </section>;
 }
 
 function portfolioSpend(summary, zh) {
@@ -220,7 +242,7 @@ function QuotaHistory({ provider, zh }) {
         </svg>
       </div>
       <footer><span>{shortObservationTime(points[0].observedAt, zh)}</span><strong>{localizedCount(points.length, zh, '个本机快照', 'local snapshot', 'local snapshots')}</strong><span>{shortObservationTime(points.at(-1).observedAt, zh)}</span></footer>
-    </> : <div className="quota-history-empty"><TrendingUp size={22}/><div><b>{provider.quotaObservation?.state === 'unavailable' ? (zh ? '官方额度暂不可观测' : 'Official quota is not observable') : (zh ? '历史从这次刷新开始积累' : 'History starts with this refresh')}</b><p>{provider.quotaObservation?.state === 'unavailable' ? (zh ? '这不代表额度无限或没有使用。系统仍分析本机 Token；如果供应商以后返回可验证窗口，历史会从首次成功刷新开始积累。' : 'This does not mean unlimited or unused. Local Token analytics continue, and history starts once the provider exposes a verifiable window.') : (zh ? '以后每次额度刷新都会在本机留下脱敏快照；有两个以上样本后即可显示消耗速度。' : 'Each quota refresh stores a sanitized local point. Burn rate appears after at least two samples.')}</p></div></div>}
+    </> : <div className="quota-history-empty"><TrendingUp size={22}/><div><b>{provider.balanceObservation?.state === 'current' ? (zh ? '余额不是额度时间窗' : 'Balance is not a quota window') : provider.quotaObservation?.state === 'unavailable' ? (zh ? '官方额度暂不可观测' : 'Official quota is not observable') : (zh ? '历史从这次刷新开始积累' : 'History starts with this refresh')}</b><p>{provider.balanceObservation?.state === 'current' ? (zh ? '当前只读取官方货币余额，不把余额伪装成百分比进度或 Token 容量，因此不会生成额度消耗历史。' : 'Only the official money balance is read. It is never turned into a percentage bar or Token capacity, so no quota-window history is generated.') : provider.quotaObservation?.state === 'unavailable' ? (zh ? '这不代表额度无限或没有使用。系统仍分析本机 Token；如果供应商以后返回可验证窗口，历史会从首次成功刷新开始积累。' : 'This does not mean unlimited or unused. Local Token analytics continue, and history starts once the provider exposes a verifiable window.') : (zh ? '以后每次额度刷新都会在本机留下脱敏快照；有两个以上样本后即可显示消耗速度。' : 'Each quota refresh stores a sanitized local point. Burn rate appears after at least two samples.')}</p></div></div>}
   </section>;
 }
 
@@ -231,6 +253,12 @@ function signalCopy(signal, zh, providerId) {
     body: zh
       ? `当前没有可验证的额度窗口，不能判断剩余比例；已识别的 ${localizedCompact(signal.localTokens, zh)} 本机 Token 仍参与模型、价值与工作负载分析。`
       : `No verifiable quota window is available, so no remaining balance is inferred. ${localizedCompact(signal.localTokens, zh)} local Tokens still contribute to model, value, and workload analysis.`,
+  };
+  if (signal.code === 'balance-only') return {
+    title: zh ? '货币余额可读，Token 额度不公开' : 'Money balance available; Token quota is not published',
+    body: zh
+      ? `DeepSeek 返回了 ${signal.currencies} 种币种的账户余额；它不是 Token 上限。已识别的 ${localizedCompact(signal.localTokens, zh)} 本机 Token 仅按模型家族归因。`
+      : `DeepSeek returned account balances in ${signal.currencies} ${signal.currencies === 1 ? 'currency' : 'currencies'}; they are not Token caps. ${localizedCompact(signal.localTokens, zh)} local Tokens are attributed only by model family.`,
   };
   if (signal.code === 'quota-historical') return {
     title: zh ? '当前额度读取失败，历史样本已保留' : 'Current quota failed; history is retained',
@@ -280,7 +308,7 @@ function SubscriptionDecisionPanel({ provider, zh, currency, onSettings }) {
       <article><span>{zh ? '近 30 天 TOKEN' : '30D TOKENS'}</span><strong>{localizedCompact(provider.recentTotals.totalTokens, zh)}</strong><small>{localizedCount(localizedCompact(provider.recentTotals.requestCount, zh), zh, '次请求', 'request', 'requests')}</small></article>
       <article><span>{isPaid ? (zh ? '实际成本 / 百万 TOKEN' : 'ACTUAL COST / 1M') : (zh ? '权益来源' : 'BENEFIT SOURCE')}</span><strong>{isPaid ? (provider.economics.costPerMillionTokens == null ? '—' : subscriptionMoney(provider.economics.costPerMillionTokens, provider.subscription.currency)) : entitlementLabel(provider.subscription.entitlementType, zh)}</strong><small>{isPaid ? (zh ? '按所填月均订阅支出' : 'from entered monthly spend') : entitlementNote(provider.subscription.entitlementType, zh)}</small></article>
       <article><span>{isPaid ? (zh ? 'API 等价价值比' : 'API-EQUIVALENT RATIO') : (zh ? 'API 等价承载价值' : 'API-EQUIVALENT THROUGHPUT')}</span><strong>{isPaid ? ratioText(provider.economics.valueRatio) : displayDollars(provider.economics.apiEquivalentUsd, currency)}</strong><small>{isPaid ? (provider.subscription.currency === 'cny' ? (zh ? '人民币未自动换汇' : 'no automatic FX') : (zh ? '等价价值 ÷ 月均支出' : 'equivalent value ÷ spend')) : (zh ? '标准价格口径，不代表实际节省' : 'standard-price basis, not realized savings')}</small></article>
-      <article><span>{zh ? '官方额度状态' : 'OFFICIAL QUOTA STATUS'}</span><strong>{exhausted ? (zh ? '已触顶' : 'EXHAUSTED') : pace ? percentNumber(pace.pace.projectedFinalPercent) : provider.quotaObservation?.state === 'historical' ? (zh ? '仅历史' : 'HISTORY') : (zh ? '不可观测' : 'UNOBSERVABLE')}</strong><small>{exhausted ? `${quotaWindowLabel(provider.id, exhausted, zh)} · ${zh ? '供应商额度事实' : 'provider quota fact'}` : pace ? `${quotaWindowLabel(provider.id, pace, zh)} · ${zh ? '重置时预计' : 'at reset'}` : (zh ? '本机 Token 分析仍然可用' : 'local Token analytics remain available')}</small></article>
+      <article><span>{provider.balanceObservation?.state === 'current' ? (zh ? '官方余额状态' : 'OFFICIAL BALANCE') : (zh ? '官方额度状态' : 'OFFICIAL QUOTA STATUS')}</span><strong>{provider.balanceObservation?.state === 'current' ? (zh ? '货币余额可读' : 'AVAILABLE') : exhausted ? (zh ? '已触顶' : 'EXHAUSTED') : pace ? percentNumber(pace.pace.projectedFinalPercent) : provider.quotaObservation?.state === 'historical' ? (zh ? '仅历史' : 'HISTORY') : (zh ? '不可观测' : 'UNOBSERVABLE')}</strong><small>{provider.balanceObservation?.state === 'current' ? (zh ? '货币事实 · 不等于 Token 额度' : 'money fact · not a Token quota') : exhausted ? `${quotaWindowLabel(provider.id, exhausted, zh)} · ${zh ? '供应商额度事实' : 'provider quota fact'}` : pace ? `${quotaWindowLabel(provider.id, pace, zh)} · ${zh ? '重置时预计' : 'at reset'}` : (zh ? '本机 Token 分析仍然可用' : 'local Token analytics remain available')}</small></article>
     </div>
     <SubscriptionReviewGrid provider={provider} zh={zh} currency={currency} onSettings={onSettings}/>
     <div className="subscription-decision-grid">
@@ -295,11 +323,12 @@ function ProviderCard({ provider, zh, currency, onSettings }) {
   const tone = PROVIDER_TONES[provider.id] || 'blue';
   const currentWindows = provider.windows?.filter((window) => !window.stale) || [];
   const quotaUnavailable = provider.quotaObservation?.state !== 'current';
+  const balanceAvailable = provider.balanceObservation?.state === 'current';
   const showResetCredits = provider.id === 'codex' || provider.resetCredits != null;
   const resetCredit = resetCreditPresentation(provider.resetCredits, zh);
   return <article className={`limit-card tone-${tone}`}>
     <dl className="limit-provider-summary">
-      <div><dt>{zh ? '账户' : 'Account'}</dt><dd>{provider.account || (zh ? '本机账户' : 'Local account')}</dd></div>
+      <div><dt>{zh ? '账户' : 'Account'}</dt><dd>{provider.account || (provider.id === 'deepseek' ? (zh ? 'API 账户' : 'API account') : (zh ? '本机账户' : 'Local account'))}</dd></div>
       {provider.plan ? <div><dt>{zh ? '方案' : 'Plan'}</dt><dd>{String(provider.plan).replaceAll('_', ' ')}</dd></div> : null}
       <div><dt>{zh ? '权益类型' : 'BENEFIT TYPE'}</dt><dd>{entitlementLabel(provider.subscription.entitlementType, zh)}</dd></div>
       <div><dt>{zh ? '本机累计 TOKEN' : 'LOCAL LIFETIME TOKENS'}</dt><dd>{localizedCompact(provider.lifetimeTotals.totalTokens, zh)}</dd></div>
@@ -309,8 +338,8 @@ function ProviderCard({ provider, zh, currency, onSettings }) {
       <div><dt>{zh ? '更新' : 'Updated'}</dt><dd>{relativeUpdated(provider.updatedAt, now, zh)}</dd></div>
       <div><dt>{zh ? '来源' : 'Source'}</dt><dd>{quotaSourceDisplay(provider.source, zh)}</dd></div>
     </dl>
-    {quotaUnavailable ? <section className="quota-unavailable-state"><div><Gauge size={22}/><span><b>{provider.quotaObservation?.state === 'historical' ? (zh ? '当前额度不可读，仅保留历史' : 'Current quota unavailable; history retained') : (zh ? '官方额度暂不可观测' : 'Official quota is not observable')}</b><small>{provider.quotaObservation.bestEffort ? (zh ? '该平台或当前账户不一定提供稳定额度数据' : 'This platform or account may not expose stable quota data') : (zh ? '当前没有取得可验证的额度窗口' : 'No verifiable quota window is available')}</small></span></div><p>{provider.status === 'error' ? quotaErrorMessage(provider, zh) : (zh ? '供应商没有返回可验证的额度比例。' : 'The provider did not return a verifiable quota ratio.')} {zh ? `这不代表免费、无限或未使用；本机 ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} Token 仍参与价值与工作负载分析。` : `This does not mean free, unlimited, or unused; ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} local Tokens still contribute to value and workload analysis.`}</p>{provider.status === 'error' ? <button type="button" className="ghost-btn" onClick={onSettings}>{zh ? '检查连接（可选）' : 'Check connection (optional)'}</button> : null}</section> : <div className="limit-window-list">{currentWindows.map((window) => <WindowRow providerId={provider.id} window={window} tone={tone} now={now} zh={zh} key={window.id}/>)}</div>}
-    <ModelScenario provider={provider} zh={zh}/>
+    {balanceAvailable ? <ProviderBalances provider={provider} zh={zh}/> : quotaUnavailable ? <section className="quota-unavailable-state"><div><Gauge size={22}/><span><b>{provider.quotaObservation?.state === 'historical' ? (zh ? '当前额度不可读，仅保留历史' : 'Current quota unavailable; history retained') : (zh ? '官方额度暂不可观测' : 'Official quota is not observable')}</b><small>{provider.quotaObservation.bestEffort ? (zh ? '该平台或当前账户不一定提供稳定额度数据' : 'This platform or account may not expose stable quota data') : (zh ? '当前没有取得可验证的额度窗口' : 'No verifiable quota window is available')}</small></span></div><p>{provider.status === 'error' ? quotaErrorMessage(provider, zh) : (zh ? '供应商没有返回可验证的额度比例。' : 'The provider did not return a verifiable quota ratio.')} {zh ? `这不代表免费、无限或未使用；本机 ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} Token 仍参与价值与工作负载分析。` : `This does not mean free, unlimited, or unused; ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} local Tokens still contribute to value and workload analysis.`}</p>{provider.status === 'error' ? <button type="button" className="ghost-btn" onClick={onSettings}>{zh ? '检查连接（可选）' : 'Check connection (optional)'}</button> : null}</section> : <div className="limit-window-list">{currentWindows.map((window) => <WindowRow providerId={provider.id} window={window} tone={tone} now={now} zh={zh} key={window.id}/>)}</div>}
+    {provider.windows?.length ? <ModelScenario provider={provider} zh={zh}/> : null}
     {showResetCredits ? <div className="reset-credit" data-state={resetCredit.state}><div><span><b>{zh ? '额度重置券' : 'Limit reset credits'}</b><small>{resetCredit.detail || (provider.resetCredits?.nextExpiry ? resetText(provider.resetCredits.nextExpiry, now, zh) : (zh ? '未返回到期时间' : 'No expiry time reported'))}</small></span></div><strong>{resetCredit.value}</strong></div> : null}
     {provider.notice ? <p className="limit-notice">{quotaProviderNotice(provider.notice, zh)}</p> : null}
   </article>;
@@ -372,7 +401,7 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
     {active && view === 'activity' ? <BenefitActivityView provider={active} usageData={usageData} zh={zh} currency={currency}/> : null}
     {active && view === 'distribution' ? <BenefitDistributionView provider={active} usageData={usageData} zh={zh} currency={currency}/> : null}
     {active && view === 'records' ? <BenefitRecordsView provider={active} drilldown={drilldown?.providerId === active.id ? drilldown : null} onClearDrilldown={() => setDrilldown(null)} zh={zh} currency={currency}/> : null}
-    <section className="subscription-method-note"><Info size={16}/><div><b>{zh ? '这里展示的三类数据不会混算' : 'Three evidence classes remain separate'}</b><p>{zh ? '官方额度是供应商事实，本机 Token 是 Agent 日志，容量和价值是带前提的推算。读取不到的数据明确留空，不会当成 0、免费或无限。' : 'Official quota is a provider fact, local Tokens come from Agent logs, and capacity/value are conditional estimates. Missing data stays empty—never zero, free, or unlimited.'}</p></div></section>
+    <section className="subscription-method-note"><Info size={16}/><div><b>{zh ? '这里展示的三类数据不会混算' : 'Three evidence classes remain separate'}</b><p>{zh ? '官方额度或余额是供应商事实，本机 Token 是 Agent 日志，容量和价值是带前提的推算。读取不到的数据明确留空，不会当成 0、免费或无限。' : 'Official quota or balance is a provider fact, local Tokens come from Agent logs, and capacity/value are conditional estimates. Missing data stays empty—never zero, free, or unlimited.'}</p></div></section>
   </section>;
   return <section className="subscription-center" id="subscriptions">
     <section className="subscription-overview-grid">
@@ -380,17 +409,17 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
       <article><span>{zh ? '个人付费核心' : 'PERSONALLY PAID'}</span><strong>{insights.summary.entitlementCounts.paid}</strong><p>{zh ? `月均实际支出 ${portfolioSpend(insights.summary, zh)}` : `${portfolioSpend(insights.summary, zh)} actual monthly spend`}</p></article>
       <article><span>{zh ? '零新增支出权益' : 'NON-PAID BENEFITS'}</span><strong>{insights.summary.benefitProviders}</strong><p>{zh ? '免费、活动或单位提供' : 'free, promotional, or organization-provided'}</p></article>
       <article><span>{zh ? '已关联本机 TOKEN' : 'LINKED LOCAL TOKENS'}</span><strong>{localizedCompact(insights.summary.trackedTokens, zh)}</strong><p>{zh ? `${insights.summary.trackedProviders} 个账户有本机用量` : `${localizedCount(insights.summary.trackedProviders, false, '', 'account', 'accounts')} ${insights.summary.trackedProviders === 1 ? 'has' : 'have'} local usage`}</p></article>
-      <article><span>{zh ? '官方额度可观测' : 'QUOTA OBSERVABLE'}</span><strong>{insights.summary.quotaObservableProviders}<small> / {providers.length}</small></strong><p>{insights.summary.quotaUnavailableProviders ? (zh ? `${insights.summary.quotaUnavailableProviders} 项仅做本机分析` : `${insights.summary.quotaUnavailableProviders} local-analysis only`) : (zh ? '当前额度窗口均可读取' : 'all current windows observable')}</p></article>
+      <article><span>{zh ? '官方事实可读取' : 'OFFICIAL FACTS AVAILABLE'}</span><strong>{insights.summary.officialFactProviders}<small> / {providers.length}</small></strong><p>{insights.summary.balanceObservableProviders ? (zh ? `${insights.summary.balanceObservableProviders} 项只提供货币余额` : `${insights.summary.balanceObservableProviders} balance-only`) : insights.summary.quotaUnavailableProviders ? (zh ? `${insights.summary.quotaUnavailableProviders} 项仅做本机分析` : `${insights.summary.quotaUnavailableProviders} local-analysis only`) : (zh ? '当前额度窗口均可读取' : 'all current windows observable')}</p></article>
     </section>
     <section className="panel limits-panel">
-    <header className="panel-header limits-header"><div><h2>{zh ? '账户权益、官方额度与 Token 容量' : 'Benefits, official quotas & token capacity'}</h2><p>{zh ? '额度可观测时显示供应商事实；不可观测时只分析本机 Token，不猜测剩余额度' : 'Provider facts appear when observable; otherwise local Tokens remain without a guessed balance'}</p></div><div className="limits-actions"><span>{insights.summary.quotaObservableProviders}/{providers.length} {zh ? '额度可观测' : 'quota observable'}</span><button className="icon-btn" type="button" onClick={onSettings} aria-label={zh ? '账户权益设置' : 'Account benefit settings'}><Settings2 size={16}/></button><button className="icon-btn" type="button" onClick={() => onRefresh(true)} disabled={loading} aria-label={zh ? '刷新订阅额度' : 'Refresh subscription quotas'}><RefreshCw className={loading ? 'spin' : ''} size={16}/></button></div></header>
+    <header className="panel-header limits-header"><div><h2>{zh ? '账户权益、官方额度/余额与 Token 分析' : 'Benefits, official quotas/balances & Token analysis'}</h2><p>{zh ? '额度或余额可读取时保留供应商事实；本机 Token 始终单独标注，不猜测剩余量' : 'Provider quota or balance facts stay intact; local Tokens remain separate and never replace missing limits'}</p></div><div className="limits-actions"><span>{insights.summary.officialFactProviders}/{providers.length} {zh ? '官方事实可读' : 'official facts available'}</span><button className="icon-btn" type="button" onClick={onSettings} aria-label={zh ? '账户权益设置' : 'Account benefit settings'}><Settings2 size={16}/></button><button className="icon-btn" type="button" onClick={() => onRefresh(true)} disabled={loading} aria-label={zh ? '刷新订阅额度' : 'Refresh subscription quotas'}><RefreshCw className={loading ? 'spin' : ''} size={16}/></button></div></header>
     {error ? <div className="limits-banner">{quotaPageError(error, zh)}</div> : null}
-    <div className="provider-tabs"><ProviderSelect providers={providers} activeId={active?.id} onChange={setSelected} zh={zh} ariaLabel={zh ? '账户权益平台' : 'Account benefit providers'} tabIdFor={overviewProviderTabId} controlsId={OVERVIEW_PROVIDER_PANEL_ID} renderIcon={(id, size) => <ProviderIcon id={id} size={size}/>} statusFor={(provider) => (provider.status === 'error' && !provider.quotaObservation?.bestEffort) ? { label: zh ? '需处理' : 'Issue', tone: 'red' } : provider.quotaObservation?.state === 'unavailable' ? { label: zh ? '仅本机' : 'Local only', tone: 'amber' } : null}/><AccountPicker provider={active} onChange={selectAccount} zh={zh}/></div>
+    <div className="provider-tabs"><ProviderSelect providers={providers} activeId={active?.id} onChange={setSelected} zh={zh} ariaLabel={zh ? '账户权益平台' : 'Account benefit providers'} tabIdFor={overviewProviderTabId} controlsId={OVERVIEW_PROVIDER_PANEL_ID} renderIcon={(id, size) => <ProviderIcon id={id} size={size}/>} statusFor={(provider) => (provider.status === 'error' && !provider.quotaObservation?.bestEffort) ? { label: zh ? '需处理' : 'Issue', tone: 'red' } : provider.balanceObservation?.state === 'current' ? { label: zh ? '余额' : 'Balance', tone: 'green' } : provider.quotaObservation?.state === 'unavailable' ? { label: zh ? '仅本机' : 'Local only', tone: 'amber' } : null}/><AccountPicker provider={active} onChange={selectAccount} zh={zh}/></div>
     <div className="limit-card-stage" id={OVERVIEW_PROVIDER_PANEL_ID} role="tabpanel" aria-labelledby={active ? overviewProviderTabId(active.id) : undefined} tabIndex={0}>{active ? <ProviderCard provider={active} zh={zh} currency={currency} onSettings={onSettings}/> : <div className="limit-card-empty">{zh ? '没有已启用的供应商' : 'No providers enabled'}</div>}</div>
     <footer className="limits-privacy"><ShieldCheck size={13}/><span>{zh ? '凭据只在本地服务进程使用；Token 估算只读取本机统计，不进入导出文件或社区同步。' : 'Credentials stay in the local server process; token estimates use local statistics only and never enter exports or community sync.'}</span>{settings?.refreshMinutes && onRefreshIntervalChange ? <span className="refresh-inline" role="radiogroup" aria-label={zh ? '额度缓存间隔' : 'Quota cache interval'}><small>{zh ? '缓存' : 'Cache'}</small>{[5, 10, 15, 30].map((minutes) => <button key={minutes} type="button" role="radio" aria-checked={settings.refreshMinutes === minutes} className={settings.refreshMinutes === minutes ? 'active' : ''} onClick={() => onRefreshIntervalChange(minutes)}>{minutes}m</button>)}</span> : null}</footer>
     </section>
-    {active ? <details className="subscription-deep-dive"><summary><span><b>{zh ? `${active.label} 深度证据与推算` : `${active.label} evidence & estimates`}</b><small>{zh ? '额度历史、容量情景和只读建议' : 'Quota history, capacity scenarios, and read-only advice'}</small></span><ChevronRight size={16}/></summary><div><SubscriptionDecisionPanel provider={active} zh={zh} currency={currency} onSettings={onSettings}/></div></details> : null}
+    {active ? <details className="subscription-deep-dive"><summary><span><b>{active.balanceObservation?.state === 'current' ? (zh ? `${active.label} 余额与本机证据` : `${active.label} balance & local evidence`) : (zh ? `${active.label} 深度证据与推算` : `${active.label} evidence & estimates`)}</b><small>{active.balanceObservation?.state === 'current' ? (zh ? '货币余额、本机用量和只读建议' : 'Money balance, local usage, and read-only advice') : (zh ? '额度历史、容量情景和只读建议' : 'Quota history, capacity scenarios, and read-only advice')}</small></span><ChevronRight size={16}/></summary><div><SubscriptionDecisionPanel provider={active} zh={zh} currency={currency} onSettings={onSettings}/></div></details> : null}
     <details className="subscription-deep-dive"><summary><span><b>{zh ? '账户组合与续费判断' : 'Portfolio & renewal review'}</b><small>{zh ? '按需查看跨账户重叠、闲置和组合证据' : 'Expand for cross-account overlap, underuse, and portfolio evidence'}</small></span><ChevronRight size={16}/></summary><div><SubscriptionPortfolioReview review={insights.portfolio} providers={providers} zh={zh} currency={currency} onSettings={onSettings}/></div></details>
-    <section className="subscription-method-note"><Info size={16}/><div><b>{zh ? '为什么有些账户只有 Token，没有“剩余额度”？' : 'Why do some accounts show Tokens without remaining quota?'}</b><p>{zh ? 'ChatGPT Pro、Claude Max 等可能只返回消耗比例，Warp、JetBrains AI 等在部分账户上甚至没有稳定可读的额度窗口。本工具只有拿到可验证比例时才反推容量；否则保留本机 Token、模型与标准 API 等价价值，但明确把官方余额标成不可观测。账号在网页端、其他设备上的用量和供应商内部权重仍不在本机证据中。' : 'Some products expose only utilization, while platforms such as Warp or JetBrains AI may expose no stable quota window for a given account. Capacity is inferred only from a verifiable ratio; otherwise local Tokens, models, and standard API-equivalent value remain while official balance is marked unobservable. Web, other-device usage, and provider weighting remain outside local evidence.'}</p></div></section>
+    <section className="subscription-method-note"><Info size={16}/><div><b>{zh ? '为什么有些账户只有 Token，没有“剩余额度”？' : 'Why do some accounts show Tokens without remaining quota?'}</b><p>{zh ? 'ChatGPT Pro、Claude Max 等可能只返回消耗比例，Warp、JetBrains AI 等在部分账户上甚至没有稳定可读的额度窗口。本工具只有拿到可验证比例时才反推容量；否则保留本机 Token、模型与标准 API 等价价值，并明确标示官方额度不可观测。货币余额若可读取则单独展示，不会换算成 Token。账号在网页端、其他设备上的用量和供应商内部权重仍不在本机证据中。' : 'Some products expose only utilization, while platforms such as Warp or JetBrains AI may expose no stable quota window for a given account. Capacity is inferred only from a verifiable ratio; otherwise local Tokens, models, and standard API-equivalent value remain while official quota is marked unobservable. Observable money balances are shown separately and never converted into Tokens. Web, other-device usage, and provider weighting remain outside local evidence.'}</p></div></section>
   </section>;
 }

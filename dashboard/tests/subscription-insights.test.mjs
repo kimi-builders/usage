@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildSubscriptionInsights, buildSubscriptionViewUsage, filterBenefitUsageRecords,
-  localEvidenceDayKey, nearestBenefitObservation, selectSubscriptionAccounts, subscriptionSourceIds,
+  localEvidenceDayKey, nearestBenefitObservation, selectSubscriptionAccounts, subscriptionAttribution,
+  subscriptionSourceIds,
 } from '../src/subscription-insights.js';
 
 const generatedAt = '2026-08-11T12:00:00.000Z';
@@ -64,6 +65,37 @@ test('does not fabricate token capacity when the provider reports zero consumpti
 test('maps subscription providers to collector source ids', () => {
   assert.deepEqual(subscriptionSourceIds('copilot'), ['copilot-cli']);
   assert.deepEqual(subscriptionSourceIds('kimi-code'), ['kimi-code']);
+  assert.deepEqual(subscriptionAttribution('deepseek'), {
+    kind: 'model-family', sources: [], modelFamily: 'deepseek',
+  });
+});
+
+test('attributes DeepSeek models across Agents while deduplicating portfolio totals', () => {
+  const usage = { generatedAt, buckets: [
+    { ...bucket('codex-deepseek', generatedAt, 'deepseek-v4-pro', 300), source: 'codex' },
+    { ...bucket('cursor-deepseek', generatedAt, 'provider/model-alias', 200), source: 'cursor', modelProvider: 'deepseek' },
+    { ...bucket('codex-gpt', generatedAt, 'gpt-5.6-sol', 100), source: 'codex' },
+    { ...bucket('similar-name', generatedAt, 'deep-thought', 900), source: 'cursor' },
+  ] };
+  const value = { generatedAt, providers: [
+    { id: 'codex', label: 'Codex', status: 'ok', updatedAt: generatedAt, windows: [] },
+    {
+      id: 'deepseek', label: 'DeepSeek', status: 'ok', updatedAt: generatedAt, windows: [],
+      balances: [{ currency: 'CNY', total: 12, granted: 2, toppedUp: 10, available: true }],
+    },
+  ] };
+  const result = buildSubscriptionInsights(usage, value);
+  const deepseek = result.providers.find((provider) => provider.id === 'deepseek');
+
+  assert.equal(deepseek.lifetimeTotals.totalTokens, 500);
+  assert.deepEqual(deepseek.sources.sort(), ['codex', 'cursor']);
+  assert.equal(deepseek.balanceObservation.state, 'current');
+  assert.equal(deepseek.quotaObservation.state, 'unavailable');
+  assert.equal(deepseek.decisionSignals[0].code, 'balance-only');
+  assert.equal(result.summary.trackedTokens, 600);
+  assert.equal(result.summary.balanceObservableProviders, 1);
+  assert.equal(result.summary.officialFactProviders, 1);
+  assert.equal(buildSubscriptionViewUsage(usage, deepseek.attribution, 'all').totals.totalTokens, 500);
 });
 
 test('selects a provider account without mixing its quota facts or history', () => {

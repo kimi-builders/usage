@@ -50,6 +50,15 @@ export const LIMIT_PROVIDER_CATALOG = [
     localHint: '优先复用已运行的 Antigravity 或 agy 本机服务；也可复用 CodexBar OAuth，或提供 OAuth 凭据 JSON。',
   },
   {
+    id: 'deepseek', label: 'DeepSeek', group: 'recommended', popular: true,
+    description: 'API 账户货币余额与 DeepSeek 模型本机用量', quotaSupport: 'manual',
+    quotaCoverage: 'balance-only',
+    defaultAuthMode: 'environment', authModes: ['environment', 'keychain'],
+    defaultEnvironmentVariable: 'DEEPSEEK_API_KEY', dashboardUrl: 'https://platform.deepseek.com/usage',
+    secretKind: 'DeepSeek API Key',
+    localHint: '使用 DeepSeek API Key 只读查询公开余额接口；不会读取浏览器会话，也不会把货币余额换算成 Token 额度。',
+  },
+  {
     id: 'opencode', label: 'OpenCode Go', group: 'more', popular: true,
     description: '5 小时、每周与每月 Go 订阅额度', quotaSupport: 'manual',
     defaultAuthMode: 'keychain', authModes: ['environment', 'keychain'],
@@ -95,7 +104,7 @@ export const LIMIT_ENTITLEMENT_TYPES = ['unknown', 'paid', 'free', 'promotion', 
 // explicit so new providers never reshuffle a user's existing dashboard.
 export const DEFAULT_LIMIT_PROVIDER_ORDER = [
   'kimi-code', 'codex', 'claude-code', 'cursor', 'copilot', 'antigravity',
-  'opencode', 'qoder', 'warp', 'jetbrains-ai', 'trae',
+  'deepseek', 'opencode', 'qoder', 'warp', 'jetbrains-ai', 'trae',
 ];
 
 const DEFAULT_SETTINGS = Object.freeze({

@@ -96,6 +96,25 @@
       "expected": { "status": "ok", "windowIds": ["gemini-5h", "gemini-weekly", "3p-5h", "3p-weekly"], "remainingPercents": [62, 90, 41, 74] }
     },
     {
+      "id": "deepseek",
+      "upstreamShape": "public API account balance",
+      "input": {
+        "is_available": true,
+        "balance_infos": [
+          { "currency": "USD", "total_balance": "0.00", "granted_balance": "0.00", "topped_up_balance": "0.00" },
+          { "currency": "CNY", "total_balance": "42.50", "granted_balance": "2.50", "topped_up_balance": "40.00" }
+        ]
+      },
+      "invalidInput": {
+        "is_available": true,
+        "balance_infos": [
+          { "currency": "CNY", "total_balance": "invalid", "granted_balance": "0", "topped_up_balance": "0" }
+        ]
+      },
+      "invalidBehavior": "throws",
+      "expected": { "status": "ok", "windowIds": [], "remainingPercents": [] }
+    },
+    {
       "id": "opencode",
       "upstreamShape": "OpenCode Go workspace page payload",
       "input": {

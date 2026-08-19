@@ -279,7 +279,7 @@ The Collector contacts a provider only after you enable it, using an existing
 local login or a credential source you choose.
 
 Current integrations cover Codex, Claude Code, Kimi Code, Cursor, GitHub
-Copilot, Antigravity, OpenCode Go, Qoder, Warp, and JetBrains AI.
+Copilot, Antigravity, DeepSeek, OpenCode Go, Qoder, Warp, and JetBrains AI.
 Depending on the provider, setup can use local detection, an
 environment variable, or macOS Keychain. Trae has no stable independently
 verifiable personal-limit interface, so it is labeled unavailable rather than
@@ -292,6 +292,13 @@ already-running, signed-in Antigravity or `agy` loopback service to read the
 Gemini and Claude/GPT five-hour and weekly pools. Quota checks never start or
 terminate the user's process. Explicit Antigravity OAuth or CodexBar credentials
 are used only when no usable local service is available.
+
+DeepSeek uses an explicitly configured API key with the public balance endpoint.
+It shows per-currency total, topped-up, and granted money balances and never
+converts money into a Token quota. A separate local model-family view groups
+DeepSeek model records across Agents; those records may overlap their Agent
+benefit view, do not prove use of the configured API-key account, and are
+deduplicated in portfolio totals.
 
 Kimi Code appears first by default. Grab the handle to drag any enabled provider
 into place with a mouse or touch; the order is stored locally and reused for both

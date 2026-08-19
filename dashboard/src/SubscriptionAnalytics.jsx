@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, BarChart3, ChevronLeft, ChevronRight, CircleAlert, Clock3, FileText, LayoutDashboard, ShieldCheck } from 'lucide-react';
 import { CHART_COLORS, CONSUMPTION_PALETTE } from './chart-colors.js';
-import { compactNumber, displayDollars, percent, pluralUnit } from './format.js';
+import { compactNumber, displayDollars, percent, pluralUnit, sourceLabel } from './format.js';
 import { ProviderSelect } from './provider-select.jsx';
 import { quotaWindowLabel } from './subscription-limits-utils.js';
 import { HeatModeTabs, WeekPager, storedHeatMode, storeHeatMode } from './heat-controls.jsx';
 import { addLocalWeeks, firstDataWeekStart, localWeekEnd, localWeekStart, weekLabel } from './week.js';
 import {
-  BENEFIT_VIEW_RANGES, buildSubscriptionViewUsage, filterBenefitUsageRecords,
+  BENEFIT_VIEW_RANGES, buildSubscriptionViewUsage, filterBenefitUsageBuckets, filterBenefitUsageRecords,
   localEvidenceDayKey, nearestBenefitObservation,
 } from './subscription-insights.js';
 
@@ -178,7 +178,9 @@ export function BenefitProviderPicker({ providers, active, onChange, zh }) {
     <div>
       <ProviderSelect providers={providers} activeId={active?.id} onChange={onChange} zh={zh}
         ariaLabel={zh ? '选择权益账户' : 'Choose benefit account'} tabIdFor={providerTabId} controlsId={PROVIDER_PANEL_ID}
-        statusFor={(provider) => (provider.quotaObservation?.state !== 'current' ? { label: zh ? '仅本机' : 'Local only', tone: 'amber' } : null)}/>
+        statusFor={(provider) => provider.balanceObservation?.state === 'current'
+          ? { label: zh ? '余额' : 'Balance', tone: 'green' }
+          : provider.quotaObservation?.state !== 'current' ? { label: zh ? '仅本机' : 'Local only', tone: 'amber' } : null}/>
     </div>
   </section>;
 }
@@ -391,9 +393,9 @@ export function BenefitTrendView({ provider, zh, currency, onDrilldown }) {
       )}
       {!plot.local.length && plot.quota.length ? <div className="benefit-inline-warning"><CircleAlert size={14}/><span>{zh ? '还没有该订阅的本机日趋势；图中仅显示真实的官方额度观测。' : 'No local daily trend exists yet; the chart shows only real official quota observations.'}</span></div> : null}
       {provider.evidenceClock?.state === 'local-stale' ? <div className="benefit-inline-warning" data-evidence="clock-mismatch"><CircleAlert size={14}/><span>{zh ? `本机用量快照（${dateLabel(provider.evidenceClock.usageObservedAt, true, true)}）早于额度观测（${dateLabel(provider.evidenceClock.quotaObservedAt, true, true)}）；两类事实仍分别展示，但容量与剩余额度推算已暂停。` : `The local usage snapshot (${dateLabel(provider.evidenceClock.usageObservedAt, false, true)}) predates the quota observation (${dateLabel(provider.evidenceClock.quotaObservedAt, false, true)}). Both facts remain visible, but capacity and remaining-Token estimates are paused.`}</span></div> : null}
-      {!plot.quota.length ? <div className="benefit-inline-warning"><CircleAlert size={14}/><span>{provider.quotaObservation?.state === 'unavailable' ? (zh ? '该账户当前没有可验证的官方额度窗口，只展示本机趋势。' : 'This account has no verifiable official quota window; only local trends are shown.') : (zh ? '额度历史从成功刷新后开始积累，至少两个样本才计算速度。' : 'Quota history begins after successful refresh and needs two samples for pace.')}</span></div> : null}
+      {!plot.quota.length ? <div className="benefit-inline-warning"><CircleAlert size={14}/><span>{provider.balanceObservation?.state === 'current' ? (zh ? '官方货币余额没有时间窗，不绘制成额度趋势；图中只展示本机 DeepSeek 模型用量。' : 'The official money balance has no quota window and is not plotted as a quota trend; this chart shows only local DeepSeek model usage.') : provider.quotaObservation?.state === 'unavailable' ? (zh ? '该账户当前没有可验证的官方额度窗口，只展示本机趋势。' : 'This account has no verifiable official quota window; only local trends are shown.') : (zh ? '额度历史从成功刷新后开始积累，至少两个样本才计算速度。' : 'Quota history begins after successful refresh and needs two samples for pace.')}</span></div> : null}
     </section>
-    <section className="benefit-kpi-row"><article><span>{zh ? '近 30 天 TOKEN' : '30D TOKENS'}</span><strong>{localizedCompact(provider.recentTotals.totalTokens, zh)}</strong><small>{localizedCompact(provider.recentTotals.requestCount, zh)} {requestUnit(provider.recentTotals.requestCount, zh)}</small></article><article><span>{zh ? 'API 等价价值' : 'API EQUIVALENT'}</span><strong>{money(provider.economics.apiEquivalentUsd, currency)}</strong><small>{zh ? '标准价格，不是账单' : 'standard pricing, not a bill'}</small></article><article><span>{zh ? '完整周期样本' : 'COMPLETE CYCLES'}</span><strong>{Math.max(0, ...provider.windows.map((window) => window.cycleStats?.sampledCycles || 0))}</strong><small>{zh ? '覆盖率 ≥90% 且接近重置' : '≥90% coverage near reset'}</small></article><article><span>{zh ? '官方额度状态' : 'QUOTA STATUS'}</span><strong>{provider.quotaObservation?.state === 'current' ? (zh ? '当前可读' : 'Current') : provider.quotaObservation?.state === 'historical' ? (zh ? '仅历史' : 'History') : (zh ? '不可观测' : 'Hidden')}</strong><small>{zh ? '不以缺失推断无限' : 'missing never means unlimited'}</small></article></section>
+    <section className="benefit-kpi-row"><article><span>{zh ? '近 30 天 TOKEN' : '30D TOKENS'}</span><strong>{localizedCompact(provider.recentTotals.totalTokens, zh)}</strong><small>{localizedCompact(provider.recentTotals.requestCount, zh)} {requestUnit(provider.recentTotals.requestCount, zh)}</small></article><article><span>{zh ? 'API 等价价值' : 'API EQUIVALENT'}</span><strong>{money(provider.economics.apiEquivalentUsd, currency)}</strong><small>{zh ? '标准价格，不是账单' : 'standard pricing, not a bill'}</small></article><article><span>{zh ? '完整周期样本' : 'COMPLETE CYCLES'}</span><strong>{Math.max(0, ...provider.windows.map((window) => window.cycleStats?.sampledCycles || 0))}</strong><small>{zh ? '覆盖率 ≥90% 且接近重置' : '≥90% coverage near reset'}</small></article><article><span>{provider.balanceObservation?.state === 'current' ? (zh ? '官方余额状态' : 'BALANCE STATUS') : (zh ? '官方额度状态' : 'QUOTA STATUS')}</span><strong>{provider.balanceObservation?.state === 'current' ? (zh ? '当前可读' : 'Current') : provider.quotaObservation?.state === 'current' ? (zh ? '当前可读' : 'Current') : provider.quotaObservation?.state === 'historical' ? (zh ? '仅历史' : 'History') : (zh ? '不可观测' : 'Hidden')}</strong><small>{provider.balanceObservation?.state === 'current' ? (zh ? '货币事实，不是 Token 额度' : 'money fact, not Token quota') : (zh ? '不以缺失推断无限' : 'missing never means unlimited')}</small></article></section>
   </section>;
 }
 
@@ -408,12 +410,13 @@ export function BenefitActivityView({ provider, usageData, zh, currency }) {
   const weekStartMs = addLocalWeeks(localWeekStart(snapshotTime), weekOffset).getTime();
   const weekEndMs = localWeekEnd(weekStartMs).getTime();
   const firstWeekMs = useMemo(() => {
-    const sources = new Set(provider.sources);
-    return firstDataWeekStart((usageData?.buckets || []).filter((bucket) => sources.has(bucket.source)).map((bucket) => bucket.bucketStart))?.getTime() || null;
-  }, [usageData, provider.sources]);
+    return firstDataWeekStart(filterBenefitUsageBuckets(
+      usageData, provider.attribution || provider.sources,
+    ).map((bucket) => bucket.bucketStart))?.getTime() || null;
+  }, [usageData, provider.attribution, provider.sources]);
   const viewUsage = useMemo(() => (mode === 'week'
-    ? buildSubscriptionViewUsage(usageData, provider.sources, 'all', { windowStart: weekStartMs, windowEnd: weekEndMs })
-    : buildSubscriptionViewUsage(usageData, provider.sources, range)), [mode, usageData, provider.sources, range, weekStartMs, weekEndMs]);
+    ? buildSubscriptionViewUsage(usageData, provider.attribution || provider.sources, 'all', { windowStart: weekStartMs, windowEnd: weekEndMs })
+    : buildSubscriptionViewUsage(usageData, provider.attribution || provider.sources, range)), [mode, usageData, provider.attribution, provider.sources, range, weekStartMs, weekEndMs]);
   const cells = viewUsage.activity || [];
   const heatCellRefs = useRef(new Map());
   const [hovered, setHovered] = useState(null);
@@ -522,7 +525,9 @@ function MixCard({ title, rows, zh, semantic = false }) {
 
 export function BenefitDistributionView({ provider, usageData, zh }) {
   const [range, setRange] = useState(() => storedBenefitRange('distribution'));
-  const viewUsage = useMemo(() => buildSubscriptionViewUsage(usageData, provider.sources, range), [usageData, provider.sources, range]);
+  const viewUsage = useMemo(() => buildSubscriptionViewUsage(
+    usageData, provider.attribution || provider.sources, range,
+  ), [usageData, provider.attribution, provider.sources, range]);
   const changeRange = (value) => {
     setRange(value);
     localStorage.setItem('kbu.benefit.distribution-range.v1', value);
@@ -534,7 +539,8 @@ export function BenefitDistributionView({ provider, usageData, zh }) {
     { id: 'reasoning', label: zh ? '推理' : 'Reasoning', totalTokens: viewUsage.totals.reasoningOutputTokens },
   ].sort((a,b) => b.totalTokens - a.totalTokens);
   const panelProps = providerPanelProps(provider);
-  return <section className="benefit-view-stack" {...panelProps}><section className="benefit-section-heading"><div><span>{zh ? '单一订阅构成' : 'ONE-BENEFIT BREAKDOWN'}</span><h2><LayoutDashboard size={16}/>{zh ? `${provider.label} 的消耗构成` : `${provider.label} consumption mix`}</h2><p>{zh ? `${benefitRangeLabel(range, true)} · 只使用已归因到该订阅的本机 Token；不代表供应商账单内部权重。` : `${benefitRangeLabel(range, false)} · only local Tokens attributed to this benefit; not the provider billing weight.`}</p></div><div className="benefit-section-range"><strong>{localizedCompact(viewUsage.totals.totalTokens, zh)} Token</strong><BenefitRangeControl value={range} onChange={changeRange} zh={zh} label={zh ? '消耗构成证据范围' : 'Consumption mix evidence range'}/></div></section><div className="benefit-distribution-grid"><MixCard title={zh ? '模型' : 'Models'} rows={viewUsage.modelRows} zh={zh}/><MixCard title={zh ? 'Token 类型' : 'Token types'} rows={tokenTypeRows} zh={zh} semantic/><MixCard title={zh ? '推理强度' : 'Reasoning effort'} rows={viewUsage.effortRows} zh={zh}/><MixCard title={zh ? '项目 / 工作负载' : 'Projects / workload'} rows={viewUsage.projectRows} zh={zh}/></div><div className="benefit-attribution-note"><ShieldCheck size={14}/><span>{zh ? `证据窗口：${benefitRangeLabel(range, true)}。归因范围：${provider.sources.join('、')}。无法确认账户归属的数据不会被强行放进这个订阅。` : `Evidence window: ${benefitRangeLabel(range, false)}. Attribution scope: ${provider.sources.join(', ')}. Data without reliable account attribution is not forced into this benefit.`}</span></div></section>;
+  const familyAttribution = provider.attribution?.kind === 'model-family';
+  return <section className="benefit-view-stack" {...panelProps}><section className="benefit-section-heading"><div><span>{familyAttribution ? (zh ? '模型家族构成' : 'MODEL-FAMILY BREAKDOWN') : (zh ? '单一订阅构成' : 'ONE-BENEFIT BREAKDOWN')}</span><h2><LayoutDashboard size={16}/>{zh ? `${provider.label} 的消耗构成` : `${provider.label} consumption mix`}</h2><p>{familyAttribution ? (zh ? `${benefitRangeLabel(range, true)} · 按 DeepSeek 模型标识跨 Agent 汇总，不代表当前 API Key 账户账单。` : `${benefitRangeLabel(range, false)} · grouped across Agents by DeepSeek model identity, not the current API-key account bill.`) : (zh ? `${benefitRangeLabel(range, true)} · 只使用已归因到该订阅的本机 Token；不代表供应商账单内部权重。` : `${benefitRangeLabel(range, false)} · only local Tokens attributed to this benefit; not the provider billing weight.`)}</p></div><div className="benefit-section-range"><strong>{localizedCompact(viewUsage.totals.totalTokens, zh)} Token</strong><BenefitRangeControl value={range} onChange={changeRange} zh={zh} label={zh ? '消耗构成证据范围' : 'Consumption mix evidence range'}/></div></section><div className="benefit-distribution-grid"><MixCard title={zh ? '模型' : 'Models'} rows={viewUsage.modelRows} zh={zh}/><MixCard title={zh ? 'Token 类型' : 'Token types'} rows={tokenTypeRows} zh={zh} semantic/><MixCard title={zh ? '推理强度' : 'Reasoning effort'} rows={viewUsage.effortRows} zh={zh}/><MixCard title={zh ? '项目 / 工作负载' : 'Projects / workload'} rows={viewUsage.projectRows} zh={zh}/></div><div className="benefit-attribution-note"><ShieldCheck size={14}/><span>{familyAttribution ? (zh ? `证据窗口：${benefitRangeLabel(range, true)}。归因范围：模型名或模型供应方包含 DeepSeek；同一记录可能也出现在对应 Agent 权益视图中，组合总量已去重。` : `Evidence window: ${benefitRangeLabel(range, false)}. Scope: model name or model provider identifies DeepSeek. The same record may also appear in its Agent benefit view; portfolio totals are deduplicated.`) : (zh ? `证据窗口：${benefitRangeLabel(range, true)}。归因范围：${provider.sources.join('、')}。无法确认账户归属的数据不会被强行放进这个订阅。` : `Evidence window: ${benefitRangeLabel(range, false)}. Attribution scope: ${provider.sources.join(', ')}. Data without reliable account attribution is not forced into this benefit.`)}</span></div></section>;
 }
 
 function RecordsTable({ label, columns, rows, totalRows = rows.length, rowOffset = 0, rowClassName = '', renderCells, focusKey = null }) {
@@ -562,11 +568,12 @@ function recordCell(content, label, index, { strong = false, className = '', tit
 }
 
 export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh, currency }) {
-  const [kind, setKind] = useState(drilldown?.kind || 'quota');
+  const defaultKind = provider.balanceObservation?.state === 'current' ? 'usage' : 'quota';
+  const [kind, setKind] = useState(drilldown?.kind || defaultKind);
   const [usageRange, setUsageRange] = useState(() => storedBenefitRange('records'));
   useEffect(() => {
-    if (drilldown?.kind) setKind(drilldown.kind);
-  }, [drilldown]);
+    setKind(drilldown?.kind || defaultKind);
+  }, [defaultKind, drilldown, provider.id]);
   const allQuotaRows = provider.observationLog.map((row, index) => ({ ...row, key: `${row.observedAt}-${row.id}-${index}` }));
   const rangeUsageRows = filterBenefitUsageRecords(provider.usageRecords, usageRange, provider.evidenceClock?.usageObservedAt);
   const dayUsageRows = drilldown?.kind === 'usage' && drilldown.date
@@ -590,7 +597,10 @@ export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh, 
   const rowOffset = (currentPage - 1) * RECORD_PAGE_SIZE;
   const pageRows = activeRows.slice(rowOffset, rowOffset + RECORD_PAGE_SIZE);
   const quotaColumns = zh ? ['时间', '窗口', '官方已用', '本机 TOKEN', '覆盖率', '重置'] : ['Observed', 'Window', 'Official used', 'Local Tokens', 'Coverage', 'Reset'];
-  const usageColumns = zh ? ['时间', '模型', 'TOKEN', '请求', '推理强度', 'API 等价价值'] : ['Time', 'Model', 'Tokens', 'Requests', 'Reasoning', 'API equivalent'];
+  const modelFamilyUsage = provider.attribution?.kind === 'model-family';
+  const usageColumns = modelFamilyUsage
+    ? (zh ? ['时间', 'Agent', '模型', 'TOKEN', '请求', '推理强度', 'API 等价价值'] : ['Time', 'Agent', 'Model', 'Tokens', 'Requests', 'Reasoning', 'API equivalent'])
+    : (zh ? ['时间', '模型', 'TOKEN', '请求', '推理强度', 'API 等价价值'] : ['Time', 'Model', 'Tokens', 'Requests', 'Reasoning', 'API equivalent']);
   const panelProps = providerPanelProps(provider);
 
   return <section className="panel benefit-records-panel" {...panelProps}>
@@ -632,7 +642,15 @@ export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh, 
       rowOffset={rowOffset}
       rowClassName="benefit-usage"
       focusKey={focusKey}
-      renderCells={(row, columns) => <>
+      renderCells={(row, columns) => modelFamilyUsage ? <>
+        {recordCell(dateLabel(row.observedAt, zh, true), columns[0], 0)}
+        {recordCell(sourceLabel(row.source) || '—', columns[1], 1)}
+        {recordCell(row.model, columns[2], 2, { title: row.model })}
+        {recordCell(localizedCompact(row.totalTokens, zh), columns[3], 3, { strong: true, className: 'evidence-local' })}
+        {recordCell(localizedCompact(row.requestCount, zh), columns[4], 4, { className: 'evidence-local' })}
+        {recordCell(row.reasoningEffort || (zh ? '未记录' : 'Not recorded'), columns[5], 5, { className: 'evidence-local' })}
+        {recordCell(money(row.costMicros / 1e6, currency), columns[6], 6, { className: 'evidence-derived' })}
+      </> : <>
         {recordCell(dateLabel(row.observedAt, zh, true), columns[0], 0)}
         {recordCell(row.model, columns[1], 1, { title: row.model })}
         {recordCell(localizedCompact(row.totalTokens, zh), columns[2], 2, { strong: true, className: 'evidence-local' })}

@@ -4,6 +4,7 @@ import test from 'node:test';
 import { LIMIT_PROVIDER_CATALOG } from '../src/limits/catalog.js';
 import { assertProviderContract } from '../src/limits/contract.js';
 import { parseAntigravityQuota } from '../src/limits/providers/antigravity.js';
+import { parseDeepSeekBalance } from '../src/limits/providers/deepseek.js';
 import { parseClaudeUsage } from '../src/limits/providers/claude.js';
 import { parseCodexUsage } from '../src/limits/providers/codex.js';
 import { parseCopilotUsage } from '../src/limits/providers/copilot.js';
@@ -27,6 +28,7 @@ const PARSERS = {
   cursor: (input) => parseCursorUsage(input, {}, { now: NOW }),
   copilot: (input) => parseCopilotUsage(input, {}, { now: NOW }),
   antigravity: (input) => parseAntigravityQuota(input, {}, { now: NOW }),
+  deepseek: (input) => parseDeepSeekBalance(input, { now: NOW }),
   opencode: (input) => parseOpenCodeGoUsage(JSON.stringify(input), { now: NOW }),
   qoder: (input) => parseQoderUsage(input, {}, { now: NOW }),
   warp: (input) => parseWarpUsage(input, { now: NOW }),
@@ -122,6 +124,9 @@ test('contract returns an exact browser allowlist and redacts account and path h
     resetCredits: {
       availableCount: 3.9, nextExpiry: '2026-08-13T12:00:00Z', secret: sentinel,
     },
+    balances: [{
+      currency: 'usd', total: 12.5, granted: 2.5, toppedUp: 10, available: true, secret: sentinel,
+    }],
     windows: [{
       id: 'primary', label: '5 小时', usedPercent: 25, remainingPercent: 75,
       resetsAt: '2026-08-12T15:00:00.000Z', detail: '/private/secret/quota.json',
@@ -129,7 +134,7 @@ test('contract returns an exact browser allowlist and redacts account and path h
     }],
   });
   assert.deepEqual(Object.keys(result), [
-    'id', 'label', 'status', 'account', 'plan', 'source', 'notice', 'resetCredits',
+    'id', 'label', 'status', 'account', 'plan', 'source', 'notice', 'resetCredits', 'balances',
     'updatedAt', 'windows',
   ]);
   assert.deepEqual(Object.keys(result.windows[0]), [
@@ -143,6 +148,9 @@ test('contract returns an exact browser allowlist and redacts account and path h
   assert.deepEqual(result.resetCredits, {
     availableCount: 3, nextExpiry: '2026-08-13T12:00:00.000Z',
   });
+  assert.deepEqual(result.balances, [{
+    currency: 'USD', total: 12.5, granted: 2.5, toppedUp: 10, available: true,
+  }]);
   assert.equal(JSON.stringify(result).includes(sentinel), false);
   assert.equal(JSON.stringify(result).includes('/Users/private'), false);
 });

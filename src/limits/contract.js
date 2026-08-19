@@ -108,6 +108,33 @@ function browserResetCredits(resetCredits) {
   };
 }
 
+function browserBalances(balances) {
+  if (balances == null) return [];
+  if (!Array.isArray(balances) || balances.length > 16) throw invalid('balances 必须是最多 16 项的数组');
+  const currencies = new Set();
+  return balances.map((balance, index) => {
+    if (!balance || typeof balance !== 'object' || Array.isArray(balance)) {
+      throw invalid(`balances[${index}] 必须是对象`);
+    }
+    const currency = safeText(balance.currency, 3)?.toUpperCase();
+    if (!currency || !/^[A-Z]{3}$/.test(currency)) throw invalid(`balances[${index}].currency 无效`);
+    if (currencies.has(currency)) throw invalid(`balances 币种重复：${currency}`);
+    currencies.add(currency);
+    const values = ['total', 'granted', 'toppedUp'].map((field) => {
+      const value = balance[field];
+      if (!Number.isFinite(value) || value < 0 || value > 1_000_000_000_000) {
+        throw invalid(`balances[${index}].${field} 必须是有效的非负金额`);
+      }
+      return value;
+    });
+    if (typeof balance.available !== 'boolean') throw invalid(`balances[${index}].available 必须是布尔值`);
+    return {
+      currency, total: values[0], granted: values[1], toppedUp: values[2],
+      available: balance.available,
+    };
+  });
+}
+
 /**
  * Enforce the browser-safe shape shared by every subscription quota provider.
  * Provider-specific parsers remain free to add fields, but the stable fields
@@ -132,6 +159,7 @@ export function assertProviderContract(expectedId, result) {
     source: safeDisplayText(result.source, 240),
     notice: safeDisplayText(result.notice, 300),
     resetCredits: browserResetCredits(result.resetCredits),
+    balances: browserBalances(result.balances),
     updatedAt: new Date(result.updatedAt).toISOString(),
     windows: result.windows.map(browserWindow),
   };

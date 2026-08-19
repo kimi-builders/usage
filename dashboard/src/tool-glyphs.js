@@ -3,6 +3,7 @@ import claudeCodeIcon from '@lobehub/icons-static-svg/icons/claudecode-color.svg
 import codexIcon from '@lobehub/icons-static-svg/icons/codex-color.svg';
 import geminiCliIcon from '@lobehub/icons-static-svg/icons/geminicli-color.svg';
 import antigravityIcon from '@lobehub/icons-static-svg/icons/antigravity-color.svg';
+import deepseekIcon from '@lobehub/icons-static-svg/icons/deepseek-color.svg';
 import codeBuddyIcon from '@lobehub/icons-static-svg/icons/codebuddy-color.svg';
 import copilotIcon from '@lobehub/icons-static-svg/icons/copilot-color.svg';
 import openCodeMono from '@lobehub/icons-static-svg/icons/opencode.svg?raw';
@@ -23,6 +24,7 @@ const TOOL_ICONS = {
   codex: { src: codexIcon, tone: 'codex', label: 'Codex' },
   'gemini-cli': { src: geminiCliIcon, tone: 'gemini', label: 'Gemini CLI' },
   antigravity: { src: antigravityIcon, tone: 'antigravity', label: 'Antigravity' },
+  deepseek: { src: deepseekIcon, tone: 'deepseek', label: 'DeepSeek' },
   'copilot-cli': { src: copilotIcon, tone: 'copilot', label: 'Copilot CLI' },
   copilot: { src: copilotIcon, tone: 'copilot', label: 'GitHub Copilot' },
   opencode: { svg: openCodeMono, tone: 'opencode', label: 'OpenCode' },

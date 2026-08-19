@@ -15,6 +15,7 @@ function result(observedAt, usedPercent = 25) {
     providers: [{
       id: 'codex', label: 'Codex', status: 'ok', account: 'private@example.com', source: '/private/path',
       updatedAt: observedAt,
+      balances: [{ currency: 'ZZZ', total: 87654321, granted: 1, toppedUp: 87654320, available: true }],
       windows: [{
         id: 'primary', label: '5 小时', usedPercent, remainingPercent: 100 - usedPercent,
         resetsAt: '2026-08-12T15:00:00.000Z', windowSeconds: 18_000,
@@ -38,6 +39,8 @@ test('records only sanitized provider quota facts in a separate private history 
     assert.equal(raw.includes('private@example.com'), false);
     assert.equal(raw.includes('/private/path'), false);
     assert.equal(raw.includes('secret response'), false);
+    assert.equal(raw.includes('balances'), false);
+    assert.equal(raw.includes('87654321'), false);
     assert.equal(loadLimitHistory({ path, now: NOW }).observations[0].providers[0].windows[0].usedPercent, 25);
   } finally {
     rmSync(directory, { recursive: true, force: true });

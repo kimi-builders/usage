@@ -81,6 +81,10 @@ test('quota copy localizes provider fields and normalizes legacy seven-day label
   assert.equal(utils.quotaWindowDetail('antigravity', { detail: 'Antigravity 返回的 每周额度池' }, false), 'Antigravity weekly quota pool');
   assert.equal(utils.quotaSourceDisplay('Kimi Web 登录令牌', false), 'Kimi Web token');
   assert.equal(utils.quotaProviderNotice('额度来自 Kimi 账户接口，按请求/订阅窗口展示。', false), 'Quotas come from the Kimi account API and are shown by request or subscription cycle.');
+  assert.equal(utils.quotaProviderCatalogCopy({
+    id: 'deepseek', label: 'DeepSeek', description: 'API 账户货币余额与 DeepSeek 模型本机用量',
+    localHint: '中文提示', detection: { state: 'manual', label: '需要一次手动连接' },
+  }, false).description, 'API account balance and local DeepSeek model usage');
   assert.equal(utils.quotaPageError('权益接口暂时不可用', false), 'Could not load benefit data. Try again.');
 });
 
@@ -123,6 +127,40 @@ test('English benefits center does not leak built-in Chinese provider copy', () 
   assert.match(markup, />Weekly</);
   assert.match(markup, /Kimi Web token/);
   assert.doesNotMatch(markup, /[\u3400-\u9fff]/u);
+});
+
+test('DeepSeek renders official money separately from cross-Agent local model usage', () => {
+  const observedAt = '2026-08-11T12:00:00.000Z';
+  const markup = renderToStaticMarkup(createElement(module.SubscriptionCenter, {
+    data: {
+      enabled: true,
+      generatedAt: observedAt,
+      providers: [{
+        id: 'deepseek', label: 'DeepSeek', status: 'ok', updatedAt: observedAt,
+        source: 'DeepSeek 环境变量', windows: [],
+        balances: [{ currency: 'CNY', total: 42.5, granted: 2.5, toppedUp: 40, available: true }],
+        notice: 'DeepSeek 公开 API 只返回账户货币余额，不提供 Token、5 小时或每周额度窗口；本机 DeepSeek 模型用量与余额分别展示。',
+      }],
+      history: { observations: [] },
+    },
+    usageData: { generatedAt: observedAt, buckets: [{
+      id: 'local-deepseek', source: 'cursor', bucketStart: observedAt,
+      model: 'deepseek-v4-pro', modelCanonical: 'deepseek-v4-pro',
+      inputTokens: 100, cacheWriteInputTokens: 0, cacheReadInputTokens: 0,
+      outputTokens: 20, reasoningOutputTokens: 0, totalTokens: 120,
+      requestCount: 1, costMicros: 240, pricedTokens: 120, unpricedTokens: 0, assumedTokens: 0,
+    }] },
+    settings: { refreshMinutes: 10, providers: { deepseek: { entitlementType: 'unknown' } } },
+    loading: false, error: null, onRefresh: () => {}, onSettings: () => {}, view: 'overview', zh: false,
+  }));
+
+  assert.match(markup, /DeepSeek API account balance/);
+  assert.match(markup, /Provider-reported money, not a Token quota/);
+  assert.match(markup, /42\.50/);
+  assert.match(markup, /Grouped|grouped|model family/);
+  assert.match(markup, /120/);
+  assert.doesNotMatch(markup, /Official quota is not observable/);
+  assert.doesNotMatch(markup, /[㐀-鿿]/u);
 });
 
 test('overview provider tabs control a panel labelled by the active tab', () => {

@@ -239,7 +239,7 @@ Cursor 的本地来源配置不依赖社区账号或 `init`。看板验证和启
 Collector 才会复用该平台的本机登录或读取你指定的凭据并发起查询。
 
 当前支持 Codex、Claude Code、Kimi Code、Cursor、GitHub Copilot、Antigravity、
-OpenCode Go、Qoder、Warp 与 JetBrains AI。不同平台支持自动检测、
+DeepSeek、OpenCode Go、Qoder、Warp 与 JetBrains AI。不同平台支持自动检测、
 环境变量或 macOS 钥匙串中的一种或多种方式。Trae 暂无稳定且可独立验证的个人额度接口，
 因此只显示“暂不可查”，不会生成猜测数据。
 
@@ -248,6 +248,11 @@ Gemini CLI 本机 Token 历史仍由离线 Parser 保留。Antigravity 会优先
 Antigravity 或 `agy` 回环服务，读取 Gemini 与 Claude/GPT 的 5 小时和每周额度；工具不会为
 额度查询自动启动或终止用户进程。没有可用本机服务时，才会使用用户明确配置的 Antigravity
 OAuth 或 CodexBar 凭据。
+
+DeepSeek 使用用户明确配置的 API Key 查询公开余额接口，只展示按币种返回的总余额、充值余额
+与赠送余额，不把货币换算成 Token 额度。权益中心会另外按 DeepSeek 模型标识汇总各 Agent 的
+本机用量；这条模型家族证据可能与对应 Agent 权益视图重叠，也不能证明请求属于当前 API Key
+账户，组合总量会按原始记录去重。
 
 额度页默认把 Kimi Code 放在第一位。你可以在设置中抓住手柄直接拖动已启用平台，桌面
 鼠标和移动端触控都可用；排序保存在本机，并同时用于额度页签和查询顺序。

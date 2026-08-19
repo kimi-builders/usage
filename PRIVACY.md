@@ -14,7 +14,7 @@ not require a Kimi Builders account and does not require network access.
 | Local source policy | Per-Agent Off / Local / Local + sync selection | Owner-only config file |
 | Sync payload | Protocol-v2 aggregates and diagnostic client metadata | Explicit `sync`, or an explicitly installed background schedule |
 | Public community | Period aggregates selected by the account owner | Off |
-| Provider quota check | Account limit/reset metadata for enabled providers | Off |
+| Provider quota/balance check | Account limit/reset metadata or monetary balance facts for enabled providers | Off |
 | Local quota history | Sanitized quota percentages and reset windows | Only after an enabled provider is refreshed |
 
 The local snapshot contains only sources the user leaves in Local or Local +
@@ -42,6 +42,13 @@ to the browser, included in exports, or added to community sync. Local account
 detection reads only the minimum credential or quota-store field required to
 report whether a supported app is signed in; it does not read conversation
 content.
+
+DeepSeek is balance-only: the browser receives normalized currency, total,
+topped-up, granted, and API-availability fields, never the API key or raw
+response. These current money facts are not converted into Token quotas and are
+not added to quota history. Local DeepSeek model usage is a separate, local
+model-family view and does not prove that a request used the configured API-key
+account.
 
 Successful subscription-limit refreshes keep a separate local history file at
 `~/.kimi-builders/usage/subscription-history.json` (or the configured Collector

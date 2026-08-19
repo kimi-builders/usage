@@ -84,6 +84,9 @@ points; only a fresh provider refresh can append a sanitized observation.
   `https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`,
   `v1internal:fetchAvailableModels`, and, when needed, `v1internal:retrieveUserQuota`;
   expired OAuth credentials may refresh through `https://oauth2.googleapis.com/token`;
+- DeepSeek: `https://api.deepseek.com/user/balance` reads the API account's
+  per-currency total, topped-up, and granted money balances with an explicitly
+  configured API key. No browser session or private Platform endpoint is read;
 - JetBrains AI: no network; the latest local IDE quota file is read.
 Trae is visible in the setup catalog but disabled because this version has no
 stable, independently verifiable subscription-quota interface for it. Merely

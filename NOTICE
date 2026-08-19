@@ -44,13 +44,13 @@ Project:    CodexBar
 Source:     https://github.com/steipete/CodexBar
 License:    MIT
 Copyright:  Copyright (c) 2026 Peter Steinberger
-Audited snapshot: e5528d452d4f82cbd7e327246b9044e9c51d64e1
+Audited snapshot: 453174fe13eebdf403cc0776268eb2b101fd9553
 
 Provider-specific endpoint knowledge, request shapes, response mapping, local
 credential discovery, and related test cases in the subscription-limit layer
 were adapted or reimplemented from CodexBar's provider integrations. This
 particularly applies to Codex, Claude, Cursor, GitHub Copilot, OpenCode Go,
-Qoder, Warp, Antigravity, and JetBrains AI where the corresponding
+Qoder, Warp, Antigravity, DeepSeek, and JetBrains AI where the corresponding
 source exists upstream.
 
 The implementation here translates those provider facts into JavaScript and a

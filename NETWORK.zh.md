@@ -70,6 +70,9 @@ CSP 和 no-store 响应。Token 分析始终离线。只有用户点击相应控
   `https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`、
   `v1internal:fetchAvailableModels`，必要时还会调用 `v1internal:retrieveUserQuota`；过期 OAuth
   凭据可能通过 `https://oauth2.googleapis.com/token` 刷新；
+- DeepSeek：使用用户明确配置的 API Key 请求 `https://api.deepseek.com/user/balance`，只读取
+  API 账户按币种返回的总余额、充值余额与赠送余额；不读取浏览器会话，也不访问私有 Platform
+  接口；
 - JetBrains AI：不联网，只读取最新的本地 IDE 额度文件。
 
 Trae 会显示在配置目录中，但当前版本没有稳定、可独立验证的订阅额度接口，因此保持禁用。

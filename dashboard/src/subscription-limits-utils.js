@@ -5,7 +5,7 @@ import { compactNumber, pluralUnit } from './format.js';
 export const PROVIDER_TONES = {
   codex: 'blue', 'kimi-code': 'amber', warp: 'violet',
   antigravity: 'green', 'jetbrains-ai': 'pink', 'claude-code': 'amber', cursor: 'blue',
-  copilot: 'violet', opencode: 'amber', qoder: 'green', trae: 'blue',
+  copilot: 'violet', deepseek: 'blue', opencode: 'amber', qoder: 'green', trae: 'blue',
 };
 
 export function idSegment(value) {
@@ -141,6 +141,7 @@ const ENGLISH_PROVIDER_NOTICES = new Map([
   ['GitHub 当前登录没有返回可验证的个人额度窗口；这不代表免费、无限或未使用。', 'The current GitHub login exposes no verifiable personal quota window; this does not mean free, unlimited, or unused.'],
   ['本机服务返回 Gemini 与 Claude/GPT 的 5 小时和每周额度池。', 'The local service exposes 5-hour and weekly quota pools for Gemini and Claude/GPT models.'],
   ['同一模型家族显示剩余比例最低的文本模型额度，避免高估可用量。', 'Each model family shows the text-model quota with the lowest remaining percentage to avoid overstating availability.'],
+  ['DeepSeek 公开 API 只返回账户货币余额，不提供 Token、5 小时或每周额度窗口；本机 DeepSeek 模型用量与余额分别展示。', 'The public DeepSeek API returns account money balances, not Token, 5-hour, or weekly quota windows. Local DeepSeek model usage is shown separately from the balance.'],
   ['额度来自 OpenCode Go Workspace 订阅；本机 OpenCode Token 用量与该额度分开统计。', 'Quotas come from the OpenCode Go Workspace subscription; local OpenCode Token usage is tracked separately.'],
   ['已合并个人额度与团队共享额度，避免低估可用 Credits。', 'Personal and team-shared allowances are combined to avoid understating available credits.'],
   ['Qoder 按账户 Big Model Credits 展示。', 'Qoder is shown using account-level Big Model Credits.'],
@@ -167,6 +168,7 @@ const ENGLISH_SOURCES = new Map([
   ['agy 本机服务', 'Local agy service'],
   ['Antigravity IDE 本机服务', 'Local Antigravity IDE service'],
   ['Antigravity 本机服务', 'Local Antigravity service'],
+  ['DeepSeek 环境变量', 'DeepSeek environment variable'],
 ]);
 
 export function quotaSourceDisplay(value, zh) {
@@ -225,6 +227,11 @@ const ENGLISH_CATALOG_COPY = {
     description: '5-hour and weekly quota pools for Gemini and Claude/GPT',
     localHint: 'Uses a running Antigravity or agy local service first. CodexBar OAuth or an OAuth credentials JSON can also be used.',
     secretKind: 'OAuth credentials JSON',
+  },
+  deepseek: {
+    description: 'API account balance and local DeepSeek model usage',
+    localHint: 'Uses an API key to query only DeepSeek’s public balance endpoint. It does not read browser sessions or convert money into a Token quota.',
+    secretKind: 'DeepSeek API Key',
   },
   opencode: {
     description: '5-hour, weekly, and monthly Go subscription quotas',

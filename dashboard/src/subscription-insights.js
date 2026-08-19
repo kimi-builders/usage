@@ -16,6 +16,10 @@ const PROVIDER_SOURCES = {
   'jetbrains-ai': ['jetbrains-ai'],
 };
 
+const MODEL_FAMILY_ATTRIBUTIONS = {
+  deepseek: 'deepseek',
+};
+
 const DAY_SECONDS = 86_400;
 const MONTH_SECONDS = DAY_SECONDS * 30;
 const EVIDENCE_SKEW_TOLERANCE_MS = 5 * 60 * 1_000;
@@ -218,12 +222,51 @@ function providerUsageRecords(buckets) {
   return [...buckets].sort((left, right) => Date.parse(right.bucketStart) - Date.parse(left.bucketStart)).map((bucket) => ({
     id: bucket.id || `${bucket.bucketStart}:${bucket.modelCanonical || bucket.model || 'unknown'}`,
     observedAt: bucket.bucketStart,
+    source: bucket.source || null,
     model: bucket.modelCanonical || bucket.model || 'unknown',
     reasoningEffort: bucket.reasoningEffort || null,
     project: bucket.project || null,
     agentVersion: bucket.agentVersion || null,
     ...sumBuckets([bucket]),
   }));
+}
+
+function normalizedAttribution(value) {
+  if (Array.isArray(value)) return { kind: 'source', sources: [...new Set(value)], modelFamily: null };
+  if (value?.kind === 'model-family' && value.modelFamily) {
+    return { kind: 'model-family', sources: [], modelFamily: String(value.modelFamily).toLowerCase() };
+  }
+  return {
+    kind: 'source',
+    sources: [...new Set(Array.isArray(value?.sources) ? value.sources : [])],
+    modelFamily: null,
+  };
+}
+
+function modelIdentity(bucket) {
+  return [bucket?.modelCanonical, bucket?.model, bucket?.modelProvider]
+    .filter((value) => typeof value === 'string' && value.trim())
+    .join(' ')
+    .toLowerCase();
+}
+
+export function benefitUsageMatches(bucket, attribution) {
+  const scope = normalizedAttribution(attribution);
+  return matchesNormalizedAttribution(bucket, scope);
+}
+
+function matchesNormalizedAttribution(bucket, scope) {
+  if (scope.kind === 'model-family') {
+    const escaped = scope.modelFamily.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^a-z0-9])${escaped}(?=$|[^a-z0-9])`).test(modelIdentity(bucket));
+  }
+  return scope.sources.includes(bucket?.source);
+}
+
+export function filterBenefitUsageBuckets(snapshot, attribution) {
+  const scope = normalizedAttribution(attribution);
+  return (Array.isArray(snapshot?.buckets) ? snapshot.buckets : [])
+    .filter((bucket) => matchesNormalizedAttribution(bucket, scope));
 }
 
 function normalizedBenefitRange(range) {
@@ -280,11 +323,13 @@ export function nearestBenefitObservation(records, observedAt) {
 
 // Activity and distribution views may choose a local evidence window without
 // changing quota, value, capacity, or decision signals built from full history.
-export function buildSubscriptionViewUsage(snapshot, sourceIds, range = 'all', { now = null, windowStart = null, windowEnd = null } = {}) {
+export function buildSubscriptionViewUsage(snapshot, attribution, range = 'all', { now = null, windowStart = null, windowEnd = null } = {}) {
   const normalized = normalizedBenefitRange(range);
-  const sources = new Set(Array.isArray(sourceIds) ? sourceIds : []);
-  const allBuckets = (Array.isArray(snapshot?.buckets) ? snapshot.buckets : [])
-    .filter((bucket) => sources.has(bucket.source));
+  const scope = normalizedAttribution(attribution);
+  const allBuckets = filterBenefitUsageBuckets(snapshot, scope);
+  const sources = new Set(scope.kind === 'source'
+    ? scope.sources
+    : allBuckets.map((bucket) => bucket.source).filter(Boolean));
   const referenceAt = benefitReferenceTime(snapshot, now, allBuckets);
   // A custom window (single-week mode) wins over the rolling range windows.
   const custom = Number.isFinite(windowStart) && Number.isFinite(windowEnd) && windowEnd > windowStart;
@@ -301,6 +346,7 @@ export function buildSubscriptionViewUsage(snapshot, sourceIds, range = 'all', {
   return {
     range: normalized,
     sources: [...sources],
+    attribution: scope,
     evidenceStart: start == null ? null : new Date(start).toISOString(),
     evidenceEnd: Number.isFinite(end) ? new Date(end).toISOString() : null,
     bucketCount: buckets.length,
@@ -395,6 +441,13 @@ function enrichWindow(window, buckets, sourceHistoryStart, modelRates, quotaObse
 
 function providerSources(providerId) {
   return PROVIDER_SOURCES[providerId] || [providerId];
+}
+
+function providerAttribution(providerId) {
+  const modelFamily = MODEL_FAMILY_ATTRIBUTIONS[providerId];
+  return modelFamily
+    ? { kind: 'model-family', sources: [], modelFamily }
+    : { kind: 'source', sources: providerSources(providerId), modelFamily: null };
 }
 
 function totalsAtObservation(buckets, window, observedAt, sourceHistoryStart, usageObservedAt) {
@@ -499,7 +552,12 @@ function windowPace(window, now) {
 
 function decisionSignals(provider) {
   const signals = [];
-  if (provider.quotaObservation?.state === 'unavailable') {
+  if (provider.balanceObservation?.state === 'current' && provider.quotaObservation?.state === 'unavailable') {
+    signals.push({
+      code: 'balance-only', tone: 'info', localTokens: provider.lifetimeTotals.totalTokens,
+      currencies: provider.balanceObservation.currencies,
+    });
+  } else if (provider.quotaObservation?.state === 'unavailable') {
     signals.push({
       code: 'quota-unobservable', tone: 'info',
       bestEffort: provider.quotaObservation.bestEffort,
@@ -557,8 +615,11 @@ export function buildSubscriptionInsights(snapshot, limits, {
     const providerEvidenceClock = evidenceClock(usageObservedAt, quotaObservedAt);
     const providerStale = quotaObservedAt != null
       && usageReferenceAt - quotaObservedAt > QUOTA_STALE_AFTER_MS;
-    const sources = new Set(providerSources(provider.id));
-    const buckets = allBuckets.filter((bucket) => sources.has(bucket.source));
+    const attribution = providerAttribution(provider.id);
+    const buckets = allBuckets.filter((bucket) => matchesNormalizedAttribution(bucket, attribution));
+    const sources = new Set(attribution.kind === 'source'
+      ? attribution.sources
+      : buckets.map((bucket) => bucket.source).filter(Boolean));
     const sourceHistoryStart = buckets.reduce((earliest, bucket) => {
       const time = Date.parse(bucket.bucketStart);
       return Number.isFinite(time) ? Math.min(earliest, time) : earliest;
@@ -628,6 +689,12 @@ export function buildSubscriptionInsights(snapshot, limits, {
       bestEffort: provider.quotaCoverage === 'best-effort',
       observedAt: quotaObservedAt == null ? null : new Date(quotaObservedAt).toISOString(),
     };
+    const balanceObservation = {
+      state: provider.status === 'ok' && Array.isArray(provider.balances) && provider.balances.length
+        ? 'current' : 'unavailable',
+      currencies: Array.isArray(provider.balances) ? provider.balances.length : 0,
+      observedAt: quotaObservedAt == null ? null : new Date(quotaObservedAt).toISOString(),
+    };
     const primaryWindow = [...enrichedWindows]
       .filter((window) => window.estimatedCapacityTokens != null && window.windowSeconds)
       .sort((left, right) => right.windowSeconds - left.windowSeconds)[0] || null;
@@ -643,6 +710,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
     const value = {
       ...provider,
       sources: [...sources],
+      attribution,
       lifetimeTotals,
       recentTotals,
       modelRows,
@@ -660,6 +728,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
       subscription: subscriptionFacts,
       economics,
       quotaObservation,
+      balanceObservation,
       evidenceClock: {
         ...providerEvidenceClock,
         usageObservedAt: usageObservedAt == null ? null : new Date(usageObservedAt).toISOString(),
@@ -691,6 +760,18 @@ export function buildSubscriptionInsights(snapshot, limits, {
     return totals;
   }, { usd: 0, cny: 0 });
   const portfolio = buildPortfolioReview(providers, usageReferenceAt);
+  // A model-family view (currently DeepSeek) intentionally overlaps Agent
+  // benefit views. Portfolio totals use the union of matching local buckets so
+  // the same observation is never counted twice.
+  const trackedBuckets = allBuckets.filter((bucket) => providers.some((provider) => (
+    matchesNormalizedAttribution(bucket, provider.attribution)
+  )));
+  const recentTrackedBuckets = trackedBuckets.filter((bucket) => {
+    const time = Date.parse(bucket.bucketStart);
+    return Number.isFinite(time) && time >= usageReferenceAt - MONTH_SECONDS * 1_000 && time <= usageReferenceAt;
+  });
+  const trackedTotals = sumBuckets(trackedBuckets);
+  const recentTrackedTotals = sumBuckets(recentTrackedBuckets);
   const entitlementCounts = Object.fromEntries(
     ['paid', 'free', 'promotion', 'organization', 'unknown'].map((type) => [
       type, subscriptionRecords.filter((subscription) => subscription.entitlementType === type).length,
@@ -700,7 +781,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
     providers,
     portfolio,
     summary: {
-      trackedTokens: providers.reduce((sum, provider) => sum + provider.lifetimeTotals.totalTokens, 0),
+      trackedTokens: trackedTotals.totalTokens,
       trackedProviders: providers.filter((provider) => provider.hasLocalUsage).length,
       estimableWindows: providers.flatMap((provider) => provider.windows)
         .filter((window) => window.estimatedCapacityTokens != null).length,
@@ -715,8 +796,12 @@ export function buildSubscriptionInsights(snapshot, limits, {
       quotaObservableProviders: providers.filter((provider) => provider.quotaObservation.state === 'current').length,
       quotaHistoricalProviders: providers.filter((provider) => provider.quotaObservation.state === 'historical').length,
       quotaUnavailableProviders: providers.filter((provider) => provider.quotaObservation.state === 'unavailable').length,
-      recentTokens: providers.reduce((sum, provider) => sum + provider.recentTotals.totalTokens, 0),
-      apiEquivalentUsd: providers.reduce((sum, provider) => sum + provider.economics.apiEquivalentUsd, 0),
+      balanceObservableProviders: providers.filter((provider) => provider.balanceObservation.state === 'current').length,
+      officialFactProviders: providers.filter((provider) => (
+        provider.quotaObservation.state === 'current' || provider.balanceObservation.state === 'current'
+      )).length,
+      recentTokens: recentTrackedTotals.totalTokens,
+      apiEquivalentUsd: recentTrackedTotals.costMicros / 1_000_000,
       portfolioValueRatio: selectedSpendByCurrency.usd > 0
         ? providers.filter((provider) => provider.subscription.isPaid
           && provider.subscription.currency === 'usd' && provider.subscription.monthlyPrice > 0)
@@ -729,6 +814,10 @@ export function buildSubscriptionInsights(snapshot, limits, {
 
 export function subscriptionSourceIds(providerId) {
   return [...providerSources(providerId)];
+}
+
+export function subscriptionAttribution(providerId) {
+  return providerAttribution(providerId);
 }
 
 export function selectSubscriptionAccounts(limits, selections = {}) {

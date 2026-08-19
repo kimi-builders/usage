@@ -50,7 +50,8 @@ Kimi Builders Usage 同时服务两个产品场景：一台电脑上的私有分
 
 - 默认总开关关闭，每个平台单独启用。
 - 凭据优先复用 provider 自己的本机登录；手动 secret 只允许环境变量或支持时的系统钥匙串。
-- 浏览器只得到规范化额度窗口，得不到原始 Cookie、Token 或 provider 响应。
+- 浏览器只得到规范化额度窗口或货币余额事实，得不到原始 Cookie、Token 或 provider 响应。
+- 货币余额、Credits、订阅额度和本机观测 Token 必须分别标注，不得相互换算为官方 Token 事实。
 - 额度数据不进入 Token 快照、导出、海报或社区同步。
 
 ### 社区同步

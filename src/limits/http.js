@@ -13,6 +13,7 @@ export const LIMIT_ALLOWED_HOSTS = new Set([
   'opencode.ai',
   'qoder.com',
   'qoder.com.cn',
+  'api.deepseek.com',
 ]);
 
 export async function requestBytes(url, {

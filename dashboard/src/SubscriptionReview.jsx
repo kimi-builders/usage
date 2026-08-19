@@ -55,6 +55,8 @@ function entitlementCopy(type, zh) {
 }
 
 function CycleCapacityCard({ provider, zh, currency }) {
+  const balanceOnly = provider.balanceObservation?.state === 'current'
+    && provider.quotaObservation?.state === 'unavailable';
   const candidates = [...provider.windows]
     .filter((window) => window.cycleStats?.sampledCycles > 0)
     .sort((left, right) => (right.windowSeconds || 0) - (left.windowSeconds || 0));
@@ -75,7 +77,7 @@ function CycleCapacityCard({ provider, zh, currency }) {
         <div><dt>{zh ? '周期稳定性' : 'STABILITY'}</dt><dd>{stabilityCopy(stats.stability, zh)}</dd></div>
       </dl>
       <p>{zh ? '仅纳入已结束、重置前采样充分且本机日志覆盖 ≥90% 的周期；区间不是供应商公布的 Token 上限。' : 'Only completed cycles sampled near reset with ≥90% local coverage. This is not a provider-published Token cap.'}</p>
-    </> : <div className="subscription-review-empty"><Gauge size={25}/><div><b>{provider.quotaObservation?.state === 'unavailable' ? (zh ? '官方额度暂不可观测' : 'Official quota is not observable') : (zh ? '等待第一个可比较的完整周期' : 'Waiting for a comparable completed cycle')}</b><p>{provider.quotaObservation?.state === 'unavailable' ? (zh ? `这不代表没有额度或没有使用。本机仍已识别 ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} Token；只有供应商返回可验证比例后，才会推算周期容量。` : `This does not mean unlimited or unused. ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} local Tokens remain analyzable; cycle capacity requires a provider-reported ratio.`) : (zh ? `已观察 ${observed} 个周期、其中 ${completed} 个已结束。需在重置前刷新且本机日志覆盖完整，才会进入容量区间。` : `${observed} cycles observed, ${completed} completed. A near-reset refresh and complete local coverage are required.`)}</p></div></div>}
+    </> : <div className="subscription-review-empty"><Gauge size={25}/><div><b>{balanceOnly ? (zh ? '货币余额不能推算 Token 容量' : 'Money balance cannot estimate Token capacity') : provider.quotaObservation?.state === 'unavailable' ? (zh ? '官方额度暂不可观测' : 'Official quota is not observable') : (zh ? '等待第一个可比较的完整周期' : 'Waiting for a comparable completed cycle')}</b><p>{balanceOnly ? (zh ? `DeepSeek 余额是货币事实，不是消耗比例。本机识别的 ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} Token 只参与模型与价值分析，不据此推算官方容量。` : `The DeepSeek balance is a money fact, not a utilization ratio. ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} local Tokens support model and value analysis but never an official-capacity estimate.`) : provider.quotaObservation?.state === 'unavailable' ? (zh ? `这不代表没有额度或没有使用。本机仍已识别 ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} Token；只有供应商返回可验证比例后，才会推算周期容量。` : `This does not mean unlimited or unused. ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} local Tokens remain analyzable; cycle capacity requires a provider-reported ratio.`) : (zh ? `已观察 ${observed} 个周期、其中 ${completed} 个已结束。需在重置前刷新且本机日志覆盖完整，才会进入容量区间。` : `${observed} cycles observed, ${completed} completed. A near-reset refresh and complete local coverage are required.`)}</p></div></div>}
   </article>;
 }
 

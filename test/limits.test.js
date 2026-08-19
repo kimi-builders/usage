@@ -9,6 +9,7 @@ import {
 } from '../src/limits/providers/copilot.js';
 import { parseCursorUsage } from '../src/limits/providers/cursor.js';
 import { fetchAntigravityLimits, parseAntigravityQuota } from '../src/limits/providers/antigravity.js';
+import { fetchDeepSeekLimits, parseDeepSeekBalance } from '../src/limits/providers/deepseek.js';
 import { parseJetBrainsQuota } from '../src/limits/providers/jetbrains.js';
 import { parseKimiCodeUsage, parseKimiWebUsage } from '../src/limits/providers/kimi.js';
 import { fetchOpenCodeGoLimits, parseOpenCodeGoUsage } from '../src/limits/providers/opencode.js';
@@ -586,6 +587,63 @@ test('maps Antigravity local quota summary to exact five-hour and weekly pools',
   assert.equal(result.source, 'agy 本机服务');
 });
 
+test('maps DeepSeek currency balances without inventing a Token quota window', () => {
+  const result = parseDeepSeekBalance({
+    is_available: true,
+    balance_infos: [
+      { currency: 'USD', total_balance: '0.00', granted_balance: '0.00', topped_up_balance: '0.00' },
+      { currency: 'CNY', total_balance: '42.50', granted_balance: '2.50', topped_up_balance: '40.00' },
+    ],
+  }, { now: NOW });
+  assert.equal(result.status, 'ok');
+  assert.deepEqual(result.windows, []);
+  assert.deepEqual(result.balances.map((balance) => balance.currency), ['CNY', 'USD']);
+  assert.deepEqual(result.balances[0], {
+    currency: 'CNY', total: 42.5, granted: 2.5, toppedUp: 40, available: true,
+  });
+  assert.match(result.notice, /货币余额/);
+  assert.match(result.notice, /不提供 Token/);
+});
+
+test('DeepSeek balance parser fails closed on malformed money or duplicate currencies', () => {
+  assert.throws(() => parseDeepSeekBalance({
+    is_available: true,
+    balance_infos: [{
+      currency: 'CNY', total_balance: 'secret', granted_balance: '0', topped_up_balance: '0',
+    }],
+  }), (error) => error?.code === 'invalid_response');
+  assert.throws(() => parseDeepSeekBalance({
+    is_available: false,
+    balance_infos: [
+      { currency: 'USD', total_balance: '0', granted_balance: '0', topped_up_balance: '0' },
+      { currency: 'usd', total_balance: '0', granted_balance: '0', topped_up_balance: '0' },
+    ],
+  }), (error) => error?.code === 'invalid_response');
+});
+
+test('DeepSeek balance fetch uses only the public endpoint and configured API key', async () => {
+  const requests = [];
+  const result = await fetchDeepSeekLimits({
+    settings: { authMode: 'environment', environmentVariable: 'DEEPSEEK_TEST_KEY' },
+    environment: { DEEPSEEK_TEST_KEY: 'test-only-key' },
+    fetcher: async (url, init) => {
+      requests.push({ url: String(url), authorization: init.headers.Authorization, method: init.method });
+      return new Response(JSON.stringify({
+        is_available: true,
+        balance_infos: [{
+          currency: 'USD', total_balance: '9.25', granted_balance: '1.25', topped_up_balance: '8.00',
+        }],
+      }), { status: 200 });
+    },
+  });
+  assert.deepEqual(requests, [{
+    url: 'https://api.deepseek.com/user/balance', authorization: 'Bearer test-only-key', method: 'GET',
+  }]);
+  assert.equal(result.source, 'DeepSeek 环境变量');
+  assert.equal(result.balances[0].total, 9.25);
+  assert.equal(JSON.stringify(result).includes('test-only-key'), false);
+});
+
 test('prefers a running agy loopback quota service without reading OAuth credentials', async () => {
   const calls = [];
   const run = (command) => {
@@ -657,7 +715,7 @@ test('subscription limit service isolates provider failures and does not expose 
   assert.equal(result.providers[1].account, 'b•••@example.com');
   assert.deepEqual(Object.keys(result.providers[1]), [
     'id', 'label', 'status', 'account', 'plan', 'source', 'notice', 'resetCredits',
-    'updatedAt', 'windows', 'quotaCoverage',
+    'balances', 'updatedAt', 'windows', 'quotaCoverage',
   ]);
 });
 
