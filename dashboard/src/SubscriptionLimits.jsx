@@ -10,7 +10,10 @@ import {
   localizedCompact, localizedCount, quotaErrorMessage, quotaPageError, quotaProviderNotice,
   quotaSourceDisplay, quotaWindowDetail, quotaWindowLabel, resetCreditPresentation,
 } from './subscription-limits-utils.js';
-import { buildSubscriptionInsights, selectSubscriptionAccounts } from './subscription-insights.js';
+import {
+  benefitResetState, buildBenefitCapacityOverview, buildSubscriptionInsights,
+  selectSubscriptionAccounts,
+} from './subscription-insights.js';
 import {
   SubscriptionPortfolioReview, SubscriptionReviewGrid,
 } from './SubscriptionReview.jsx';
@@ -26,6 +29,11 @@ import { ProviderSelect } from './provider-select.jsx';
 const SELECTED_BENEFIT_KEY = 'kbu.benefit.selected.v1';
 const SELECTED_BENEFIT_ACCOUNTS_KEY = 'kbu.benefit.accounts.v1';
 const OVERVIEW_PROVIDER_PANEL_ID = 'subscription-limit-panel';
+const BENEFIT_RESET_PANEL_ID = 'benefit-reset-window-panel';
+
+function benefitResetTabId(band) {
+  return `benefit-reset-tab-${band}`;
+}
 
 function overviewProviderTabId(providerId) {
   return `subscription-provider-tab-${idSegment(providerId)}`;
@@ -96,7 +104,7 @@ function confidenceLabel(value, zh) {
 }
 
 function estimateText(value, zh) {
-  return value == null ? '—' : `${zh ? '约 ' : '~'}${localizedCompact(value, zh)}`;
+  return value == null ? '—' : `~${localizedCompact(value, zh)}`;
 }
 
 function subscriptionMoney(value, currency, suffix = '') {
@@ -146,12 +154,114 @@ function usageSegments(percentUsed, tone, zh) {
   </div>;
 }
 
-function WindowRow({ providerId, window, tone, now, zh }) {
+function remainingPercentForWindow(window) {
   const remaining = window.remainingPercent == null ? null : Number(window.remainingPercent);
   const reportedUsed = window.usedPercent == null ? null : Number(window.usedPercent);
-  const left = Number.isFinite(remaining)
-    ? Math.max(0, Math.min(100, remaining))
-    : Number.isFinite(reportedUsed) ? 100 - Math.max(0, Math.min(100, reportedUsed)) : null;
+  if (Number.isFinite(remaining)) return Math.max(0, Math.min(100, remaining));
+  return Number.isFinite(reportedUsed) ? 100 - Math.max(0, Math.min(100, reportedUsed)) : null;
+}
+
+function capacityBasis(summary, zh) {
+  if (!summary) return zh ? 'Token 样本不足' : 'Insufficient Token evidence';
+  if (summary.basis === 'provider') return zh ? '供应商直接返回' : 'Provider-reported';
+  if (summary.basis === 'historical-median') return zh
+    ? `${summary.sampledCycles} 个完整周期中位数`
+    : `Median of ${summary.sampledCycles} completed ${summary.sampledCycles === 1 ? 'cycle' : 'cycles'}`;
+  return zh ? `${confidenceLabel(summary.confidence, true)} · 本周期推算` : `${confidenceLabel(summary.confidence, false)} · current-cycle estimate`;
+}
+
+function capacityTokenText(value, summary, zh) {
+  if (value == null) return '—';
+  return summary?.basis === 'provider' ? localizedCompact(value, zh) : estimateText(value, zh);
+}
+
+function aggregateTokenText(metric, zh) {
+  if (metric?.remainingTokens == null) return '—';
+  const lowerBound = metric.complete ? '' : '≥';
+  const estimate = metric.estimated ? '~' : '';
+  return `${lowerBound}${estimate}${localizedCompact(metric.remainingTokens, zh)}`;
+}
+
+function aggregateCoverage(metric, zh) {
+  if (!metric?.windowCount) return zh ? '没有可汇总的额度窗口' : 'No eligible quota windows';
+  const coverage = `${metric.knownWindowCount}/${metric.windowCount}`;
+  return metric.complete
+    ? (zh ? `${coverage} 个窗口均有 Token 容量证据` : `Token capacity available for all ${coverage} windows`)
+    : (zh ? `仅 ${coverage} 个窗口可估算，显示已知下限` : `${coverage} windows estimable; showing a known lower bound`);
+}
+
+function resetStateLabel(state, zh) {
+  if (state === 'overdue') return zh ? '待刷新' : 'REFRESH DUE';
+  if (state === 'soon') return zh ? '即将重置' : 'RESET SOON';
+  return zh ? '当前周期' : 'CURRENT CYCLE';
+}
+
+function CapacityOverview({ providerId, windows, now, zh }) {
+  if (!windows.length) return null;
+  return <section className="quota-capacity-overview">
+    <header><div><Gauge size={19}/><span><b>{zh ? '周期 Token 容量速览' : 'TOKEN CAPACITY BY WINDOW'}</b><small>{zh ? '各窗口是同时生效的独立约束，不能相加；下方优先显示重置前还能使用多少。' : 'Windows are simultaneous constraints, not additive totals. Remaining capacity before reset is prioritized below.'}</small></span></div><em>{zh ? '事实与估算分开' : 'Facts ≠ estimates'}</em></header>
+    <div>{windows.map((window) => {
+      const summary = window.capacitySummary;
+      const left = remainingPercentForWindow(window);
+      const urgency = benefitResetState(window, now);
+      return <article data-reset={urgency} key={window.id}>
+        <header><div><b>{quotaWindowLabel(providerId, window, zh)}</b><small>{capacityBasis(summary, zh)}</small></div><span>{resetStateLabel(urgency, zh)}</span></header>
+        <div className="quota-capacity-primary"><span>{zh ? '重置前可用 Token' : 'TOKENS AVAILABLE BEFORE RESET'}</span><strong>{capacityTokenText(summary?.remainingTokens, summary, zh)}</strong><small>{summary?.remainingTokens == null ? (zh ? '保留官方剩余比例，不猜 Token 数量' : 'Official percentage retained; Token amount not guessed') : resetText(window.resetsAt, now, zh)}</small></div>
+        <dl>
+          <div><dt>{zh ? '周期总容量' : 'TOTAL CAPACITY'}</dt><dd>{capacityTokenText(summary?.totalTokens, summary, zh)}</dd></div>
+          <div><dt>{zh ? '官方剩余' : 'OFFICIAL LEFT'}</dt><dd>{left == null ? '—' : `${left.toFixed(left % 1 ? 1 : 0)}%`}</dd></div>
+          <div><dt>{zh ? '重置倒计时' : 'RESET'}</dt><dd>{resetText(window.resetsAt, now, zh)}</dd></div>
+        </dl>
+      </article>;
+    })}</div>
+    <footer><Info size={12}/><span>{zh ? '带“~”的 Token 数量来自本机日志与官方消耗比例，或合格完整周期的历史中位数；不是供应商公布的 Token 上限。' : 'Token amounts prefixed with “~” come from local logs plus official utilization, or the median of eligible completed cycles. They are not provider-published Token caps.'}</span></footer>
+  </section>;
+}
+
+function BenefitOverview({ overview, summary, providers, now, zh, error, onOpenAccount }) {
+  const paid = summary.entitlementCounts.paid;
+  const nonPaid = summary.benefitProviders;
+  const [resetBand, setResetBand] = useState('five-hour');
+  const resetRows = overview.resetRows.filter((row) => row.band === resetBand);
+  const resetBandLabel = resetBand === 'five-hour' ? '5H' : (zh ? '每周' : 'weekly');
+  return <section className="subscription-center subscription-center--overview" id="subscriptions">
+    {error ? <div className="limits-banner">{quotaPageError(error, zh)}</div> : null}
+    <section className="subscription-overview-grid">
+      <article><span>{zh ? '已连接账户权益' : 'CONNECTED BENEFITS'}</span><strong>{summary.subscriptionAccounts}</strong><p>{zh ? `${summary.classifiedProviders} 项已标注权益类型` : `${summary.classifiedProviders} classified`}</p></article>
+      <article><span>{zh ? '个人付费核心' : 'PERSONALLY PAID'}</span><strong>{summary.entitlementCounts.paid}</strong><p>{zh ? `月均实际支出 ${portfolioSpend(summary, zh)}` : `${portfolioSpend(summary, zh)} actual monthly spend`}</p></article>
+      <article><span>{zh ? '零新增支出权益' : 'NON-PAID BENEFITS'}</span><strong>{summary.benefitProviders}</strong><p>{zh ? '免费、活动或单位提供' : 'free, promotional, or organization-provided'}</p></article>
+      <article><span>{zh ? '已关联本机 TOKEN' : 'LINKED LOCAL TOKENS'}</span><strong>{localizedCompact(summary.trackedTokens, zh)}</strong><p>{zh ? `${summary.trackedProviders} 个账户有本机用量` : `${localizedCount(summary.trackedProviders, false, '', 'account', 'accounts')} ${summary.trackedProviders === 1 ? 'has' : 'have'} local usage`}</p></article>
+      <article><span>{zh ? '官方事实可读取' : 'OFFICIAL FACTS AVAILABLE'}</span><strong>{summary.officialFactProviders}<small> / {providers.length}</small></strong><p>{summary.balanceObservableProviders ? (zh ? `${summary.balanceObservableProviders} 项只提供货币余额` : `${summary.balanceObservableProviders} balance-only`) : summary.quotaUnavailableProviders ? (zh ? `${summary.quotaUnavailableProviders} 项仅做本机分析` : `${summary.quotaUnavailableProviders} local-analysis only`) : (zh ? '当前额度窗口均可读取' : 'all current windows observable')}</p></article>
+    </section>
+    <section className="benefit-capacity-kpis">
+      <article data-tone="warning"><span>{zh ? '即将重置可用 TOKEN' : 'TOKENS RESETTING SOON'}</span><strong>{aggregateTokenText(overview.expiringSoon, zh)}</strong><p>{aggregateCoverage(overview.expiringSoon, zh)} · {zh ? '这是优先提醒，不与下列窗口相加' : 'priority subset; do not add to the windows below'}</p></article>
+      <article><span>{zh ? '5H 窗口可用 TOKEN' : 'AVAILABLE IN 5H WINDOWS'}</span><strong>{aggregateTokenText(overview.fiveHour, zh)}</strong><p>{aggregateCoverage(overview.fiveHour, zh)}</p></article>
+      <article><span>{zh ? '本周可用 TOKEN' : 'AVAILABLE IN WEEKLY WINDOWS'}</span><strong>{aggregateTokenText(overview.weekly, zh)}</strong><p>{aggregateCoverage(overview.weekly, zh)}</p></article>
+      <article data-tone="coverage"><span>{zh ? '账户重置覆盖' : 'ACCOUNT RESET COVERAGE'}</span><strong>{overview.resetAccountCount}<small> / {overview.accountCount}</small></strong><p>{zh ? `${summary.subscriptionAccounts} 个账户权益 · ${paid} 个付费 · ${nonPaid} 个非付费` : `${summary.subscriptionAccounts} benefits · ${paid} paid · ${nonPaid} non-paid`}</p></article>
+    </section>
+    <section className="panel benefit-reset-board">
+      <header className="panel-header"><div><h2>{zh ? '账户重置进度' : 'Account reset progress'}</h2><p>{zh ? '按最近重置时间排列；进度条表示当前额度周期已经过了多少。' : 'Sorted by next reset; bars show how much of the current quota cycle has elapsed.'}</p></div><div className="benefit-reset-actions"><div className="benefit-record-kind benefit-reset-tabs" role="tablist" aria-label={zh ? '重置周期' : 'Reset window'}>{[['five-hour', '5H', '5H'], ['weekly', '每周', 'Weekly']].map(([band, zhLabel, enLabel]) => <button id={benefitResetTabId(band)} type="button" role="tab" aria-selected={resetBand === band} aria-controls={BENEFIT_RESET_PANEL_ID} className={resetBand === band ? 'active' : ''} key={band} onClick={() => setResetBand(band)}>{zh ? zhLabel : enLabel}</button>)}</div><button type="button" className="ghost-btn" disabled={!providers.length} onClick={() => onOpenAccount(providers[0]?.id)}><WalletCards size={14}/>{zh ? '查看账户权益' : 'View account benefits'}<ChevronRight size={13}/></button></div></header>
+      {resetRows.length ? <ol id={BENEFIT_RESET_PANEL_ID} role="tabpanel" aria-labelledby={benefitResetTabId(resetBand)}>{resetRows.map((row, index) => {
+        const summaryValue = row.remainingTokens == null
+          ? (row.remainingPercent == null ? '—' : `${row.remainingPercent.toFixed(row.remainingPercent % 1 ? 1 : 0)}%`)
+          : capacityTokenText(row.remainingTokens, { basis: row.basis }, zh);
+        return <li data-reset={row.resetState} key={`${row.accountKey}:${row.windowId}`}>
+          <button type="button" onClick={() => onOpenAccount(row.providerId, row.accountId)}>
+            <span className="rank">{String(index + 1).padStart(2, '0')}</span>
+            <ProviderIcon id={row.providerId} size={18}/>
+            <div className="benefit-reset-copy"><b>{row.providerLabel}{row.accountLabel ? ` · ${row.accountLabel}` : ''}</b><span>{quotaWindowLabel(row.providerId, row, zh)} · {resetStateLabel(row.resetState, zh)}</span><i role="progressbar" aria-label={zh ? '当前额度周期进度' : 'Current quota cycle progress'} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(row.elapsedPercent ?? 0)}><em style={{ width: `${row.elapsedPercent ?? 0}%` }}/></i></div>
+            <div className="benefit-reset-value"><strong>{summaryValue}</strong><span>{zh ? '重置前可用' : 'available'}</span><small>{resetText(row.resetsAt, now, zh)}</small></div>
+          </button>
+        </li>;
+      })}</ol> : <div id={BENEFIT_RESET_PANEL_ID} role="tabpanel" aria-labelledby={benefitResetTabId(resetBand)} className="benefit-reset-empty"><Gauge size={24}/><div><b>{zh ? `暂时没有可验证的 ${resetBandLabel} 重置窗口` : `No verifiable ${resetBandLabel} reset windows yet`}</b><p>{zh ? '可切换另一周期查看；余额型账户和其他周期仍保留在“账户权益”中。' : 'Switch to the other window, or open Account benefits for balance-only accounts and other cycle types.'}</p></div></div>}
+      <footer><Info size={13}/><span>{zh ? '只汇总同类窗口；5H、每周和即将重置是不同视角，不能相加。“~”表示派生估计，“≥”表示仍有窗口缺少可估算的 Token 数量；其他周期请到“账户权益”查看。' : 'Only like-for-like windows are aggregated. 5H, weekly, and resetting-soon are different views and cannot be added. “~” marks an estimate; “≥” means some windows lack an estimable Token amount. Open Account benefits for other cycle types.'}</span>{overview.withoutReset.length ? <small>{zh ? `${overview.withoutReset.length} 个账户无重置窗口` : `${overview.withoutReset.length} without reset windows`}</small> : null}</footer>
+    </section>
+    <section className="subscription-method-note"><ShieldCheck size={16}/><div><b>{zh ? '总览只做跨账户摘要' : 'Overview stays portfolio-level'}</b><p>{zh ? '供应商额度事实、本机观测 Token 与带前提的容量估计仍分别保真；单账户的余额、额度、模型和深度证据请进入“账户权益”。' : 'Provider quota facts, locally observed Tokens, and conditional capacity estimates remain separate. Open Account benefits for balances, quota windows, models, and account-level evidence.'}</p></div></section>
+  </section>;
+}
+
+function WindowRow({ providerId, window, tone, now, zh }) {
+  const left = remainingPercentForWindow(window);
   const used = left == null ? null : 100 - left;
   const detail = quotaWindowDetail(providerId, window, zh);
   const label = quotaWindowLabel(providerId, window, zh);
@@ -162,7 +272,7 @@ function WindowRow({ providerId, window, tone, now, zh }) {
     <div className="limit-token-facts">
       <div><span>{zh ? '本机观测用量' : 'LOCAL USAGE OBSERVED'}</span><strong>{window.observedFrom ? localizedCompact(window.localTotals.totalTokens, zh) : '—'}</strong></div>
       <div><span>{zh ? '本周期估算容量' : 'EST. CYCLE CAPACITY'}</span><strong>{estimateText(window.estimatedCapacityTokens, zh)}</strong></div>
-      <div><span>{zh ? '估算剩余容量' : 'EST. CAPACITY LEFT'}</span><strong>{estimateText(window.estimatedRemainingTokens, zh)}</strong></div>
+      <div><span>{zh ? '重置前估算可用' : 'EST. AVAILABLE BEFORE RESET'}</span><strong>{estimateText(window.estimatedRemainingTokens, zh)}</strong></div>
       <div><span>{zh ? '折算月度容量' : 'MONTHLY EQUIVALENT'}</span><strong>{estimateText(window.monthlyEquivalentTokens, zh)}</strong></div>
     </div>
     <p className="limit-estimate-note"><Info size={11}/>{window.estimatedCapacityTokens != null
@@ -328,7 +438,7 @@ function ProviderCard({ provider, zh, currency, onSettings }) {
   const resetCredit = resetCreditPresentation(provider.resetCredits, zh);
   return <article className={`limit-card tone-${tone}`}>
     <dl className="limit-provider-summary">
-      <div><dt>{zh ? '账户' : 'Account'}</dt><dd>{provider.account || (provider.id === 'deepseek' ? (zh ? 'API 账户' : 'API account') : (zh ? '本机账户' : 'Local account'))}</dd></div>
+      <div><dt>{zh ? '账户' : 'Account'}</dt><dd>{provider.accountLabel || provider.account || (provider.id === 'deepseek' ? (zh ? 'API 账户' : 'API account') : (zh ? '本机账户' : 'Local account'))}</dd></div>
       {provider.plan ? <div><dt>{zh ? '方案' : 'Plan'}</dt><dd>{String(provider.plan).replaceAll('_', ' ')}</dd></div> : null}
       <div><dt>{zh ? '权益类型' : 'BENEFIT TYPE'}</dt><dd>{entitlementLabel(provider.subscription.entitlementType, zh)}</dd></div>
       <div><dt>{zh ? '本机累计 TOKEN' : 'LOCAL LIFETIME TOKENS'}</dt><dd>{localizedCompact(provider.lifetimeTotals.totalTokens, zh)}</dd></div>
@@ -338,7 +448,7 @@ function ProviderCard({ provider, zh, currency, onSettings }) {
       <div><dt>{zh ? '更新' : 'Updated'}</dt><dd>{relativeUpdated(provider.updatedAt, now, zh)}</dd></div>
       <div><dt>{zh ? '来源' : 'Source'}</dt><dd>{quotaSourceDisplay(provider.source, zh)}</dd></div>
     </dl>
-    {balanceAvailable ? <ProviderBalances provider={provider} zh={zh}/> : quotaUnavailable ? <section className="quota-unavailable-state"><div><Gauge size={22}/><span><b>{provider.quotaObservation?.state === 'historical' ? (zh ? '当前额度不可读，仅保留历史' : 'Current quota unavailable; history retained') : (zh ? '官方额度暂不可观测' : 'Official quota is not observable')}</b><small>{provider.quotaObservation.bestEffort ? (zh ? '该平台或当前账户不一定提供稳定额度数据' : 'This platform or account may not expose stable quota data') : (zh ? '当前没有取得可验证的额度窗口' : 'No verifiable quota window is available')}</small></span></div><p>{provider.status === 'error' ? quotaErrorMessage(provider, zh) : (zh ? '供应商没有返回可验证的额度比例。' : 'The provider did not return a verifiable quota ratio.')} {zh ? `这不代表免费、无限或未使用；本机 ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} Token 仍参与价值与工作负载分析。` : `This does not mean free, unlimited, or unused; ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} local Tokens still contribute to value and workload analysis.`}</p>{provider.status === 'error' ? <button type="button" className="ghost-btn" onClick={onSettings}>{zh ? '检查连接（可选）' : 'Check connection (optional)'}</button> : null}</section> : <div className="limit-window-list">{currentWindows.map((window) => <WindowRow providerId={provider.id} window={window} tone={tone} now={now} zh={zh} key={window.id}/>)}</div>}
+    {balanceAvailable ? <ProviderBalances provider={provider} zh={zh}/> : quotaUnavailable ? <section className="quota-unavailable-state"><div><Gauge size={22}/><span><b>{provider.quotaObservation?.state === 'historical' ? (zh ? '当前额度不可读，仅保留历史' : 'Current quota unavailable; history retained') : (zh ? '官方额度暂不可观测' : 'Official quota is not observable')}</b><small>{provider.quotaObservation.bestEffort ? (zh ? '该平台或当前账户不一定提供稳定额度数据' : 'This platform or account may not expose stable quota data') : (zh ? '当前没有取得可验证的额度窗口' : 'No verifiable quota window is available')}</small></span></div><p>{provider.status === 'error' ? quotaErrorMessage(provider, zh) : (zh ? '供应商没有返回可验证的额度比例。' : 'The provider did not return a verifiable quota ratio.')} {zh ? `这不代表免费、无限或未使用；本机 ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} Token 仍参与价值与工作负载分析。` : `This does not mean free, unlimited, or unused; ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} local Tokens still contribute to value and workload analysis.`}</p>{provider.status === 'error' ? <button type="button" className="ghost-btn" onClick={onSettings}>{zh ? '检查连接（可选）' : 'Check connection (optional)'}</button> : null}</section> : <><CapacityOverview providerId={provider.id} windows={currentWindows} now={now} zh={zh}/><div className="limit-window-list">{currentWindows.map((window) => <WindowRow providerId={provider.id} window={window} tone={tone} now={now} zh={zh} key={window.id}/>)}</div></>}
     {provider.windows?.length ? <ModelScenario provider={provider} zh={zh}/> : null}
     {showResetCredits ? <div className="reset-credit" data-state={resetCredit.state}><div><span><b>{zh ? '额度重置券' : 'Limit reset credits'}</b><small>{resetCredit.detail || (provider.resetCredits?.nextExpiry ? resetText(provider.resetCredits.nextExpiry, now, zh) : (zh ? '未返回到期时间' : 'No expiry time reported'))}</small></span></div><strong>{resetCredit.value}</strong></div> : null}
     {provider.notice ? <p className="limit-notice">{quotaProviderNotice(provider.notice, zh)}</p> : null}
@@ -369,6 +479,11 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
     [usageData, effectiveData, settings],
   );
   const providers = insights.providers;
+  const now = useNow();
+  const capacityOverview = useMemo(
+    () => buildBenefitCapacityOverview(providers, now),
+    [providers, now],
+  );
   const [selected, setSelected] = useState(() => localStorage.getItem(SELECTED_BENEFIT_KEY) || '');
   const [drilldown, setDrilldown] = useState(null);
   useEffect(() => {
@@ -388,12 +503,19 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
     setDrilldown({ ...evidence, providerId: active?.id || null });
     onViewChange?.('records');
   };
+  const openAccount = (providerId, accountId = null) => {
+    if (providers.some((provider) => provider.id === providerId)) setSelected(providerId);
+    if (accountId) setAccountSelections((current) => ({ ...current, [providerId]: accountId }));
+    setDrilldown(null);
+    onViewChange?.('accounts');
+  };
   if (loading && !data) return <section className="panel limits-panel limits-panel--loading" id="subscriptions"><div><h2>{zh ? '正在读取订阅中心' : 'Loading Subscription Center'}</h2><p>{zh ? '未启用供应商时不会发起外部网络请求。' : 'No external requests are made until a provider is enabled.'}</p></div></section>;
   if (error && !data) return <PageState className="panel limits-panel" kind="error" title={zh ? '权益数据读取失败' : 'Could not load benefit data'} body={quotaPageError(error, zh)} action={<button className="primary-btn" type="button" onClick={() => onRefresh(true)}><RefreshCw size={14}/>{zh ? '重新读取' : 'Try again'}</button>}/>;
   if (!data?.enabled) return <section className="panel limits-panel limits-panel--empty" id="subscriptions">
     <div><h2>{zh ? '把付费核心、免费权益、官方额度与本机 Token 放在一起看' : 'Compare paid core, free benefits, official quotas, and local Tokens'}</h2><p>{zh ? '默认关闭且零联网。连接后先标注权益来源；额度不可读的平台仍可做本机 Token、模型和价值分析。' : 'Off and network-free by default. Classify each benefit after connecting; platforms with hidden quota still support local Token, model, and value analysis.'}</p></div><button className="primary-btn" type="button" onClick={onSettings}><Settings2 size={15}/>{zh ? '连接账户权益' : 'Connect account benefits'}<ChevronRight size={14}/></button>
   </section>;
-  if (view !== 'overview') return <section className="subscription-center subscription-center--detail" id={`subscription-${view}`}>
+  if (view === 'overview') return <BenefitOverview overview={capacityOverview} summary={insights.summary} providers={providers} now={now} zh={zh} error={error} onOpenAccount={openAccount}/>;
+  if (view !== 'accounts') return <section className="subscription-center subscription-center--detail" id={`subscription-${view}`}>
     {error ? <div className="limits-banner">{quotaPageError(error, zh)}</div> : null}
     <BenefitProviderPicker providers={providers} active={active} onChange={(value) => { setSelected(value); setDrilldown(null); }} zh={zh}/>
     <AccountPicker provider={active} onChange={selectAccount} zh={zh}/>
@@ -403,14 +525,7 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
     {active && view === 'records' ? <BenefitRecordsView provider={active} drilldown={drilldown?.providerId === active.id ? drilldown : null} onClearDrilldown={() => setDrilldown(null)} zh={zh} currency={currency}/> : null}
     <section className="subscription-method-note"><Info size={16}/><div><b>{zh ? '这里展示的三类数据不会混算' : 'Three evidence classes remain separate'}</b><p>{zh ? '官方额度或余额是供应商事实，本机 Token 是 Agent 日志，容量和价值是带前提的推算。读取不到的数据明确留空，不会当成 0、免费或无限。' : 'Official quota or balance is a provider fact, local Tokens come from Agent logs, and capacity/value are conditional estimates. Missing data stays empty—never zero, free, or unlimited.'}</p></div></section>
   </section>;
-  return <section className="subscription-center" id="subscriptions">
-    <section className="subscription-overview-grid">
-      <article><span>{zh ? '已连接账户权益' : 'CONNECTED BENEFITS'}</span><strong>{insights.summary.subscriptionAccounts}</strong><p>{zh ? `${insights.summary.classifiedProviders} 项已标注权益类型` : `${insights.summary.classifiedProviders} classified`}</p></article>
-      <article><span>{zh ? '个人付费核心' : 'PERSONALLY PAID'}</span><strong>{insights.summary.entitlementCounts.paid}</strong><p>{zh ? `月均实际支出 ${portfolioSpend(insights.summary, zh)}` : `${portfolioSpend(insights.summary, zh)} actual monthly spend`}</p></article>
-      <article><span>{zh ? '零新增支出权益' : 'NON-PAID BENEFITS'}</span><strong>{insights.summary.benefitProviders}</strong><p>{zh ? '免费、活动或单位提供' : 'free, promotional, or organization-provided'}</p></article>
-      <article><span>{zh ? '已关联本机 TOKEN' : 'LINKED LOCAL TOKENS'}</span><strong>{localizedCompact(insights.summary.trackedTokens, zh)}</strong><p>{zh ? `${insights.summary.trackedProviders} 个账户有本机用量` : `${localizedCount(insights.summary.trackedProviders, false, '', 'account', 'accounts')} ${insights.summary.trackedProviders === 1 ? 'has' : 'have'} local usage`}</p></article>
-      <article><span>{zh ? '官方事实可读取' : 'OFFICIAL FACTS AVAILABLE'}</span><strong>{insights.summary.officialFactProviders}<small> / {providers.length}</small></strong><p>{insights.summary.balanceObservableProviders ? (zh ? `${insights.summary.balanceObservableProviders} 项只提供货币余额` : `${insights.summary.balanceObservableProviders} balance-only`) : insights.summary.quotaUnavailableProviders ? (zh ? `${insights.summary.quotaUnavailableProviders} 项仅做本机分析` : `${insights.summary.quotaUnavailableProviders} local-analysis only`) : (zh ? '当前额度窗口均可读取' : 'all current windows observable')}</p></article>
-    </section>
+  return <section className="subscription-center subscription-center--accounts" id="subscription-accounts">
     <section className="panel limits-panel">
     <header className="panel-header limits-header"><div><h2>{zh ? '账户权益、官方额度/余额与 Token 分析' : 'Benefits, official quotas/balances & Token analysis'}</h2><p>{zh ? '额度或余额可读取时保留供应商事实；本机 Token 始终单独标注，不猜测剩余量' : 'Provider quota or balance facts stay intact; local Tokens remain separate and never replace missing limits'}</p></div><div className="limits-actions"><span>{insights.summary.officialFactProviders}/{providers.length} {zh ? '官方事实可读' : 'official facts available'}</span><button className="icon-btn" type="button" onClick={onSettings} aria-label={zh ? '账户权益设置' : 'Account benefit settings'}><Settings2 size={16}/></button><button className="icon-btn" type="button" onClick={() => onRefresh(true)} disabled={loading} aria-label={zh ? '刷新订阅额度' : 'Refresh subscription quotas'}><RefreshCw className={loading ? 'spin' : ''} size={16}/></button></div></header>
     {error ? <div className="limits-banner">{quotaPageError(error, zh)}</div> : null}

@@ -14,7 +14,7 @@ test('every supported dashboard deep link survives hash parsing', () => {
   for (const id of LOCAL_SECTION_IDS) assert.equal(sectionFromHash(`#${id}`), id);
   assert.deepEqual(USAGE_SECTION_IDS, ['top', 'trend', 'activity', 'distribution', 'records']);
   assert.deepEqual(BENEFIT_SECTION_IDS, [
-    'subscriptions', 'subscription-trend', 'subscription-activity', 'subscription-distribution', 'subscription-records',
+    'subscriptions', 'subscription-accounts', 'subscription-trend', 'subscription-activity', 'subscription-distribution', 'subscription-records',
   ]);
 });
 
@@ -36,6 +36,7 @@ test('standalone pages are separated from scroll-spied usage sections', () => {
 test('builds localized document titles for routes and the legacy limits hash', () => {
   assert.equal(titleForSection('top', 'zh'), '用量总览 — kimi.builders · Local');
   assert.equal(titleForSection('subscription-trend', 'zh'), '权益趋势 — kimi.builders · Local');
+  assert.equal(titleForSection('subscription-accounts', 'zh'), '账户权益 — kimi.builders · Local');
   assert.equal(titleForSection('subscription-distribution', 'en'), 'Benefit Distribution — kimi.builders · Local');
   assert.equal(titleForSection(sectionFromHash('#limits'), 'en'), 'Benefit Overview — kimi.builders · Local');
 });

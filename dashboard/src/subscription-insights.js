@@ -364,6 +364,159 @@ function confidence({ coverage, usedPercent, requestCount }) {
   return 'low';
 }
 
+function windowCapacitySummary(window, cycleStats) {
+  const unit = String(window?.unit || '').trim().toLowerCase();
+  const limit = finite(window?.limit);
+  const used = finite(window?.value);
+  const remainingPercent = finite(window?.remainingPercent);
+  if (/^tokens?$/.test(unit) && limit != null && limit >= 0) {
+    const usedTokens = used == null ? null : Math.max(0, Math.min(limit, used));
+    const remainingTokens = usedTokens == null
+      ? remainingPercent == null ? null : Math.round(limit * Math.max(0, Math.min(100, remainingPercent)) / 100)
+      : Math.max(0, limit - usedTokens);
+    return {
+      basis: 'provider', confidence: 'high', totalTokens: limit,
+      remainingTokens, usedTokens, sampledCycles: 0,
+    };
+  }
+
+  const currentCapacity = finite(window?.estimatedCapacityTokens);
+  const historicalCapacity = finite(cycleStats?.median);
+  const preferCurrent = currentCapacity != null
+    && (window?.estimationConfidence !== 'low' || historicalCapacity == null);
+  const totalTokens = preferCurrent ? currentCapacity : historicalCapacity ?? currentCapacity;
+  if (totalTokens == null) return null;
+  const basis = preferCurrent ? 'current-cycle' : 'historical-median';
+  const currentRemaining = finite(window?.estimatedRemainingTokens);
+  const remainingTokens = preferCurrent && currentRemaining != null
+    ? currentRemaining
+    : remainingPercent == null ? null
+      : Math.round(totalTokens * Math.max(0, Math.min(100, remainingPercent)) / 100);
+  return {
+    basis,
+    confidence: preferCurrent ? window?.estimationConfidence || 'low' : cycleStats?.confidence || 'low',
+    totalTokens,
+    remainingTokens,
+    usedTokens: remainingTokens == null ? null : Math.max(0, totalTokens - remainingTokens),
+    sampledCycles: basis === 'historical-median' ? cycleStats?.sampledCycles || 0 : 0,
+  };
+}
+
+export function benefitResetState(window, now = Date.now()) {
+  const reset = timestamp(window?.resetsAt);
+  if (reset == null) return 'unknown';
+  const delta = reset - now;
+  if (delta <= 0) return 'overdue';
+  const windowMs = finite(window?.windowSeconds) > 0 ? finite(window.windowSeconds) * 1_000 : 0;
+  const threshold = Math.min(DAY_SECONDS * 1_000, Math.max(60 * 60 * 1_000, windowMs * 0.1));
+  return delta <= threshold ? 'soon' : 'scheduled';
+}
+
+function capacityWindowBand(window) {
+  const seconds = finite(window?.windowSeconds);
+  if (seconds >= 4 * 3_600 && seconds <= 6 * 3_600) return 'five-hour';
+  if (seconds >= 6 * DAY_SECONDS && seconds <= 8 * DAY_SECONDS) return 'weekly';
+  return 'other';
+}
+
+function aggregateCapacity(rows) {
+  const known = rows.filter((row) => finite(row.remainingTokens) != null);
+  return {
+    remainingTokens: known.length
+      ? known.reduce((sum, row) => sum + finite(row.remainingTokens), 0)
+      : null,
+    totalTokens: known.length
+      ? known.reduce((sum, row) => sum + (finite(row.totalTokens) || 0), 0)
+      : null,
+    windowCount: rows.length,
+    knownWindowCount: known.length,
+    complete: rows.length > 0 && known.length === rows.length,
+    estimated: known.some((row) => row.basis !== 'provider'),
+  };
+}
+
+export function buildBenefitCapacityOverview(providers, now = Date.now()) {
+  const values = Array.isArray(providers) ? providers : [];
+  const accounts = values.flatMap((provider) => {
+    if (!Array.isArray(provider.accounts) || !provider.accounts.length) {
+      return [{ ...provider, overviewAccountKey: `${provider.id}:` }];
+    }
+    const selectedAccountId = provider.accountId || provider.activeAccountId || null;
+    return provider.accounts.map((account, index) => {
+      const accountId = account.accountId || null;
+      if (accountId && accountId === selectedAccountId) {
+        return { ...provider, overviewAccountKey: `${provider.id}:${accountId}` };
+      }
+      return {
+        ...account,
+        id: provider.id,
+        label: provider.label,
+        accountId,
+        accountLabel: account.accountLabel || account.account || accountId,
+        overviewAccountKey: `${provider.id}:${accountId || index}`,
+        // Do not copy provider-level local usage into an unselected account.
+        // A directly reported Token limit remains safe to aggregate as a fact.
+        windows: (account.windows || []).map((window) => {
+          const capacitySummary = windowCapacitySummary(window, null);
+          return {
+            ...window,
+            capacitySummary: capacitySummary?.basis === 'provider' ? capacitySummary : null,
+          };
+        }),
+      };
+    });
+  });
+  const rows = accounts.flatMap((provider) => (provider.windows || [])
+    .filter((window) => !window.stale && timestamp(window.resetsAt) != null)
+    .map((window) => {
+      const resetAt = timestamp(window.resetsAt);
+      const seconds = finite(window.windowSeconds);
+      const startAt = seconds > 0 ? resetAt - seconds * 1_000 : null;
+      const elapsedPercent = startAt == null
+        ? null
+        : Math.max(0, Math.min(100, (now - startAt) / Math.max(1, resetAt - startAt) * 100));
+      return {
+        providerId: provider.id,
+        providerLabel: provider.label,
+        accountId: provider.accountId || null,
+        accountLabel: provider.accountLabel || provider.account || null,
+        accountKey: provider.overviewAccountKey,
+        id: window.id,
+        label: window.label,
+        windowId: window.id,
+        windowLabel: window.label,
+        windowSeconds: seconds,
+        band: capacityWindowBand(window),
+        resetAt,
+        resetsAt: window.resetsAt,
+        resetState: benefitResetState(window, now),
+        elapsedPercent,
+        remainingPercent: finite(window.remainingPercent),
+        usedPercent: finite(window.usedPercent),
+        remainingTokens: finite(window.capacitySummary?.remainingTokens),
+        totalTokens: finite(window.capacitySummary?.totalTokens),
+        basis: window.capacitySummary?.basis || null,
+        confidence: window.capacitySummary?.confidence || null,
+      };
+    }));
+  const active = rows.filter((row) => row.resetAt > now);
+  const resetAccountKeys = new Set(rows.map((row) => row.accountKey));
+  return {
+    expiringSoon: aggregateCapacity(active.filter((row) => row.resetState === 'soon')),
+    fiveHour: aggregateCapacity(active.filter((row) => row.band === 'five-hour')),
+    weekly: aggregateCapacity(active.filter((row) => row.band === 'weekly')),
+    resetRows: rows.sort((left, right) => left.resetAt - right.resetAt),
+    resetAccountCount: resetAccountKeys.size,
+    accountCount: accounts.length,
+    withoutReset: accounts.filter((provider) => !resetAccountKeys.has(provider.overviewAccountKey)).map((provider) => ({
+      id: provider.overviewAccountKey,
+      providerId: provider.id,
+      label: provider.accountLabel ? `${provider.label} · ${provider.accountLabel}` : provider.label,
+      balanceOnly: provider.balanceObservation?.state === 'current',
+    })),
+  };
+}
+
 function enrichWindow(window, buckets, sourceHistoryStart, modelRates, quotaObservedAt, usageObservedAt, providerStale = false) {
   const normalized = normalizeQuotaWindow(window);
   const reset = timestamp(normalized.resetsAt);
@@ -667,10 +820,12 @@ export function buildSubscriptionInsights(snapshot, limits, {
     });
     const enrichedWindows = baseWindows.map((window) => {
       const historyPoints = history.get(window.id) || [];
+      const cycleStats = buildCycleCapacityStats(historyPoints, modelRows, quotaObservedAt ?? usageReferenceAt);
       const value = {
         ...window,
         historyPoints,
-        cycleStats: buildCycleCapacityStats(historyPoints, modelRows, quotaObservedAt ?? usageReferenceAt),
+        cycleStats,
+        capacitySummary: windowCapacitySummary(window, cycleStats),
       };
       return { ...value, pace: value.stale || quotaObservedAt == null ? null : windowPace(value, quotaObservedAt) };
     });

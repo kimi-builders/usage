@@ -76,6 +76,15 @@ test('quota copy localizes provider fields and normalizes legacy seven-day label
   assert.equal(utils.quotaWindowLabel('kimi-code', { id: 'session', label: '5 小时滚动（5H 频限）' }, false), '5-hour rolling (5H rate limit)');
   assert.equal(utils.quotaWindowLabel('kimi-code', { id: 'weekly', label: '7 天' }, true), '每周');
   assert.equal(utils.quotaWindowLabel('kimi-code', { id: 'weekly', label: '7 天' }, false), 'Weekly');
+  assert.equal(utils.quotaWindowLabel('codex', {
+    id: 'primary', label: '每周', windowSeconds: 604_800,
+  }, true), '每周');
+  assert.equal(utils.quotaWindowLabel('codex', {
+    id: 'secondary', label: '5 小时', windowSeconds: 18_000,
+  }, false), '5 hours');
+  assert.equal(utils.quotaWindowLabel('codex', {
+    id: 'additional-0-primary', label: 'GPT-5.3-Codex-Spark', windowSeconds: 604_800,
+  }, true), 'GPT-5.3-Codex-Spark');
   assert.equal(utils.quotaWindowLabel('antigravity', { id: 'gemini-5h', label: 'Gemini 模型 · 5 小时' }, false), 'Gemini models · 5 hours');
   assert.equal(utils.quotaWindowLabel('qoder', { id: 'credits', label: '个人 + 共享 Credits' }, false), 'Personal + shared credits');
   assert.equal(utils.quotaWindowDetail('antigravity', { detail: 'Antigravity 返回的 每周额度池' }, false), 'Antigravity weekly quota pool');
@@ -119,7 +128,7 @@ test('English benefits center does not leak built-in Chinese provider copy', () 
     error: null,
     onRefresh: () => {},
     onSettings: () => {},
-    view: 'overview',
+    view: 'accounts',
     zh: false,
   }));
 
@@ -151,7 +160,7 @@ test('DeepSeek renders official money separately from cross-Agent local model us
       requestCount: 1, costMicros: 240, pricedTokens: 120, unpricedTokens: 0, assumedTokens: 0,
     }] },
     settings: { refreshMinutes: 10, providers: { deepseek: { entitlementType: 'unknown' } } },
-    loading: false, error: null, onRefresh: () => {}, onSettings: () => {}, view: 'overview', zh: false,
+    loading: false, error: null, onRefresh: () => {}, onSettings: () => {}, view: 'accounts', zh: false,
   }));
 
   assert.match(markup, /DeepSeek API account balance/);
@@ -163,14 +172,114 @@ test('DeepSeek renders official money separately from cross-Agent local model us
   assert.doesNotMatch(markup, /[㐀-鿿]/u);
 });
 
-test('overview provider tabs control a panel labelled by the active tab', () => {
-  const observedAt = '2026-08-11T12:00:00.000Z';
+test('overview stays portfolio-level and shows comparable capacity plus reset progress', () => {
+  const observedAt = new Date().toISOString();
+  const resetIn = (milliseconds) => new Date(Date.now() + milliseconds).toISOString();
   const markup = renderToStaticMarkup(createElement(module.SubscriptionCenter, {
     data: {
       enabled: true,
       generatedAt: observedAt,
       providers: [{
         id: 'codex', label: 'Codex', status: 'ok', updatedAt: observedAt,
+        windows: [{
+          id: 'primary', label: '5 hours', usedPercent: 10, remainingPercent: 90,
+          resetsAt: resetIn(30 * 60_000), windowSeconds: 18_000,
+          unit: 'tokens', value: 100, limit: 1_000,
+        }],
+      }, {
+        id: 'kimi-code', label: 'Kimi Code', status: 'ok', updatedAt: observedAt,
+        windows: [{
+          id: 'session', label: '5 小时滚动（5H 频限）', usedPercent: 20, remainingPercent: 80,
+          resetsAt: resetIn(2 * 60 * 60_000), windowSeconds: 18_000,
+        }, {
+          id: 'weekly', label: '每周', usedPercent: 50, remainingPercent: 50,
+          resetsAt: resetIn(4 * 86_400_000), windowSeconds: 604_800,
+          unit: 'tokens', value: 1_000, limit: 2_000,
+        }],
+      }],
+      history: { observations: [] },
+    },
+    usageData: { generatedAt: observedAt, buckets: [] },
+    settings: { refreshMinutes: 10, providers: {
+      codex: { entitlementType: 'paid' },
+      'kimi-code': { entitlementType: 'promotion' },
+    } },
+    loading: false, error: null, onRefresh: () => {}, onSettings: () => {},
+    onViewChange: () => {}, view: 'overview', zh: true,
+  }));
+
+  assert.match(markup, /即将重置可用 TOKEN/);
+  assert.match(markup, /5H 窗口可用 TOKEN/);
+  assert.match(markup, /本周可用 TOKEN/);
+  assert.match(markup, /已连接账户权益/);
+  assert.match(markup, /个人付费核心/);
+  assert.match(markup, /零新增支出权益/);
+  assert.match(markup, /已关联本机 TOKEN/);
+  assert.match(markup, /官方事实可读取/);
+  assert.match(markup, /≥900/);
+  assert.match(markup, /账户重置进度/);
+  assert.match(markup, /role="tablist"/);
+  assert.match(markup, /id="benefit-reset-tab-five-hour"/);
+  assert.match(markup, /id="benefit-reset-tab-weekly"/);
+  assert.match(markup, /aria-selected="true"/);
+  assert.match(markup, /role="progressbar"/);
+  assert.match(markup, /查看账户权益/);
+  assert.doesNotMatch(markup, /账户权益、官方额度\/余额与 Token 分析/);
+});
+
+test('account benefits promotes independent rolling and weekly Token capacity before reset', () => {
+  const observedAt = new Date().toISOString();
+  const resetIn = (milliseconds) => new Date(Date.now() + milliseconds).toISOString();
+  const markup = renderToStaticMarkup(createElement(module.SubscriptionCenter, {
+    data: {
+      enabled: true,
+      generatedAt: observedAt,
+      providers: [{
+        id: 'kimi-code', label: 'Kimi Code', status: 'ok', updatedAt: observedAt,
+        windows: [
+          {
+            id: 'session', label: '5 小时滚动（5H 频限）', usedPercent: 25, remainingPercent: 75,
+            resetsAt: resetIn(30 * 60_000), windowSeconds: 18_000,
+          },
+          {
+            id: 'weekly', label: '每周', usedPercent: 50, remainingPercent: 50,
+            resetsAt: resetIn(5 * 86_400_000), windowSeconds: 604_800,
+          },
+        ],
+      }],
+      history: { observations: [] },
+    },
+    usageData: { generatedAt: observedAt, buckets: [{
+      id: 'local-kimi', source: 'kimi-code', bucketStart: observedAt,
+      model: 'kimi-k3', modelCanonical: 'kimi-k3',
+      inputTokens: 800_000, cacheWriteInputTokens: 0, cacheReadInputTokens: 0,
+      outputTokens: 200_000, reasoningOutputTokens: 0, totalTokens: 1_000_000,
+      requestCount: 20, costMicros: 2_000_000, pricedTokens: 1_000_000,
+      unpricedTokens: 0, assumedTokens: 0,
+    }] },
+    settings: { refreshMinutes: 10, providers: { 'kimi-code': { entitlementType: 'paid' } } },
+    loading: false, error: null, onRefresh: () => {}, onSettings: () => {}, view: 'accounts', zh: true,
+  }));
+
+  assert.match(markup, /周期 Token 容量速览/);
+  assert.match(markup, /各窗口是同时生效的独立约束，不能相加/);
+  assert.match(markup, /5 小时滚动（5H 频限）/);
+  assert.match(markup, />每周</);
+  assert.match(markup, /重置前可用 Token/);
+  assert.match(markup, /~300万/);
+  assert.match(markup, /~100万/);
+  assert.match(markup, /即将重置/);
+  assert.match(markup, /本周期推算/);
+});
+
+test('account benefits provider tabs control a panel labelled by the active tab', () => {
+  const observedAt = '2026-08-11T12:00:00.000Z';
+  const markup = renderToStaticMarkup(createElement(module.SubscriptionCenter, {
+    data: {
+      enabled: true,
+      generatedAt: observedAt,
+      providers: [{
+        id: 'codex', label: 'Codex', accountLabel: 'Work', status: 'ok', updatedAt: observedAt,
         windows: [{
           id: 'primary', label: '5 hours', usedPercent: 10, remainingPercent: 90,
           resetsAt: '2026-08-11T14:00:00.000Z', windowSeconds: 18_000,
@@ -184,7 +293,7 @@ test('overview provider tabs control a panel labelled by the active tab', () => 
     error: null,
     onRefresh: () => {},
     onSettings: () => {},
-    view: 'overview',
+    view: 'accounts',
     zh: false,
   }));
 
@@ -193,6 +302,7 @@ test('overview provider tabs control a panel labelled by the active tab', () => 
   assert.match(markup, /id="subscription-limit-panel" role="tabpanel" aria-labelledby="subscription-provider-tab-codex"/);
   assert.match(markup, /class="reset-credit" data-state="unknown"/);
   assert.match(markup, /Available count is not observable/);
+  assert.match(markup, />Work</);
   assert.match(markup, /<details class="subscription-deep-dive">/);
 });
 
@@ -228,7 +338,7 @@ test('benefits center follows Chinese compact units while English keeps K/M/B', 
     error: null,
     onRefresh: () => {},
     onSettings: () => {},
-    view: 'overview',
+    view: 'accounts',
   };
 
   const chinese = renderToStaticMarkup(createElement(module.SubscriptionCenter, { ...props, zh: true }));
@@ -237,12 +347,13 @@ test('benefits center follows Chinese compact units while English keeps K/M/B', 
   assert.match(chinese, /6\.3万 次请求/);
   assert.match(chinese, /本机观测用量/);
   assert.match(chinese, /本周期估算容量/);
-  assert.match(chinese, /估算剩余容量/);
+  assert.match(chinese, /重置前估算可用/);
   assert.match(chinese, /折算月度容量/);
   assert.doesNotMatch(chinese, /本窗口本机 TOKEN|推算窗口总容量|推算剩余 TOKEN|30 天等效容量/);
   assert.doesNotMatch(chinese, /26\.2B/);
   assert.match(english, /26\.2B/);
   assert.match(english, /62\.8K requests/);
+  assert.match(english, /EST\. AVAILABLE BEFORE RESET/);
 });
 
 test('settings filter tabs control their labelled provider panel', () => {

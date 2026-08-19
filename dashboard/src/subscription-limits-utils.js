@@ -113,6 +113,13 @@ function englishWindowLabel(value) {
 }
 
 export function quotaWindowLabel(providerId, window, zh) {
+  // Codex may return only one of its primary/secondary windows, so the legacy
+  // slot id is not a stable duration label. Prefer the reported duration.
+  if (providerId === 'codex' && ['primary', 'secondary'].includes(window?.id)) {
+    const seconds = finiteNumber(window?.windowSeconds);
+    if (seconds === 5 * 60 * 60) return zh ? '5 小时' : '5 hours';
+    if (seconds === 7 * 24 * 60 * 60) return zh ? '每周' : 'Weekly';
+  }
   const pair = QUOTA_WINDOW_LABELS[providerId]?.[window?.id];
   if (pair) return pair[zh ? 0 : 1];
   return zh ? normalizeChineseWindowLabel(window?.label) : englishWindowLabel(window?.label);

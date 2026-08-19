@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  buildSubscriptionInsights, buildSubscriptionViewUsage, filterBenefitUsageRecords,
+  buildBenefitCapacityOverview, buildSubscriptionInsights, buildSubscriptionViewUsage, filterBenefitUsageRecords,
   localEvidenceDayKey, nearestBenefitObservation, selectSubscriptionAccounts, subscriptionAttribution,
   subscriptionSourceIds,
 } from '../src/subscription-insights.js';
@@ -40,7 +40,55 @@ test('links a subscription window to local tokens without using usage-page filte
   assert.equal(window.estimatedCapacityTokens, 6_000);
   assert.equal(window.estimatedRemainingTokens, 4_500);
   assert.equal(window.monthlyEquivalentTokens, 864_000);
+  assert.equal(window.capacitySummary.basis, 'current-cycle');
+  assert.equal(window.capacitySummary.totalTokens, 6_000);
+  assert.equal(window.capacitySummary.remainingTokens, 4_500);
   assert.equal(result.providers[0].lifetimeTotals.totalTokens, 10_500);
+});
+
+test('preserves provider-reported Token totals as facts instead of estimates', () => {
+  const value = structuredClone(limits);
+  value.providers[0].windows[0].unit = 'tokens';
+  value.providers[0].windows[0].value = 2_500;
+  value.providers[0].windows[0].limit = 10_000;
+  const summary = buildSubscriptionInsights(snapshot, value).providers[0].windows[0].capacitySummary;
+  assert.deepEqual(summary, {
+    basis: 'provider', confidence: 'high', totalTokens: 10_000,
+    remainingTokens: 7_500, usedTokens: 2_500, sampledCycles: 0,
+  });
+});
+
+test('uses completed-cycle history when the current Token estimate is weak', () => {
+  const usage = {
+    generatedAt,
+    buckets: [
+      bucket('coverage-start', '2026-08-09T07:00:00.000Z', 'gpt-5.6-sol', 1),
+      bucket('cycle-one', '2026-08-09T09:00:00.000Z', 'gpt-5.6-sol', 7_999),
+      bucket('cycle-two', '2026-08-10T09:00:00.000Z', 'gpt-5.6-sol', 12_000),
+      bucket('current-cycle', '2026-08-11T11:00:00.000Z', 'gpt-5.6-sol', 100),
+    ],
+  };
+  const value = structuredClone(limits);
+  value.providers[0].windows[0].usedPercent = 1;
+  value.providers[0].windows[0].remainingPercent = 99;
+  value.history = { observations: [
+    { observedAt: '2026-08-09T11:55:00.000Z', providers: [{ id: 'codex', windows: [{
+      id: 'primary', label: '5 小时', usedPercent: 80, remainingPercent: 20,
+      resetsAt: '2026-08-09T12:00:00.000Z', windowSeconds: 18_000,
+    }] }] },
+    { observedAt: '2026-08-10T11:55:00.000Z', providers: [{ id: 'codex', windows: [{
+      id: 'primary', label: '5 小时', usedPercent: 100, remainingPercent: 0,
+      resetsAt: '2026-08-10T12:00:00.000Z', windowSeconds: 18_000,
+    }] }] },
+  ] };
+
+  const window = buildSubscriptionInsights(usage, value).providers[0].windows[0];
+  assert.equal(window.estimationConfidence, 'low');
+  assert.equal(window.cycleStats.sampledCycles, 2);
+  assert.deepEqual(window.capacitySummary, {
+    basis: 'historical-median', confidence: 'medium', totalTokens: 11_000,
+    remainingTokens: 10_890, usedTokens: 110, sampledCycles: 2,
+  });
 });
 
 test('builds model-only API-equivalent capacity scenarios and preserves uncertainty', () => {
@@ -118,6 +166,66 @@ test('selects a provider account without mixing its quota facts or history', () 
   assert.equal(provider.accountId, 'work');
   assert.equal(provider.windows[0].usedPercent, 70);
   assert.deepEqual(provider.windows[0].historyPoints.map((point) => point.usedPercent), [65]);
+});
+
+test('summarizes like-for-like capacity across accounts without duplicating local estimates', () => {
+  const now = Date.parse('2026-08-19T12:00:00.000Z');
+  const personalFiveHour = {
+    id: 'session', label: '5 hours', windowSeconds: 18_000,
+    resetsAt: '2026-08-19T12:30:00.000Z', remainingPercent: 75, usedPercent: 25,
+    capacitySummary: {
+      basis: 'current-cycle', confidence: 'medium', totalTokens: 400,
+      remainingTokens: 300, usedTokens: 100, sampledCycles: 0,
+    },
+  };
+  const personalWeekly = {
+    id: 'weekly', label: 'Weekly', windowSeconds: 604_800,
+    resetsAt: '2026-08-23T12:00:00.000Z', remainingPercent: 50, usedPercent: 50,
+    capacitySummary: {
+      basis: 'provider', confidence: 'high', totalTokens: 2_000,
+      remainingTokens: 1_000, usedTokens: 1_000, sampledCycles: 0,
+    },
+  };
+  const providers = [{
+    id: 'opencode', label: 'OpenCode Go', accountId: 'personal', accountLabel: 'Personal',
+    windows: [personalFiveHour, personalWeekly],
+    accounts: [
+      { accountId: 'personal', accountLabel: 'Personal', windows: [personalFiveHour, personalWeekly] },
+      { accountId: 'work', accountLabel: 'Work', windows: [
+        {
+          id: 'session', label: '5 hours', windowSeconds: 18_000,
+          resetsAt: '2026-08-19T14:00:00.000Z', unit: 'tokens', value: 100, limit: 1_000,
+          remainingPercent: 90, usedPercent: 10,
+        },
+        {
+          id: 'weekly', label: 'Weekly', windowSeconds: 604_800,
+          resetsAt: '2026-08-25T12:00:00.000Z', remainingPercent: 50, usedPercent: 50,
+        },
+      ] },
+    ],
+  }, {
+    id: 'deepseek', label: 'DeepSeek', windows: [],
+    balanceObservation: { state: 'current' },
+  }];
+
+  const overview = buildBenefitCapacityOverview(providers, now);
+  assert.deepEqual(overview.expiringSoon, {
+    remainingTokens: 300, totalTokens: 400, windowCount: 1,
+    knownWindowCount: 1, complete: true, estimated: true,
+  });
+  assert.deepEqual(overview.fiveHour, {
+    remainingTokens: 1_200, totalTokens: 1_400, windowCount: 2,
+    knownWindowCount: 2, complete: true, estimated: true,
+  });
+  assert.deepEqual(overview.weekly, {
+    remainingTokens: 1_000, totalTokens: 2_000, windowCount: 2,
+    knownWindowCount: 1, complete: false, estimated: false,
+  });
+  assert.equal(overview.accountCount, 3);
+  assert.equal(overview.resetAccountCount, 2);
+  assert.equal(overview.resetRows.length, 4);
+  assert.equal(overview.resetRows[1].accountLabel, 'Work');
+  assert.deepEqual(overview.withoutReset.map((row) => row.label), ['DeepSeek']);
 });
 
 test('keeps actual subscription spend separate from API-equivalent value', () => {

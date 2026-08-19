@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useStat
 import {
   Activity, BarChart3, Cloud, CloudUpload, Command, Database, Download, ExternalLink, FileText,
   Circle, Gauge, Globe2, Home, Info, LayoutDashboard, Menu, Moon, RefreshCw, Settings2,
-  Share2, ShieldCheck, Square, Sun, X,
+  Share2, ShieldCheck, Square, Sun, WalletCards, X,
 } from 'lucide-react';
 import { analyze, EMPTY_FILTERS, filterOptions } from './analytics.js';
 import { ActivityHeatmap, DailyTrend, DistributionCard, WeeklyTrend } from './UsageCharts.jsx';
@@ -81,10 +81,11 @@ const LOCAL_LINKS = [
 ];
 const BENEFIT_LINKS = [
   ['#subscriptions', Home, '总览', 'Overview'],
-  ['#subscription-trend', BarChart3, '额度趋势', 'Quota trends'],
-  ['#subscription-activity', Activity, '使用节奏', 'Usage rhythm'],
-  ['#subscription-distribution', LayoutDashboard, '消耗构成', 'Consumption mix'],
-  ['#subscription-records', FileText, '观测明细', 'Observation log'],
+  ['#subscription-accounts', WalletCards, '账户权益', 'Accounts'],
+  ['#subscription-trend', BarChart3, '趋势', 'Trends'],
+  ['#subscription-activity', Activity, '活跃', 'Activity'],
+  ['#subscription-distribution', LayoutDashboard, '分布', 'Mix'],
+  ['#subscription-records', FileText, '明细', 'Records'],
 ];
 const DEVICE_LINK = ['#sources', Database, '本机', 'Device'];
 function DesktopNav({ zh, communityUrl, activeSection, onNavigate, onSettings }) {
@@ -127,7 +128,7 @@ function MobileDrawer({ open, onClose, zh, communityUrl, theme, setTheme, vibe, 
 function MobileNav({ zh, activeSection, onNavigate }) {
   const benefitCenter = isBenefitSection(activeSection);
   const links = benefitCenter ? BENEFIT_LINKS : [LOCAL_LINKS[0], LOCAL_LINKS[1], LOCAL_LINKS[2], LOCAL_LINKS[3], LOCAL_LINKS[4]];
-  return <nav className="mobile-tabs">{links.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a href={href} className={active ? 'active' : ''} aria-current={active ? 'location' : undefined} onClick={(event) => onNavigate(event, href)} key={href}><span className={active ? 'primary' : ''}><Icon size={active ? 18 : 19}/></span><small>{zh ? cn : en}</small></a>; })}</nav>;
+  return <nav className={`mobile-tabs${benefitCenter ? ' mobile-tabs--benefits' : ''}`}>{links.map(([href, Icon, cn, en]) => { const active = activeSection === href.slice(1); return <a href={href} className={active ? 'active' : ''} aria-current={active ? 'location' : undefined} onClick={(event) => onNavigate(event, href)} key={href}><span className={active ? 'primary' : ''}><Icon size={active ? 18 : 19}/></span><small>{zh ? cn : en}</small></a>; })}</nav>;
 }
 
 function Loading({ zh }) {

@@ -11,6 +11,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 ## Durable product decisions
 
 - Subscription Center is a first-class destination. Usage Center keeps only a compact health/entry strip; do not place the full quota product above Usage analytics again.
+- Benefits Overview is a cross-account portfolio summary for available capacity and reset timing. Keep provider selection, balances, quota windows, model scenarios, and account-level evidence in the separate Account Benefits view.
+- Cross-account Token totals may aggregate only like-for-like quota windows. Never add 5-hour, weekly, and resetting-soon views together; show a lower-bound marker when some accounts lack estimable Token capacity, and do not duplicate provider-level local Token evidence across multiple accounts.
 - Subscription analysis uses the complete local source history and does not inherit temporary Usage Center filters.
 - Keep three data classes visually and semantically separate: provider-reported quota facts, locally observed Token usage, and derived capacity estimates.
 - ChatGPT Pro, Claude Max, and similar subscriptions must not be described as having an official fixed Token cap when the provider only exposes utilization. Capacity and model-only numbers are estimates, with their window, sample quality, assumptions, and uncertainty visible.
