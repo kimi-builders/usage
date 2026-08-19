@@ -77,7 +77,9 @@ test('renews an expired Kimi Code login before reading usage without requiring /
   assert.equal(saved.access_token, 'refreshed-access');
   assert.equal(saved.refresh_token, 'refresh-new');
   assert.equal(saved.preserved_field, 'keep-me');
-  assert.equal(statSync(local.path).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') {
+    assert.equal(statSync(local.path).mode & 0o777, 0o600);
+  }
   assert.equal(JSON.stringify(result).includes('refreshed-access'), false);
   assert.equal(JSON.stringify(result).includes('refresh-new'), false);
   assert.throws(() => statSync(join(local.root, 'oauth', 'kimi-code.lock')), { code: 'ENOENT' });
