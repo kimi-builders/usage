@@ -49,6 +49,12 @@ export async function run(args) {
     setColorEnabled(true);
   }
 
+  const langIndex = args.indexOf('--lang');
+  if (langIndex >= 0 && args[langIndex + 1]) {
+    const { setLocale } = await import('./cli-ui.js');
+    setLocale(args[langIndex + 1]);
+  }
+
   const command = args[0];
   if (!command) {
     printHelp();
@@ -124,13 +130,30 @@ export async function run(args) {
     return;
   }
   if (command === 'status') {
+    const { getLocale } = await import('./cli-ui.js');
+    const isZh = getLocale() === 'zh';
     const config = loadConfig();
-    console.log(`配置: ${getConfigPath()}`);
-    console.log(`状态: ${config?.apiKey ? `已连接 ${config.apiKey.slice(0, 12)}…` : '未连接'}`);
-    console.log(`站点: ${config?.apiUrl || 'https://kimi.builders'}`);
-    console.log('本地分析: 可用（无需连接社区）');
-    const { getDaemonStatus, printDaemonStatus } = await import('./daemon.js');
-    printDaemonStatus(getDaemonStatus());
+    console.log(`\n${c.bold(c.cyan(isZh ? '🌐 Kimi Builders Usage 运行状态' : '🌐 Kimi Builders Usage Status'))}`);
+    console.log(c.dim('─'.repeat(Math.min(68, (process.stdout.columns || 80) - 2))));
+
+    console.log(c.bold(isZh ? '【社区同步服务】' : '[Community Sync Service]'));
+    console.log(`  • ${isZh ? '连接状态' : 'Connection'}: ${config?.apiKey ? c.green(isZh ? `已连接 (${config.apiKey.slice(0, 12)}…)` : `Connected (${config.apiKey.slice(0, 12)}…)`) : c.gray(isZh ? '未连接' : 'Not connected')}`);
+    console.log(`  • ${isZh ? '目标站点' : 'API URL'}: ${config?.apiUrl || 'https://kimi.builders'}`);
+    console.log(`  • ${isZh ? '隐私模式' : 'Privacy'}: ${c.dim(isZh ? '脱敏聚合 (项目名默认隐藏)' : 'Anonymized aggregates (projects hidden by default)')}`);
+
+    const { getDaemonStatus } = await import('./daemon.js');
+    const daemon = getDaemonStatus();
+    console.log(`  • ${isZh ? '后台同步' : 'Daemon'}: ${daemon.installed ? c.green(isZh ? `运行中 (每 ${daemon.intervalMinutes} 分钟同步)` : `Active (every ${daemon.intervalMinutes}m)`) : c.gray(isZh ? '未安装' : 'Not installed')}`);
+
+    console.log(`\n${c.bold(isZh ? '【本地数据引擎】' : '[Local Data Engine]')}`);
+    console.log(`  • ${isZh ? '配置文件' : 'Config'}: ${getConfigPath()}`);
+    console.log(`  • ${isZh ? '本地分析' : 'Local Analytics'}: ${c.green(isZh ? '可用 (离线就绪，无需连接社区)' : 'Ready (Offline, no account needed)')}`);
+
+    console.log(`\n${c.bold(isZh ? '【快捷命令】' : '[Quick Commands]')}`);
+    console.log(`  • ${isZh ? '打开 Web 看板' : 'Open Web Dashboard'}: ${c.cyan('npx @kimi.builders/usage dashboard')}`);
+    console.log(`  • ${isZh ? '执行离线体检' : 'Run Diagnostics'}:     ${c.cyan('npx @kimi.builders/usage doctor')}`);
+    console.log(`  • ${isZh ? '管理数据源' : 'Manage Sources'}:        ${c.cyan('npx @kimi.builders/usage sources list')}`);
+    console.log(c.dim('─'.repeat(Math.min(68, (process.stdout.columns || 80) - 2))) + '\n');
     return;
   }
   if (command === 'sources') {

@@ -7,6 +7,10 @@ import {
   applySourcePolicies, effectiveSourcePolicies, sourceIdsFor, sourcePolicyIsExplicit,
 } from './source-policy.js';
 import {
+  c, formatCurrency, formatDuration, formatNumber, formatTokens, getLocale, t,
+} from './cli-ui.js';
+import { estimateLocalBucketCost } from './local/pricing.js';
+import {
   bucketKey,
   contentHash,
   prepareStateForSync,
@@ -190,21 +194,7 @@ export async function runSync({ quiet = false, surface = 'cli', full = false } =
     ...(result.warnings ? { warnings: result.warnings } : {}),
   }));
   if (!quiet) {
-    console.log('来源扫描：');
-    const width = Math.max(...collected.results.map((result) => result.source.length)) + 4;
-    for (const result of collected.results) {
-      const label = result.source.padEnd(width);
-      if (result.status === 'ok') {
-        console.log(`  ✓ ${label}${result.buckets.length} buckets · ${result.sessions.length} sessions`);
-      } else if (result.status === 'skipped') {
-        console.log(`  - ${label}未检测到本地数据，已跳过`);
-      } else if (result.status === 'partial') {
-        console.log(`  ~ ${label}${result.buckets.length} buckets · ${result.sessions.length} sessions（部分读取，本来源旧数据已保留）`);
-        for (const warning of (result.warnings || []).slice(0, 2)) console.log(`      ${warning}`);
-      } else {
-        console.log(`  ✗ ${label}解析失败：${result.error}（已保留该来源的旧数据）`);
-      }
-    }
+    printSyncScanResults(collected.results);
   }
   const anyFailed = collected.results.some((result) => ['failed', 'partial'].includes(result.status));
 
@@ -254,8 +244,13 @@ export async function runSync({ quiet = false, surface = 'cli', full = false } =
     if (!response.ok) throw new Error('服务端拒绝了设备元数据更新。');
     saveState(state);
     if (!quiet) {
-      console.log('暂无新增或变化的用量。');
-      if (anyFailed) console.log('⚠ 部分来源解析失败，其余来源不受影响；失败来源的旧数据已保留。');
+      const isZh = getLocale() === 'zh';
+      console.log(isZh ? '暂无新增或变化的用量。' : 'No new or modified usage.');
+      if (anyFailed) {
+        console.log(isZh
+          ? '⚠ 部分来源解析失败，其余来源不受影响；失败来源的旧数据已保留。'
+          : '⚠ Some sources failed to parse; remaining sources are unaffected and previous data is preserved.');
+      }
       printRejected(rejected);
     }
     return { buckets: 0, sessions: 0, sources, rejected: rejected.length };
@@ -289,11 +284,21 @@ export async function runSync({ quiet = false, surface = 'cli', full = false } =
     protectedBucketTotal += Number(response.protected?.buckets ?? 0);
   }
   if (!quiet) {
-    console.log(`已同步 ${bucketTotal} buckets · ${sessionTotal} sessions`);
+    const isZh = getLocale() === 'zh';
+    const syncedMsg = isZh
+      ? `已同步 ${bucketTotal} buckets · ${sessionTotal} sessions`
+      : `Synced ${bucketTotal} buckets · ${sessionTotal} sessions`;
+    console.log(syncedMsg);
     if (protectedBucketTotal > 0) {
-      console.log(`服务端保留了 ${protectedBucketTotal} 个更大的已有 bucket（本次较小快照未覆盖）`);
+      console.log(isZh
+        ? `服务端保留了 ${protectedBucketTotal} 个更大的已有 bucket（本次较小快照未覆盖）`
+        : `Server preserved ${protectedBucketTotal} larger existing buckets (not overwritten by this smaller snapshot)`);
     }
-    if (anyFailed) console.log('⚠ 部分来源解析失败，其余来源不受影响；失败来源的旧数据已保留。');
+    if (anyFailed) {
+      console.log(isZh
+        ? '⚠ 部分来源解析失败，其余来源不受影响；失败来源的旧数据已保留。'
+        : '⚠ Some sources failed to parse; remaining sources are unaffected and previous data is preserved.');
+    }
     printRejected(rejected);
   }
   return {
@@ -305,11 +310,87 @@ export async function runSync({ quiet = false, surface = 'cli', full = false } =
   };
 }
 
+function calculateSourceMetrics(result) {
+  let tokens = 0;
+  let costMicros = 0;
+  for (const bucket of result.buckets || []) {
+    tokens += Number(bucket.inputTokens || 0)
+      + Number(bucket.cacheWriteInputTokens || 0)
+      + Number(bucket.cacheReadInputTokens || 0)
+      + Number(bucket.outputTokens || 0)
+      + Number(bucket.reasoningOutputTokens || 0);
+    const price = estimateLocalBucketCost(bucket);
+    costMicros += Number(price.costMicros || 0);
+  }
+  let activeSeconds = 0;
+  for (const session of result.sessions || []) {
+    activeSeconds += Number(session.activeSeconds || 0);
+  }
+  return {
+    tokens,
+    cost: costMicros / 1e6,
+    activeSeconds,
+  };
+}
+
+function printSyncScanResults(results) {
+  const isZh = getLocale() === 'zh';
+  console.log(isZh ? '来源扫描：' : 'Source scan:');
+  const width = Math.max(...results.map((result) => result.source.length), 0) + 4;
+  let totalTokens = 0;
+  let totalCost = 0;
+  let totalActive = 0;
+  let totalBuckets = 0;
+  let totalSessions = 0;
+  let hasActiveData = false;
+
+  for (const result of results) {
+    const label = result.source.padEnd(width);
+    const metrics = calculateSourceMetrics(result);
+    totalTokens += metrics.tokens;
+    totalCost += metrics.cost;
+    totalActive += metrics.activeSeconds;
+    totalBuckets += result.buckets.length;
+    totalSessions += result.sessions.length;
+
+    if (result.status === 'ok') {
+      hasActiveData = true;
+      const metricsInfo = ` (${c.cyan(formatTokens(metrics.tokens))} · ${c.green(formatCurrency(metrics.cost))})`;
+      console.log(`  ✓ ${label}${result.buckets.length} buckets · ${result.sessions.length} sessions${metricsInfo}`);
+    } else if (result.status === 'skipped') {
+      console.log(`  - ${label}${isZh ? '未检测到本地数据，已跳过' : 'no local data found, skipped'}`);
+    } else if (result.status === 'partial') {
+      hasActiveData = true;
+      const extra = isZh
+        ? `（部分读取，本来源旧数据已保留）`
+        : ` (partially read, previous data retained)`;
+      console.log(`  ~ ${label}${result.buckets.length} buckets · ${result.sessions.length} sessions${extra}`);
+      for (const warning of (result.warnings || []).slice(0, 2)) console.log(`      ${warning}`);
+    } else {
+      const errorMsg = isZh
+        ? `解析失败：${result.error}（已保留该来源的旧数据）`
+        : `parsing failed: ${result.error} (previous data retained)`;
+      console.log(`  ✗ ${label}${errorMsg}`);
+    }
+  }
+
+  if (hasActiveData && results.length > 1) {
+    const totalLabel = (isZh ? '合计' : 'Total').padEnd(width);
+    console.log(c.dim('  ' + '─'.repeat(Math.min(72, (process.stdout.columns || 80) - 4))));
+    console.log(`  ${c.bold(totalLabel)}${totalBuckets} buckets · ${totalSessions} sessions (${c.bold(c.cyan(formatTokens(totalTokens)))} · ${c.bold(c.green(formatCurrency(totalCost)))} · ${c.dim(formatDuration(totalActive, { short: true }))})\n`);
+  }
+}
+
 function printRejected(rejected) {
   if (rejected.length === 0) return;
-  console.log(`⚠ 本地校验隔离了 ${rejected.length} 条异常记录，其余数据已继续同步：`);
+  const isZh = getLocale() === 'zh';
+  console.log(isZh
+    ? `⚠ 本地校验隔离了 ${rejected.length} 条异常记录，其余数据已继续同步：`
+    : `⚠ Local validation quarantined ${rejected.length} abnormal records; remaining data synced:`);
   for (const item of rejected.slice(0, 5)) {
     console.log(`  - ${item.source} ${item.kind}: ${item.error}`);
   }
-  if (rejected.length > 5) console.log(`  - 其余 ${rejected.length - 5} 条已省略`);
+  if (rejected.length > 5) {
+    console.log(isZh ? `  - 其余 ${rejected.length - 5} 条已省略` : `  - Remaining ${rejected.length - 5} omitted`);
+  }
 }

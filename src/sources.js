@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { createSessionSalt, loadConfig, saveConfig } from './config.js';
 import { sourceRegistry } from './parsers/index.js';
 import { applySourcePolicies, effectiveSourcePolicies, isSourceMode } from './source-policy.js';
+import { c, getLocale, renderTable, t } from './cli-ui.js';
 
 function option(args, name) {
   const index = args.indexOf(`--${name}`);
@@ -20,13 +21,37 @@ export function runSources(args = []) {
   const optional = sourceRegistry.filter((source) => source.tier === 'explicit-opt-in');
   const enabled = new Set(config?.enabledSources || []);
   const policies = effectiveSourcePolicies(config);
+  const isZh = getLocale() === 'zh';
 
   if (action === 'list') {
-    console.log('数据源：');
+    if (args.includes('--json')) {
+      const jsonList = sourceRegistry.map((source) => ({
+        id: source.id,
+        tier: source.tier,
+        mode: policies[source.id],
+        enabled: policies[source.id] !== 'off',
+      }));
+      console.log(JSON.stringify(jsonList, null, 2));
+      return jsonList;
+    }
+
+    console.log(isZh ? '数据源：' : 'Data Sources:');
     for (const source of sourceRegistry) {
-      const mode = { off: '关闭', local: '仅本机', private: '本机并同步' }[policies[source.id]];
-      const status = `${mode}${source.tier === 'beta' ? '（Beta）' : source.tier === 'explicit-opt-in' ? '（显式数据源）' : ''}`;
-      console.log(`  ${source.id.padEnd(16)} ${status}`);
+      const mode = isZh
+        ? { off: '关闭', local: '仅本机', private: '本机并同步' }[policies[source.id]]
+        : { off: 'Off', local: 'Local only', private: 'Local & sync' }[policies[source.id]];
+      const tierTag = source.tier === 'beta'
+        ? (isZh ? '（Beta）' : ' (Beta)')
+        : source.tier === 'explicit-opt-in'
+          ? (isZh ? '（显式数据源）' : ' (Explicit)')
+          : '';
+      const status = `${mode}${tierTag}`;
+      const coloredMode = policies[source.id] === 'private'
+        ? c.green(status)
+        : policies[source.id] === 'local'
+          ? c.cyan(status)
+          : c.gray(status);
+      console.log(`  ${source.id.padEnd(18)} ${coloredMode}`);
     }
     return;
   }

@@ -1,4 +1,8 @@
 import { isatty } from 'node:tty';
+import { getLocale, setLocale, t } from './i18n.js';
+
+export { getLocale, setLocale, t };
+
 
 // Unicode block elements for sub-character precision bar charts
 const BAR_BLOCKS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
@@ -274,16 +278,16 @@ export function renderStatusBadge(status) {
   switch (status) {
     case 'ok':
     case 'success':
-      return `${c.green('✓')} ${c.green('正常')}`;
+      return `${c.green('✓')} ${c.green(t('status.ok'))}`;
     case 'skipped':
-      return `${c.gray('-')} ${c.gray('跳过')}`;
+      return `${c.gray('-')} ${c.gray(t('status.skipped'))}`;
     case 'partial':
-      return `${c.yellow('~')} ${c.yellow('部分')}`;
+      return `${c.yellow('~')} ${c.yellow(t('status.partial'))}`;
     case 'failed':
     case 'error':
-      return `${c.red('✗')} ${c.red('失败')}`;
+      return `${c.red('✗')} ${c.red(t('status.failed'))}`;
     case 'running':
-      return `${c.cyan('⚡')} ${c.cyan('运行中')}`;
+      return `${c.cyan('⚡')} ${c.cyan(t('status.running'))}`;
     default:
       return `${c.dim('•')} ${status}`;
   }
