@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { analyze, availableModels, buildRecords, filterOptions, heatmapView } from '../src/analytics.js';
+import { analyze, availableModels, buildRecords, EMPTY_FILTERS, filterOptions, heatmapView } from '../src/analytics.js';
 import { distributionShare, pluralUnit, usdMoney } from '../src/format.js';
 
 function bucket(id, source, model, bucketStart, total) {
@@ -28,6 +28,10 @@ const data = {
     { source: 'codex', hourStart: '2026-08-01T12:00:00.000Z', activeSeconds: 60, engagedSeconds: 70, messageCount: 3, userMessageCount: 1 },
   ],
 };
+
+test('usage center defaults to the current local day', () => {
+  assert.equal(EMPTY_FILTERS.range, 'today');
+});
 
 test('English count units use the singular only for exactly one item', () => {
   assert.equal(pluralUnit(1, 'item'), 'item');

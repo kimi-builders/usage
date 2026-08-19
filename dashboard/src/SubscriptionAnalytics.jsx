@@ -16,6 +16,7 @@ const CHART_BOTTOM = 176;
 const CHART_TOKEN_HEIGHT = 128;
 const DAY_MS = 86_400_000;
 const TREND_RANGE_MS = 30 * DAY_MS;
+const RECORD_PAGE_SIZE = 25;
 const TOKEN_BREAKDOWN = [
   ['inputTokens', '输入', 'Input', CHART_COLORS.input],
   ['cacheWriteInputTokens', '缓存写', 'Cache write', CHART_COLORS.cacheWrite],
@@ -535,21 +536,21 @@ export function BenefitDistributionView({ provider, usageData, zh }) {
   return <section className="benefit-view-stack" {...panelProps}><section className="benefit-section-heading"><div><span>{zh ? '单一订阅构成' : 'ONE-BENEFIT BREAKDOWN'}</span><h2><LayoutDashboard size={16}/>{zh ? `${provider.label} 的消耗构成` : `${provider.label} consumption mix`}</h2><p>{zh ? `${benefitRangeLabel(range, true)} · 只使用已归因到该订阅的本机 Token；不代表供应商账单内部权重。` : `${benefitRangeLabel(range, false)} · only local Tokens attributed to this benefit; not the provider billing weight.`}</p></div><div className="benefit-section-range"><strong>{localizedCompact(viewUsage.totals.totalTokens, zh)} Token</strong><BenefitRangeControl value={range} onChange={changeRange} zh={zh} label={zh ? '消耗构成证据范围' : 'Consumption mix evidence range'}/></div></section><div className="benefit-distribution-grid"><MixCard title={zh ? '模型' : 'Models'} rows={viewUsage.modelRows} zh={zh}/><MixCard title={zh ? 'Token 类型' : 'Token types'} rows={tokenTypeRows} zh={zh} semantic/><MixCard title={zh ? '推理强度' : 'Reasoning effort'} rows={viewUsage.effortRows} zh={zh}/><MixCard title={zh ? '项目 / 工作负载' : 'Projects / workload'} rows={viewUsage.projectRows} zh={zh}/></div><div className="benefit-attribution-note"><ShieldCheck size={14}/><span>{zh ? `证据窗口：${benefitRangeLabel(range, true)}。归因范围：${provider.sources.join('、')}。无法确认账户归属的数据不会被强行放进这个订阅。` : `Evidence window: ${benefitRangeLabel(range, false)}. Attribution scope: ${provider.sources.join(', ')}. Data without reliable account attribution is not forced into this benefit.`}</span></div></section>;
 }
 
-function RecordsTable({ label, columns, rows, rowClassName = '', renderCells, focusKey = null }) {
+function RecordsTable({ label, columns, rows, totalRows = rows.length, rowOffset = 0, rowClassName = '', renderCells, focusKey = null }) {
   const focusRef = useRef(null);
   useEffect(() => {
     if (!focusKey || !focusRef.current) return;
     focusRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' });
     focusRef.current.focus({ preventScroll: true });
   }, [focusKey]);
-  return <div className="benefit-records-table" role="table" aria-label={label} aria-colcount={columns.length} aria-rowcount={rows.length + 1}>
+  return <div className="benefit-records-table" role="table" aria-label={label} aria-colcount={columns.length} aria-rowcount={totalRows + 1}>
     <div className="benefit-records-rowgroup" role="rowgroup">
       <div className={`benefit-records-head${rowClassName ? ` ${rowClassName}-head` : ''}`} role="row" aria-rowindex={1}>
         {columns.map((column, index) => <span role="columnheader" aria-colindex={index + 1} key={column}>{column}</span>)}
       </div>
     </div>
     <div className="benefit-records-rowgroup benefit-records-body" role="rowgroup">
-      {rows.map((row, index) => <div ref={row.key === focusKey ? focusRef : null} className={`benefit-records-row benefit-record-card${rowClassName ? ` ${rowClassName}-row` : ''}${row.key === focusKey ? ' is-evidence-target' : ''}`} role="row" aria-rowindex={index + 2} tabIndex={row.key === focusKey ? -1 : undefined} key={row.key}>{renderCells(row, columns)}</div>)}
+      {rows.map((row, index) => <div ref={row.key === focusKey ? focusRef : null} className={`benefit-records-row benefit-record-card${rowClassName ? ` ${rowClassName}-row` : ''}${row.key === focusKey ? ' is-evidence-target' : ''}`} role="row" aria-rowindex={rowOffset + index + 2} tabIndex={row.key === focusKey ? -1 : undefined} key={row.key}>{renderCells(row, columns)}</div>)}
     </div>
   </div>;
 }
@@ -571,36 +572,45 @@ export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh, 
     ? rangeUsageRows.filter((row) => localEvidenceDayKey(row.observedAt) === drilldown.date)
     : rangeUsageRows;
   const quotaTarget = drilldown?.kind === 'quota' ? nearestBenefitObservation(allQuotaRows, drilldown.observedAt) : null;
-  const baseRows = allQuotaRows.slice(0, 100);
-  // A drilled observation older than the first 100 rows would silently lose its
-  // highlight; append it (log is time-descending, so order holds).
-  const rows = quotaTarget && !baseRows.some((row) => row.key === quotaTarget.key) ? [...baseRows, quotaTarget] : baseRows;
-  const usageRows = dayUsageRows.slice(0, 100).map((row) => ({ ...row, key: row.id }));
+  const rows = allQuotaRows;
+  const usageRows = dayUsageRows.map((row) => ({ ...row, key: row.id }));
   const focusKey = kind === 'quota' ? quotaTarget?.key || null : drilldown?.kind === 'usage' ? usageRows[0]?.key || null : null;
-  const shown = kind === 'quota' ? rows.length : usageRows.length;
-  const total = kind === 'quota' ? provider.observationLog.length : (drilldown?.kind === 'usage' ? dayUsageRows.length : rangeUsageRows.length);
   const [page, setPage] = useState(1);
   const activeRows = kind === 'quota' ? rows : usageRows;
-  const pageCount = Math.max(1, Math.ceil(activeRows.length / 25));
+  const total = activeRows.length;
+  const pageCount = Math.max(1, Math.ceil(total / RECORD_PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   useEffect(() => { setPage(1); }, [kind, usageRange, drilldown, provider.id]);
   useEffect(() => {
     if (!focusKey) return;
     const index = activeRows.findIndex((row) => row.key === focusKey);
-    if (index >= 0) setPage(Math.floor(index / 25) + 1);
+    if (index >= 0) setPage(Math.floor(index / RECORD_PAGE_SIZE) + 1);
   }, [focusKey]);
-  const pageRows = activeRows.slice((currentPage - 1) * 25, currentPage * 25);
+  const rowOffset = (currentPage - 1) * RECORD_PAGE_SIZE;
+  const pageRows = activeRows.slice(rowOffset, rowOffset + RECORD_PAGE_SIZE);
   const quotaColumns = zh ? ['时间', '窗口', '官方已用', '本机 TOKEN', '覆盖率', '重置'] : ['Observed', 'Window', 'Official used', 'Local Tokens', 'Coverage', 'Reset'];
   const usageColumns = zh ? ['时间', '模型', 'TOKEN', '请求', '推理强度', 'API 等价价值'] : ['Time', 'Model', 'Tokens', 'Requests', 'Reasoning', 'API equivalent'];
   const panelProps = providerPanelProps(provider);
 
   return <section className="panel benefit-records-panel" {...panelProps}>
-    <header className="panel-header"><div><h2><FileText size={15}/>{zh ? '观测明细' : 'Observation log'}</h2><p>{zh ? '脱敏额度快照与本机用量事实；不包含凭据、Cookie、完整路径或原始响应' : 'Sanitized quota snapshots and local usage facts; no credentials, cookies, full paths, or raw responses'}</p></div><div className="benefit-record-controls"><div className="benefit-record-kind"><button type="button" aria-pressed={kind === 'quota'} className={kind === 'quota' ? 'active' : ''} onClick={() => { setKind('quota'); onClearDrilldown?.(); }}>{zh ? '额度快照' : 'Quota snapshots'}</button><button type="button" aria-pressed={kind === 'usage'} className={kind === 'usage' ? 'active' : ''} onClick={() => { setKind('usage'); onClearDrilldown?.(); }}>{zh ? '本机用量' : 'Local usage'}</button><span>{shown} / {total}</span></div>{kind === 'usage' ? <BenefitRangeControl value={usageRange} onChange={(value) => { setUsageRange(value); localStorage.setItem('kbu.benefit.records-range.v1', value); }} zh={zh} label={zh ? '本机用量明细范围' : 'Local usage record range'}/> : null}</div></header>
+    <header className="panel-header">
+      <div><h2><FileText size={15}/>{zh ? '观测明细' : 'Observation log'}</h2><p>{zh ? '脱敏额度快照与本机用量事实；不包含凭据、Cookie、完整路径或原始响应' : 'Sanitized quota snapshots and local usage facts; no credentials, cookies, full paths, or raw responses'}</p></div>
+      <div className="benefit-record-controls">
+        <div className="benefit-record-kind">
+          <button type="button" aria-pressed={kind === 'quota'} className={kind === 'quota' ? 'active' : ''} onClick={() => { setKind('quota'); onClearDrilldown?.(); }}>{zh ? '额度快照' : 'Quota snapshots'}</button>
+          <button type="button" aria-pressed={kind === 'usage'} className={kind === 'usage' ? 'active' : ''} onClick={() => { setKind('usage'); onClearDrilldown?.(); }}>{zh ? '本机用量' : 'Local usage'}</button>
+          <span>{zh ? `共 ${total.toLocaleString()} 条` : `${total.toLocaleString()} total`}</span>
+        </div>
+        {kind === 'usage' ? <BenefitRangeControl value={usageRange} onChange={(value) => { setUsageRange(value); localStorage.setItem('kbu.benefit.records-range.v1', value); }} zh={zh} label={zh ? '本机用量明细范围' : 'Local usage record range'}/> : null}
+      </div>
+    </header>
     {drilldown ? <div className="benefit-evidence-window"><span><ShieldCheck size={13}/>{zh ? '证据窗口：' : 'Evidence window: '}{drilldown.kind === 'usage' ? drilldown.date : dateLabel(drilldown.observedAt, zh, true)}</span><button type="button" onClick={onClearDrilldown} aria-label={zh ? '清除证据窗口' : 'Clear evidence window'}>×</button></div> : null}
     {kind === 'quota' ? (rows.length ? <RecordsTable
       label={zh ? `${provider.label}额度观测明细` : `${provider.label} quota observation log`}
       columns={quotaColumns}
       rows={pageRows}
+      totalRows={total}
+      rowOffset={rowOffset}
       focusKey={focusKey}
       renderCells={(row, columns) => {
         const localObserved = row.localObserved ?? finiteNumber(row.localCoverage) > 0;
@@ -617,6 +627,8 @@ export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh, 
       label={zh ? `${provider.label}本机用量明细` : `${provider.label} local usage log`}
       columns={usageColumns}
       rows={pageRows}
+      totalRows={total}
+      rowOffset={rowOffset}
       rowClassName="benefit-usage"
       focusKey={focusKey}
       renderCells={(row, columns) => <>
@@ -628,7 +640,10 @@ export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh, 
         {recordCell(money(row.costMicros / 1e6, currency), columns[5], 5, { className: 'evidence-derived' })}
       </>}
     /> : <EmptyEvidence zh={zh} title={zh ? '还没有该账户的本机用量' : 'No local usage for this account'} body={zh ? '供应商额度与本机日志相互独立；有额度不等于这台设备已经产生 Token。' : 'Provider quota and local logs are independent; having a quota does not mean this device produced Tokens.'}/>)}
-    {activeRows.length > 25 ? <footer className="pagination benefit-records-pagination"><span>{zh ? `显示 ${(currentPage - 1) * 25 + (pageRows.length ? 1 : 0)}–${(currentPage - 1) * 25 + pageRows.length}，共 ${activeRows.length} 组` : `Showing ${(currentPage - 1) * 25 + (pageRows.length ? 1 : 0)}–${(currentPage - 1) * 25 + pageRows.length} of ${activeRows.length}`}</span><div><button type="button" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} aria-label={zh ? '上一页' : 'Previous page'}><ChevronLeft size={15}/></button><b>{currentPage} / {pageCount}</b><button type="button" disabled={currentPage >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))} aria-label={zh ? '下一页' : 'Next page'}><ChevronRight size={15}/></button></div></footer> : null}
+    {total > RECORD_PAGE_SIZE ? <footer className="pagination benefit-records-pagination">
+      <span>{zh ? `显示 ${rowOffset + (pageRows.length ? 1 : 0)}–${rowOffset + pageRows.length}，共 ${total.toLocaleString()} 条` : `Showing ${rowOffset + (pageRows.length ? 1 : 0)}–${rowOffset + pageRows.length} of ${total.toLocaleString()}`}</span>
+      <div><button type="button" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} aria-label={zh ? '上一页' : 'Previous page'}><ChevronLeft size={15}/></button><b>{currentPage} / {pageCount}</b><button type="button" disabled={currentPage >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))} aria-label={zh ? '下一页' : 'Next page'}><ChevronRight size={15}/></button></div>
+    </footer> : null}
     <footer><Clock3 size={13}/><span>{kind === 'quota' ? (zh ? '额度历史由本地服务管理并按时间降采样；重复读取缓存不会追加相同快照。' : 'Quota history is backend-owned and downsampled over time; cached reads do not append duplicates.') : (zh ? '本机用量按原始事实桶展示；完整路径与对话内容从不进入页面。' : 'Local usage uses raw fact buckets; full paths and conversation content never enter the page.')}</span></footer>
   </section>;
 }

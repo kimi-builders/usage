@@ -16,7 +16,7 @@ export const TOKEN_FIELDS = [
 ];
 
 export const EMPTY_FILTERS = {
-  range: '30d',
+  range: 'today',
   sources: [],
   models: [],
   efforts: [],
