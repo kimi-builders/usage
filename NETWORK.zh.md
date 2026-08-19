@@ -7,7 +7,10 @@
 
 | 命令 | 是否联网 | 用途 |
 | --- | --- | --- |
-| 无参数、`help`、`status`、`sources` | 否 | 显示本地帮助、配置和能力 |
+| 无参数、`help`、`status`、`sources`、`completion` | 否 | 显示本地帮助、配置、能力与补全脚本 |
+| `stats`、`top` | 否 | 本地离线多维用量分析与模型/项目排行 |
+| `export` | 否 | 本地导出 Token/Session 用量为 CSV/JSON/JSONL |
+| `quota` / `limits` | 仅限已登录/配置平台 | 向明确启用的 Provider 查询公开额度与重置窗口 |
 | `inspect --dry-run` | 否 | 显示本地读取目录和解析结果 |
 | `doctor [--json]` | 否 | 生成脱敏的本地兼容性报告 |
 | `reset --local` | 否 | 删除本地同步 checkpoint |
@@ -16,7 +19,7 @@
 | `daemon install/restart` | 是，由调度子进程联网 | 管理用户级系统调度器，并触发首次增量同步 |
 | `daemon status/uninstall` | 否 | 检查或移除用户级调度器 |
 | 调度执行的 `daemon run` | 是 | 设备在线且唤醒时执行相同的增量同步 |
-| `summary` | 是 | 读取已连接社区账户的云端摘要 |
+| `summary` | 默认否（`--remote` 是） | 汇总用量（本地离线计算；`--remote` 读取已连接社区账户云端摘要） |
 | `dashboard` | 默认否 | Loopback 本地看板；只有明确操作社区连接/同步或 Provider 额度查询时才联网 |
 | `npm run setup` | 是 | 明确从 npm 安装看板开发依赖 |
 | `npm run dev` | 默认否 | Loopback Vite + 本地 API；可选额度查询规则与 `dashboard` 相同 |

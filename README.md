@@ -331,17 +331,24 @@ npx @kimi.builders/usage sync --full
 
 | 命令 | 作用 | 网络 |
 | --- | --- | --- |
-| `dashboard [--no-open] [--port N]` | 启动本地看板 | 默认无 |
+| `stats [--period 7d\|30d\|today] [--source agent]` | 本地多维离线用量统计与每日 ASCII 趋势图 | 无 |
+| `quota [--provider name] [--all] [--json]` | 查询 AI 平台订阅额度、多窗口进度条与倒计时（别名 `limits`） | 仅限已登录/配置平台 |
+| `top [--period 30d]` | 按消耗量查看模型、来源与项目排行 | 无 |
+| `export [--format csv\|json\|jsonl] [-o PATH]` | 导出本地用量数据为标准 CSV / JSON / JSONL | 无 |
+| `dashboard [--no-open] [--port N]` | 启动本地交互式可视化 Web 看板 | 默认无 |
+| `status` | 查看本地运行状态、配置与连接信息 | 无 |
 | `inspect --dry-run` | 显示读取目录与来源扫描结果 | 无 |
-| `doctor [--json]` | 生成脱敏兼容性报告 | 无 |
-| `sources list` | 查看本地用量来源状态 | 无 |
+| `doctor [--json]` | 生成脱敏兼容性与数据一致性报告 | 无 |
+| `sources list` | 查看本地用量来源状态与策略 | 无 |
 | `sources set <agent> off\|local\|private` | 设置单个 Agent 的扫描与同步范围 | 无 |
+| `completion [zsh\|bash\|fish]` | 生成 Shell 自动补全脚本 | 无 |
 | `init [--api-url URL] [--sync]` | 连接社区设备；默认不上传，`--sync` 明确沿用连接后立即同步 | 有 |
 | `sync [--full]` | 上传变化的聚合数据；`--full` 经确认后完整重传允许同步的来源 | 有 |
-| `daemon install/status/restart/uninstall` | 管理后台同步 | 见 NETWORK |
-| `summary [--days N]` | 查看已连接账户的云端摘要 | 有 |
-| `status` | 查看本地连接与 checkpoint 状态 | 无 |
+| `daemon install/status/restart/uninstall` | 管理后台定时同步服务 | 见 NETWORK |
+| `summary [--days N] [--remote]` | 查看用量汇总（默认本地优先，`--remote` 查看云端） | 本地无 / 远端有 |
 | `reset --local` | 清除本地同步 checkpoint | 无 |
+
+通用参数：`--lang en|zh`（指定语言，默认自动检测系统语言）、`--no-color` / `--plain`（禁用 ANSI 颜色）、`--json`（结构化输出）。
 
 本地配置与同步状态位于 `~/.kimi-builders/usage/`；POSIX 系统上的敏感配置文件权限为
 `0600`。

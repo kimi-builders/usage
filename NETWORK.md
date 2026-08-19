@@ -9,7 +9,10 @@ removed with the CLI at any time.
 
 | Command | Network | Purpose |
 | --- | --- | --- |
-| no arguments, `help`, `status`, `sources` | No | Local help, configuration, and capability display |
+| no arguments, `help`, `status`, `sources`, `completion` | No | Local help, configuration, completion scripts, and capability display |
+| `stats`, `top` | No | Local offline multi-dimensional usage analytics and model rankings |
+| `export` | No | Local export of token/session records as CSV/JSON/JSONL |
+| `quota` / `limits` | Configured providers only | Query public quota endpoints and reset windows for enabled providers |
 | `inspect --dry-run` | No | Show local roots and parser results |
 | `doctor [--json]` | No | Redacted local compatibility report |
 | `reset --local` | No | Remove local sync checkpoints |
@@ -18,7 +21,7 @@ removed with the CLI at any time.
 | `daemon install/restart` | Yes, in the scheduled child | Manage a per-user OS scheduler and trigger its first incremental sync |
 | `daemon status/uninstall` | No | Inspect or remove the per-user scheduler |
 | scheduled `daemon run` | Yes | Run the same incremental sync while the device is awake and online |
-| `summary` | Yes | Read the connected account's hosted summary |
+| `summary` | No by default (`--remote` Yes) | Summarize usage (local offline by default; `--remote` reads cloud summary) |
 | `dashboard` | No by default | Loopback dashboard; community connection/sync and provider quota checks require explicit browser actions |
 | `npm run setup` | Yes | Explicitly install the dashboard's development dependencies from npm |
 | `npm run dev` | No by default | Loopback Vite + local API; the same optional quota rules as `dashboard` apply |

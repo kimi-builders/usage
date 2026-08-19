@@ -395,17 +395,24 @@ for a second confirmation.
 
 | Command | Purpose | Network |
 | --- | --- | --- |
-| `dashboard [--no-open] [--port N]` | Start the local dashboard | No by default |
+| `stats [--period 7d\|30d\|today] [--source agent]` | Multi-dimensional offline analytics with daily ASCII trend chart | No |
+| `quota [--provider name] [--all] [--json]` | Query subscription quota, multi-window progress bars and reset countdowns (alias `limits`) | Only for configured providers |
+| `top [--period 30d]` | Show rankings for top models, agent sources, and projects | No |
+| `export [--format csv\|json\|jsonl] [-o PATH]` | Export local usage metrics as standard CSV / JSON / JSONL | No |
+| `dashboard [--no-open] [--port N]` | Start the local interactive visual Web dashboard | No by default |
+| `status` | Show local runtime status, config, and connection details | No |
 | `inspect --dry-run` | Show roots and parser results | No |
 | `doctor [--json]` | Produce a redacted compatibility report | No |
-| `sources list` | Show local usage-source status | No |
+| `sources list` | Show local usage-source status and policies | No |
 | `sources set <agent> off\|local\|private` | Set one agent's scan and sync scope | No |
+| `completion [zsh\|bash\|fish]` | Generate Shell auto-completion scripts | No |
 | `init [--api-url URL] [--sync]` | Connect a community device; no upload by default, `--sync` explicitly keeps connect-then-sync behavior | Yes |
 | `sync [--full]` | Upload changed aggregates; `--full` explicitly replays allowed sources | Yes |
-| `daemon install/status/restart/uninstall` | Manage background sync | See NETWORK |
-| `summary [--days N]` | Read the connected account's hosted summary | Yes |
-| `status` | Show local connection and checkpoint state | No |
+| `daemon install/status/restart/uninstall` | Manage background sync scheduler | See NETWORK |
+| `summary [--days N] [--remote]` | Read usage summary (local-first by default, `--remote` for cloud) | No local / Yes remote |
 | `reset --local` | Clear local sync checkpoints | No |
+
+Global options: `--lang en|zh` (select language, defaults to OS locale auto-detection), `--no-color` / `--plain` (disable ANSI colors), `--json` (structured JSON output).
 
 Local configuration and checkpoint state live under
 `~/.kimi-builders/usage/`. Sensitive config files use mode `0600` on POSIX.
