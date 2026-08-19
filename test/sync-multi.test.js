@@ -27,6 +27,7 @@ process.env.KBU_USAGE_ZCODE_DB = join(root, 'zcode-absent.sqlite');
 process.env.KBU_USAGE_WORKBUDDY_DIRS = join(root, 'workbuddy-absent');
 process.env.KBU_USAGE_CONFIG_DIR = join(root, 'config');
 process.env.KBU_USAGE_STATE_DIR = stateDir;
+process.env.KBU_USAGE_LANG = 'zh';
 
 // kimi fixture: one bucket, one session.
 const wireDir = join(kimiRoot, 'sessions', 'wd_demo_abcd', 'session_1', 'agents', 'main');

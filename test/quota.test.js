@@ -67,13 +67,21 @@ test('renderQuotaReport formats provider windows and progress bars', () => {
     ],
   };
 
-  const report = renderQuotaReport(mockQuotaData);
-  assert.match(report, /AI 订阅额度与 Quota 状态/);
-  assert.match(report, /Claude Code/);
-  assert.match(report, /Pro/);
-  assert.match(report, /5 小时窗口/);
-  assert.match(report, /75.0%/);
-  assert.match(report, /快速重置包: 剩余 2 次/);
-  assert.match(report, /DeepSeek/);
-  assert.match(report, /未检测到可用登录凭据/);
+  setLocale('zh');
+  const reportZh = renderQuotaReport(mockQuotaData);
+  assert.match(reportZh, /AI 订阅额度与 Quota 状态/);
+  assert.match(reportZh, /Claude Code/);
+  assert.match(reportZh, /Pro/);
+  assert.match(reportZh, /5 小时窗口/);
+  assert.match(reportZh, /75.0%/);
+  assert.match(reportZh, /快速重置包: 剩余 2 次/);
+  assert.match(reportZh, /DeepSeek/);
+  assert.match(reportZh, /未检测到可用登录凭据/);
+
+  setLocale('en');
+  const reportEn = renderQuotaReport(mockQuotaData);
+  assert.match(reportEn, /AI Subscription Quota & Limits/);
+  assert.match(reportEn, /Fast reset credits/);
+
+  setLocale(null);
 });

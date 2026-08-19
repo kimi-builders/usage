@@ -29,7 +29,7 @@ test('cli status outputs styled system overview', async () => {
   const original = console.log;
   console.log = (...args) => lines.push(args.join(' '));
   try {
-    await run(['status', '--plain']);
+    await run(['status', '--plain', '--lang', 'zh']);
   } finally {
     console.log = original;
   }

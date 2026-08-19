@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { computeStats, renderStatsReport, runStats } from '../src/stats.js';
+import { setLocale } from '../src/cli-ui.js';
 
 function createMockDashboardData() {
   return {
@@ -119,10 +120,19 @@ test('computeStats filters by source', () => {
 test('renderStatsReport generates clean formatted text report', () => {
   const data = createMockDashboardData();
   const stats = computeStats(data, { period: '7d' });
-  const report = renderStatsReport(stats);
-  assert.match(report, /用量概况/);
-  assert.match(report, /Token 总计/);
-  assert.match(report, /kimi-k3/);
-  assert.match(report, /claude-3-7-sonnet/);
-  assert.match(report, /project-alpha/);
+  
+  setLocale('zh');
+  const reportZh = renderStatsReport(stats);
+  assert.match(reportZh, /用量概况/);
+  assert.match(reportZh, /Token 总计/);
+  assert.match(reportZh, /kimi-k3/);
+  assert.match(reportZh, /claude-3-7-sonnet/);
+  assert.match(reportZh, /project-alpha/);
+
+  setLocale('en');
+  const reportEn = renderStatsReport(stats);
+  assert.match(reportEn, /Usage Analytics/);
+  assert.match(reportEn, /Total Tokens/);
+
+  setLocale(null);
 });

@@ -144,6 +144,25 @@ export function detectSystemLocale(env = process.env) {
     if (lower.startsWith('en') || lower.includes('english')) return 'en';
     if (lower.startsWith('zh') || lower.includes('chinese')) return 'zh';
   }
+  const langEnv = env.LC_ALL || env.LC_MESSAGES || env.LANG || env.LANGUAGE || '';
+  if (langEnv) {
+    const lower = langEnv.toLowerCase();
+    if (lower.startsWith('zh') || lower.includes('chinese') || lower.includes('zh_cn') || lower.includes('zh_tw') || lower.includes('zh_hk')) {
+      return 'zh';
+    }
+    if (lower.startsWith('en') || lower.includes('english') || lower.includes('en_us') || lower.includes('en_gb')) {
+      return 'en';
+    }
+  }
+  if (env === process.env) {
+    try {
+      const intlLocale = Intl.DateTimeFormat().resolvedOptions().locale.toLowerCase();
+      if (intlLocale.startsWith('zh')) return 'zh';
+      if (intlLocale.startsWith('en')) return 'en';
+    } catch {
+      // fallback
+    }
+  }
   return 'zh';
 }
 
