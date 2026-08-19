@@ -287,7 +287,7 @@ export function renderStatusBadge(status) {
     case 'error':
       return `${c.red('✗')} ${c.red(t('status.failed'))}`;
     case 'running':
-      return `${c.cyan('⚡')} ${c.cyan(t('status.running'))}`;
+      return `${c.cyan('▶')} ${c.cyan(t('status.running'))}`;
     default:
       return `${c.dim('•')} ${status}`;
   }

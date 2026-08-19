@@ -1,10 +1,10 @@
 const DICTIONARY = {
   zh: {
     'cli.description': '本地优先的 AI Coding Agent 用量分析与额度监控工具',
-    'cli.category.analytics': '📊 用量分析与看板',
-    'cli.category.sync': '🔄 社区同步与后台服务',
-    'cli.category.diagnostics': '⚙️ 来源检测与诊断',
-    'cli.category.options': 'ℹ️ 通用选项',
+    'cli.category.analytics': '▸ 用量分析与看板',
+    'cli.category.sync': '▸ 社区同步与后台服务',
+    'cli.category.diagnostics': '▸ 来源检测与诊断',
+    'cli.category.options': '▸ 通用选项',
 
     'status.ok': '正常',
     'status.skipped': '跳过',
@@ -56,7 +56,7 @@ const DICTIONARY = {
     'inspect.detected_result': '检测结果:',
     'inspect.protocol_validation': '协议校验:',
 
-    'status.title': '🌐 Kimi Builders Usage 运行状态',
+    'status.title': '◆ Kimi Builders Usage 运行状态',
     'status.local_engine': '【本地数据引擎】',
     'status.community_sync': '【社区同步服务】',
     'status.quick_tips': '【快捷命令】',
@@ -68,10 +68,10 @@ const DICTIONARY = {
   },
   en: {
     'cli.description': 'Local-first usage analytics & quota monitor for AI coding agents',
-    'cli.category.analytics': '📊 Analytics & Dashboard',
-    'cli.category.sync': '🔄 Sync & Background Service',
-    'cli.category.diagnostics': '⚙️ Sources & Diagnostics',
-    'cli.category.options': 'ℹ️ General Options',
+    'cli.category.analytics': '▸ Analytics & Dashboard',
+    'cli.category.sync': '▸ Sync & Background Service',
+    'cli.category.diagnostics': '▸ Sources & Diagnostics',
+    'cli.category.options': '▸ General Options',
 
     'status.ok': 'OK',
     'status.skipped': 'Skipped',
@@ -123,7 +123,7 @@ const DICTIONARY = {
     'inspect.detected_result': 'Inspection Result:',
     'inspect.protocol_validation': 'Protocol Validation:',
 
-    'status.title': '🌐 Kimi Builders Usage Status',
+    'status.title': '◆ Kimi Builders Usage Status',
     'status.local_engine': '[Local Data Engine]',
     'status.community_sync': '[Community Sync Service]',
     'status.quick_tips': '[Quick Commands]',

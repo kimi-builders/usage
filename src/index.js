@@ -13,12 +13,14 @@ function printHelp() {
   console.log(`
 ${c.bold(c.cyan('@kimi.builders/usage'))} ${c.dim('— 本地优先的 AI Coding Agent 用量分析与额度监控工具')}
 
-${c.bold('📊 用量分析与看板')}
+${c.bold('▸ 用量分析与看板')}
+  npx @kimi.builders/usage stats [--period today|24h|7d|30d|all] [--source agent] [--json]
+  npx @kimi.builders/usage top [--period 30d]
+  npx @kimi.builders/usage summary [--days 7] [--remote]
   npx @kimi.builders/usage dashboard [--no-open] [--port 43120]
-  npx @kimi.builders/usage summary [--days 7]
   npx @kimi.builders/usage status
 
-${c.bold('🔄 社区同步与后台服务')}
+${c.bold('▸ 社区同步与后台服务')}
   npx @kimi.builders/usage init [--api-url URL] [--sync]
   npx @kimi.builders/usage sync [--full]
   npx @kimi.builders/usage daemon install [--interval 15]
@@ -26,7 +28,7 @@ ${c.bold('🔄 社区同步与后台服务')}
   npx @kimi.builders/usage daemon restart [--interval 15]
   npx @kimi.builders/usage daemon uninstall
 
-${c.bold('⚙️ 来源检测与诊断')}
+${c.bold('▸ 来源检测与诊断')}
   npx @kimi.builders/usage inspect --dry-run
   npx @kimi.builders/usage doctor [--json]
   npx @kimi.builders/usage sources list
@@ -35,10 +37,10 @@ ${c.bold('⚙️ 来源检测与诊断')}
   npx @kimi.builders/usage sources disable cursor
   npx @kimi.builders/usage reset --local
 
-${c.bold('ℹ️ 通用选项')}
+${c.bold('▸ 通用选项')}
   npx @kimi.builders/usage --help / -h
   npx @kimi.builders/usage --version / -v
-  npx @kimi.builders/usage [--no-color|--plain]
+  npx @kimi.builders/usage [--lang en|zh] [--no-color|--plain]
 `);
 }
 
@@ -117,11 +119,32 @@ export async function run(args) {
     const { runDashboard } = await import('./local/dashboard-server.js');
     return runDashboard({ port, launchBrowser: !args.includes('--no-open') });
   }
+  if (command === 'stats') {
+    const { runStats } = await import('./stats.js');
+    return runStats({
+      period: option(args, 'period') || (option(args, 'days') ? `${option(args, 'days')}d` : '7d'),
+      days: option(args, 'days') ? Number(option(args, 'days')) : undefined,
+      source: option(args, 'source') || option(args, 'agent'),
+      model: option(args, 'model'),
+      project: option(args, 'project'),
+      json: args.includes('--json'),
+      plain: args.includes('--plain'),
+    });
+  }
+  if (command === 'top') {
+    const { runStats } = await import('./stats.js');
+    return runStats({
+      period: option(args, 'period') || '30d',
+      json: args.includes('--json'),
+      topOnly: true,
+    });
+  }
   if (command === 'summary') {
-    const raw = Number(option(args, 'days') || 7);
+    const daysOpt = option(args, 'days');
+    const raw = daysOpt ? Number(daysOpt) : 7;
     if (!Number.isInteger(raw) || raw < 1 || raw > 90) throw new Error('--days 必须是 1–90。');
     const { runSummary } = await import('./summary.js');
-    return runSummary(raw);
+    return runSummary(raw, { remote: args.includes('--remote'), json: args.includes('--json') });
   }
   if (command === 'reset' && args.includes('--local')) {
     const { clearState } = await import('./state.js');
@@ -133,7 +156,7 @@ export async function run(args) {
     const { getLocale } = await import('./cli-ui.js');
     const isZh = getLocale() === 'zh';
     const config = loadConfig();
-    console.log(`\n${c.bold(c.cyan(isZh ? '🌐 Kimi Builders Usage 运行状态' : '🌐 Kimi Builders Usage Status'))}`);
+    console.log(`\n${c.bold(c.cyan(isZh ? '◆ Kimi Builders Usage 运行状态' : '◆ Kimi Builders Usage Status'))}`);
     console.log(c.dim('─'.repeat(Math.min(68, (process.stdout.columns || 80) - 2))));
 
     console.log(c.bold(isZh ? '【社区同步服务】' : '[Community Sync Service]'));
