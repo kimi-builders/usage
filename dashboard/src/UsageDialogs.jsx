@@ -167,7 +167,7 @@ export function ShareDialog({ open, onClose, data, filters, initialRange, zh }) 
       setBusy(true); setError(''); setShareError('');
       try {
         await document.fonts.ready;
-        const url = await toPng(posterRef.current, { width: 1080, height: 1440, pixelRatio: 1, cacheBust: true, backgroundColor: '#050607' });
+        const url = await toPng(posterRef.current, { width: 1080, height: 1440, pixelRatio: 1, cacheBust: true, backgroundColor: '#121212' });
         if (!cancelled && revision === revisionRef.current) setPreview({ url, revision, report, range, name, handle, avatar, zh });
       } catch (reason) {
         if (!cancelled && revision === revisionRef.current) setError(reason?.message || String(reason));
