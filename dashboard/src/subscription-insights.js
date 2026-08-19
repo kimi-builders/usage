@@ -756,6 +756,7 @@ function decisionSignals(provider) {
 export function buildSubscriptionInsights(snapshot, limits, {
   now = null, settings = null,
 } = {}) {
+  const catalogById = new Map((settings?.catalog || []).map((provider) => [provider.id, provider]));
   const explicitNow = Number.isFinite(now) ? now : null;
   const usageGeneratedAt = timestamp(snapshot?.generatedAt);
   const usageObservedAt = usageGeneratedAt ?? explicitNow;
@@ -864,6 +865,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
     };
     const value = {
       ...provider,
+      dashboardUrl: catalogById.get(provider.id)?.dashboardUrl || null,
       sources: [...sources],
       attribution,
       lifetimeTotals,

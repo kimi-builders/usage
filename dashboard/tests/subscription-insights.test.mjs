@@ -34,7 +34,9 @@ const limits = { generatedAt, providers: [{
 }] };
 
 test('links a subscription window to local tokens without using usage-page filters', () => {
-  const result = buildSubscriptionInsights(snapshot, limits);
+  const result = buildSubscriptionInsights(snapshot, limits, { settings: {
+    catalog: [{ id: 'codex', dashboardUrl: 'https://chatgpt.com/codex/settings/usage' }],
+  } });
   const window = result.providers[0].windows[0];
   assert.equal(window.localTotals.totalTokens, 1_500);
   assert.equal(window.estimatedCapacityTokens, 6_000);
@@ -44,6 +46,14 @@ test('links a subscription window to local tokens without using usage-page filte
   assert.equal(window.capacitySummary.totalTokens, 6_000);
   assert.equal(window.capacitySummary.remainingTokens, 4_500);
   assert.equal(result.providers[0].lifetimeTotals.totalTokens, 10_500);
+  assert.equal(result.providers[0].dashboardUrl, 'https://chatgpt.com/codex/settings/usage');
+});
+
+test('does not expose an official usage link when the trusted catalog has none', () => {
+  const result = buildSubscriptionInsights(snapshot, limits, { settings: {
+    catalog: [{ id: 'codex', dashboardUrl: null }],
+  } });
+  assert.equal(result.providers[0].dashboardUrl, null);
 });
 
 test('preserves provider-reported Token totals as facts instead of estimates', () => {

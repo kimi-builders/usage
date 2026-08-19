@@ -81,7 +81,7 @@ const LOCAL_LINKS = [
 ];
 const BENEFIT_LINKS = [
   ['#subscriptions', Home, '总览', 'Overview'],
-  ['#subscription-accounts', WalletCards, '账户权益', 'Accounts'],
+  ['#subscription-accounts', WalletCards, '账号', 'Accounts'],
   ['#subscription-trend', BarChart3, '趋势', 'Trends'],
   ['#subscription-activity', Activity, '活跃', 'Activity'],
   ['#subscription-distribution', LayoutDashboard, '分布', 'Mix'],

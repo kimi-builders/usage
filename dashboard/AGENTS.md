@@ -11,7 +11,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 ## Durable product decisions
 
 - Subscription Center is a first-class destination. Usage Center keeps only a compact health/entry strip; do not place the full quota product above Usage analytics again.
-- Benefits Overview is a cross-account portfolio summary for available capacity and reset timing. Keep provider selection, balances, quota windows, model scenarios, and account-level evidence in the separate Account Benefits view.
+- Benefits Overview is a cross-account portfolio summary for available capacity and reset timing. Keep provider selection, balances, quota windows, model scenarios, and account-level evidence in the separate Accounts view.
+- The Accounts view has one quota presentation per window. Keep official utilization/reset facts and local observed/estimated capacity together in the quota cards; do not add a duplicate capacity quick-look or a derived Token-before-reset field until that estimator has an independently verified contract. Official usage links must come from the trusted provider catalog and remain absent when the catalog declares no URL.
 - Cross-account Token totals may aggregate only like-for-like quota windows. Never add 5-hour, weekly, and resetting-soon views together; show a lower-bound marker when some accounts lack estimable Token capacity, and do not duplicate provider-level local Token evidence across multiple accounts.
 - Subscription analysis uses the complete local source history and does not inherit temporary Usage Center filters.
 - Keep three data classes visually and semantically separate: provider-reported quota facts, locally observed Token usage, and derived capacity estimates.

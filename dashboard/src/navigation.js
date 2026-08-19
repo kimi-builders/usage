@@ -16,7 +16,7 @@ export const SECTION_TITLES = Object.freeze({
   distribution: { zh: '用量分布', en: 'Usage Distribution' },
   records: { zh: '用量明细', en: 'Usage Records' },
   subscriptions: { zh: '权益总览', en: 'Benefit Overview' },
-  'subscription-accounts': { zh: '账户权益', en: 'Account Benefits' },
+  'subscription-accounts': { zh: '账号', en: 'Accounts' },
   'subscription-trend': { zh: '权益趋势', en: 'Benefit Trends' },
   'subscription-activity': { zh: '权益活跃', en: 'Benefit Activity' },
   'subscription-distribution': { zh: '权益分布', en: 'Benefit Distribution' },

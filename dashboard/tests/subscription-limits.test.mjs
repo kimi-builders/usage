@@ -223,11 +223,11 @@ test('overview stays portfolio-level and shows comparable capacity plus reset pr
   assert.match(markup, /id="benefit-reset-tab-weekly"/);
   assert.match(markup, /aria-selected="true"/);
   assert.match(markup, /role="progressbar"/);
-  assert.match(markup, /查看账户权益/);
-  assert.doesNotMatch(markup, /账户权益、官方额度\/余额与 Token 分析/);
+  assert.match(markup, /查看账号/);
+  assert.doesNotMatch(markup, /账号、官方额度\/余额与 Token 分析/);
 });
 
-test('account benefits promotes independent rolling and weekly Token capacity before reset', () => {
+test('accounts keep one quota presentation and expose the trusted official usage link', () => {
   const observedAt = new Date().toISOString();
   const resetIn = (milliseconds) => new Date(Date.now() + milliseconds).toISOString();
   const markup = renderToStaticMarkup(createElement(module.SubscriptionCenter, {
@@ -257,19 +257,24 @@ test('account benefits promotes independent rolling and weekly Token capacity be
       requestCount: 20, costMicros: 2_000_000, pricedTokens: 1_000_000,
       unpricedTokens: 0, assumedTokens: 0,
     }] },
-    settings: { refreshMinutes: 10, providers: { 'kimi-code': { entitlementType: 'paid' } } },
+    settings: {
+      refreshMinutes: 10,
+      catalog: [{ id: 'kimi-code', dashboardUrl: 'https://www.kimi.com/code/console' }],
+      providers: { 'kimi-code': { entitlementType: 'paid' } },
+    },
     loading: false, error: null, onRefresh: () => {}, onSettings: () => {}, view: 'accounts', zh: true,
   }));
 
-  assert.match(markup, /周期 Token 容量速览/);
-  assert.match(markup, /各窗口是同时生效的独立约束，不能相加/);
+  assert.match(markup, /<h2>账号<\/h2>/);
+  assert.match(markup, /官方用量中心/);
+  assert.match(markup, /href="https:\/\/www\.kimi\.com\/code\/console" target="_blank" rel="noreferrer"/);
+  assert.match(markup, /打开查看/);
   assert.match(markup, /5 小时滚动（5H 频限）/);
   assert.match(markup, />每周</);
-  assert.match(markup, /重置前可用 Token/);
-  assert.match(markup, /~300万/);
-  assert.match(markup, /~100万/);
-  assert.match(markup, /即将重置/);
-  assert.match(markup, /本周期推算/);
+  assert.match(markup, /本机观测用量/);
+  assert.match(markup, /本周期估算容量/);
+  assert.match(markup, /折算月度容量/);
+  assert.doesNotMatch(markup, /周期 Token 容量速览|重置前可用 Token|重置前估算可用/);
 });
 
 test('account benefits provider tabs control a panel labelled by the active tab', () => {
@@ -347,13 +352,13 @@ test('benefits center follows Chinese compact units while English keeps K/M/B', 
   assert.match(chinese, /6\.3万 次请求/);
   assert.match(chinese, /本机观测用量/);
   assert.match(chinese, /本周期估算容量/);
-  assert.match(chinese, /重置前估算可用/);
   assert.match(chinese, /折算月度容量/);
+  assert.doesNotMatch(chinese, /重置前估算可用/);
   assert.doesNotMatch(chinese, /本窗口本机 TOKEN|推算窗口总容量|推算剩余 TOKEN|30 天等效容量/);
   assert.doesNotMatch(chinese, /26\.2B/);
   assert.match(english, /26\.2B/);
   assert.match(english, /62\.8K requests/);
-  assert.match(english, /EST\. AVAILABLE BEFORE RESET/);
+  assert.doesNotMatch(english, /EST\. AVAILABLE BEFORE RESET/);
 });
 
 test('settings filter tabs control their labelled provider panel', () => {
