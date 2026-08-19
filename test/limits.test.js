@@ -520,16 +520,28 @@ test('maps Kimi Code local and web quota shapes', () => {
     limits: [{ window: { duration: 5, timeUnit: 'TIME_UNIT_HOUR' }, detail: { limit: '100', remaining: '80', reset_at: '2026-08-11T15:00:00Z' } }],
   }, { now: NOW });
   assert.equal(local.windows[0].windowSeconds, 18_000);
+  assert.equal(local.windows[0].label, '5 小时滚动（5H 频限）');
   assert.equal(local.windows[0].remainingPercent, 80);
+  assert.equal(local.windows[1].label, '每周');
   assert.equal(local.windows[1].usedPercent, 30);
+  assert.match(local.notice, /5 小时滚动（5H 频限）/);
 
   const web = parseKimiWebUsage({
-    usages: [{ scope: 'FEATURE_CODING', detail: { limit: '200', used: '40' }, limits: [] }],
+    usages: [{
+      scope: 'FEATURE_CODING', detail: { limit: '200', used: '40' },
+      limits: [{
+        window: { duration: 5, timeUnit: 'TIME_UNIT_HOUR' },
+        detail: { limit: '100', remaining: '80', resetTime: '2026-08-11T15:00:00Z' },
+      }],
+    }],
   }, {
     subscriptionBalance: { amountUsedRatio: 0.46, expireTime: '2026-09-01T00:00:00Z' },
     ratelimitCode7d: { ratio: 0.25, resetTime: '2026-08-18T00:00:00Z' },
   }, { now: NOW });
-  assert.deepEqual(web.windows.map((item) => item.remainingPercent), [80, 75, 54]);
+  assert.deepEqual(web.windows.map((item) => item.remainingPercent), [80, 80, 75, 54]);
+  assert.equal(web.windows[0].label, '5 小时滚动（5H 频限）');
+  assert.equal(web.windows[1].label, '每周');
+  assert.equal(web.windows[2].label, 'Code 每周');
 });
 
 test('maps Warp GraphQL request and bonus credits', () => {

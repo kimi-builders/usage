@@ -42,14 +42,14 @@ export function parseKimiCodeUsage(payload, { now = new Date(), source = '~/.kim
   const firstLimit = Array.isArray(payload?.limits) ? payload.limits[0] : null;
   const windows = [
     detailWindow(firstLimit?.detail, {
-      id: 'session', label: '短周期', windowSeconds: durationSeconds(firstLimit?.window),
+      id: 'session', label: '5 小时滚动（5H 频限）', windowSeconds: durationSeconds(firstLimit?.window),
     }),
-    detailWindow(payload?.usage, { id: 'weekly', label: '7 天' }),
+    detailWindow(payload?.usage, { id: 'weekly', label: '每周' }),
   ].filter(Boolean);
   return {
     id: 'kimi-code', label: 'Kimi Code', status: windows.length ? 'ok' : 'empty',
     account: null, plan: null, source, updatedAt: now.toISOString(), windows,
-    notice: 'Kimi Code 本机登录可读取短周期与 7 天额度；订阅总额度需要 Kimi Web 登录令牌。',
+    notice: 'Kimi Code 本机登录可读取 5 小时滚动（5H 频限）与每周额度；订阅总额度需要 Kimi Web 登录令牌。',
   };
 }
 
@@ -64,11 +64,11 @@ export function parseKimiWebUsage(usagePayload, subscriptionPayload, { now = new
   const weeklyRatio = Number(code7d?.ratio);
   const windows = [
     detailWindow(firstLimit?.detail, {
-      id: 'session', label: '5 小时', windowSeconds: durationSeconds(firstLimit?.window),
+      id: 'session', label: '5 小时滚动（5H 频限）', windowSeconds: durationSeconds(firstLimit?.window),
     }),
-    detailWindow(coding?.detail, { id: 'weekly', label: '7 天' }),
+    detailWindow(coding?.detail, { id: 'weekly', label: '每周' }),
     Number.isFinite(weeklyRatio) ? {
-      id: 'code-weekly', label: 'Code 7 天', usedPercent: asPercent(weeklyRatio * 100),
+      id: 'code-weekly', label: 'Code 每周', usedPercent: asPercent(weeklyRatio * 100),
       remainingPercent: 100 - asPercent(weeklyRatio * 100), resetsAt: asDate(code7d?.resetTime),
     } : null,
     Number.isFinite(totalRatio) ? {

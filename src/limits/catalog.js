@@ -17,7 +17,7 @@ export const LIMIT_PROVIDER_CATALOG = [
   },
   {
     id: 'kimi-code', label: 'Kimi Code', group: 'recommended', popular: true,
-    description: '短周期、7 天与订阅总额度', quotaSupport: 'automatic',
+    description: '5 小时滚动（5H 频限）、每周与订阅总额度', quotaSupport: 'automatic',
     defaultAuthMode: 'local', authModes: ['local', 'environment', 'keychain'],
     defaultEnvironmentVariable: 'KIMI_AUTH_TOKEN', dashboardUrl: 'https://www.kimi.com/code/console',
     secretKind: 'Kimi 登录令牌',

@@ -3,6 +3,7 @@ import { Activity, BarChart3, ChevronLeft, ChevronRight, CircleAlert, Clock3, Fi
 import { CHART_COLORS, CONSUMPTION_PALETTE } from './chart-colors.js';
 import { compactNumber, displayDollars, percent, pluralUnit } from './format.js';
 import { ProviderSelect } from './provider-select.jsx';
+import { quotaWindowLabel } from './subscription-limits-utils.js';
 import { HeatModeTabs, WeekPager, storedHeatMode, storeHeatMode } from './heat-controls.jsx';
 import { addLocalWeeks, firstDataWeekStart, localWeekEnd, localWeekStart, weekLabel } from './week.js';
 import {
@@ -350,7 +351,7 @@ export function BenefitTrendView({ provider, zh, currency, onDrilldown }) {
     <section className="panel benefit-hero-panel">
       <header className="panel-header">
         <div><h2><BarChart3 size={15}/>{zh ? '额度趋势' : 'Quota trends'}</h2><p>{zh ? '供应商额度事实与本机 Token 分轨展示；虚线代表官方消耗比例' : 'Provider quota facts and local Tokens stay on separate scales; the dashed line is official utilization'}</p></div>
-        {windows.length > 1 ? <select aria-label={zh ? '选择额度窗口' : 'Choose quota window'} value={selected?.id || ''} onChange={(event) => setWindowId(event.target.value)}>{windows.map((window) => <option value={window.id} key={window.id}>{window.label}</option>)}</select> : null}
+        {windows.length > 1 ? <select aria-label={zh ? '选择额度窗口' : 'Choose quota window'} value={selected?.id || ''} onChange={(event) => setWindowId(event.target.value)}>{windows.map((window) => <option value={window.id} key={window.id}>{quotaWindowLabel(provider.id, window, zh)}</option>)}</select> : null}
       </header>
       {plot.domain ? <div className="benefit-combo-frame" ref={tooltipHost} onMouseLeave={() => setActiveTooltip(null)}><div className="benefit-combo-chart">
         <svg viewBox="0 0 920 218" role="group" aria-label={zh ? `${provider.label}额度和本机 Token 趋势` : `${provider.label} quota and local Token trend`}>

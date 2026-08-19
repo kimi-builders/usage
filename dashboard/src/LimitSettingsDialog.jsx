@@ -8,6 +8,7 @@ import { moveEnabledProvider, reorderEnabledProviders } from './provider-order.j
 import {
   ENTITLEMENT_TYPES, entitlementBadge, entitlementLabel, entitlementNote,
   hasEnteredSecrets, idSegment, isValidOpenCodeWorkspaceId, localizedCount,
+  quotaErrorMessage, quotaProviderCatalogCopy,
 } from './subscription-limits-utils.js';
 
 /* 权益设置弹窗(20260816 自 SubscriptionLimits.jsx 拆出,只导出组件) */
@@ -111,7 +112,7 @@ function CopilotConnectionPanel({
   return <div className="account-provider-config">
     <div className="account-config-heading"><div><b>{zh ? 'GitHub 设备授权' : 'GitHub device authorization'}</b><span>{zh ? '浏览器确认后自动保存，可连接多个 GitHub 账户。' : 'Approve in the browser; multiple GitHub accounts are supported.'}</span></div><button className="provider-connect-button" type="button" onClick={connectCopilot} disabled={deviceBusy || device.status === 'pending'}>{deviceBusy ? <RefreshCw className="spin" size={13}/> : <ExternalLink size={13}/>} {zh ? '连接 GitHub 账户' : 'Connect GitHub account'}</button></div>
     {device.status === 'pending' ? <div className="copilot-device-state" role="status"><span>{zh ? '在 GitHub 页面输入验证码' : 'Enter this code on GitHub'}</span><strong>{device.userCode}</strong><a href={device.verificationUri} target="_blank" rel="noreferrer">{zh ? '打开授权页' : 'Open authorization'}<ExternalLink size={11}/></a><small>{zh ? '授权完成后这里会自动确认，不需要粘贴 Token。' : 'This page confirms automatically after approval; no token paste needed.'}</small></div> : null}
-    {device.status === 'error' ? <p className="dialog-error" role="alert">{device.message}</p> : null}
+    {device.status === 'error' ? <p className="dialog-error" role="alert">{zh ? device.message : 'GitHub authorization failed. Try again.'}</p> : null}
     <div className="limit-account-list">{item.accounts.map((account) => <div key={account.id}><span><b>@{account.label}</b><small>{account.hasSecret ? (zh ? '设备授权有效' : 'Device authorization saved') : (zh ? '凭据待连接' : 'Needs authorization')}</small></span><button type="button" onClick={() => removeConnectedAccount('copilot', account, item, updateProvider, setClearAccountSecrets)} aria-label={zh ? `移除 ${account.label}` : `Remove ${account.label}`}><X size={13}/></button></div>)}{!item.accounts.length ? <p>{zh ? '还没有通过设备授权连接的 GitHub 账户。' : 'No GitHub account has been connected yet.'}</p> : null}</div>
   </div>;
 }
@@ -187,7 +188,7 @@ function StandardProviderConfig({
       {item.authMode === 'environment' ? <label><span>{zh ? '环境变量名（凭据内容不要填在这里）' : 'Environment variable name—not the secret itself'}</span><input value={item.environmentVariable} onChange={(event) => updateProvider(provider.id, { environmentVariable: event.target.value })} placeholder={provider.defaultEnvironmentVariable || 'TOKEN'}/><small>{zh ? `在启动看板前设置 ${item.environmentVariable || provider.defaultEnvironmentVariable}，保存后会自动验证。` : 'Set this variable before starting the dashboard; saving will verify it.'}</small></label> : null}
       {item.authMode === 'keychain' ? <label><span>{secretLabel(provider, zh)}</span><input type="password" autoComplete="off" spellCheck="false" value={secrets[provider.id] || ''} onChange={(event) => setSecrets((current) => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.hasSecret ? (zh ? '已安全保存 · 留空保持不变' : 'Saved securely · leave blank to keep') : (zh ? '粘贴 Cookie、Token 或 cURL 片段' : 'Paste cookie, token, or cURL snippet')} disabled={!provider.supportsKeychain}/><small>{zh ? '只会提交给 127.0.0.1 本地服务，并保存到系统钥匙串。' : 'Sent only to the local 127.0.0.1 service and stored in Keychain.'}</small>{provider.hasSecret ? <button type="button" onClick={() => setClearSecrets((current) => current.includes(provider.id) ? current.filter((id) => id !== provider.id) : [...current, provider.id])}>{clearSecrets.includes(provider.id) ? (zh ? '撤销清除' : 'Keep secret') : (zh ? '清除已保存凭据' : 'Clear saved secret')}</button> : null}</label> : null}
       {provider.extraFields?.includes('workspaceId') ? <label><span>{zh ? 'Workspace ID 或账单页链接（可选）' : 'Workspace ID or billing URL (optional)'}</span><input value={item.workspaceId} onChange={(event) => updateProvider(provider.id, { workspaceId: event.target.value })} placeholder="https://opencode.ai/workspace/wrk_…/billing"/></label> : null}
-      {provider.extraFields?.includes('site') ? <label><span>{zh ? 'Qoder 站点' : 'Qoder site'}</span><select value={item.site} onChange={(event) => updateProvider(provider.id, { site: event.target.value })}><option value="international">qoder.com · 国际站</option><option value="china">qoder.com.cn · 中国站</option></select></label> : null}
+      {provider.extraFields?.includes('site') ? <label><span>{zh ? 'Qoder 站点' : 'Qoder site'}</span><select value={item.site} onChange={(event) => updateProvider(provider.id, { site: event.target.value })}><option value="international">qoder.com · {zh ? '国际站' : 'International'}</option><option value="china">qoder.com.cn · {zh ? '中国站' : 'China'}</option></select></label> : null}
       {provider.extraFields?.includes('customPath') ? <label><span>{zh ? 'IDE 配置目录（通常留空）' : 'IDE config directory (usually blank)'}</span><input value={item.customPath} onChange={(event) => updateProvider(provider.id, { customPath: event.target.value })} placeholder="~/Library/Application Support/JetBrains/WebStorm2026.2"/></label> : null}
     </div>
     {provider.dashboardUrl ? <a className="provider-dashboard-link" href={provider.dashboardUrl} target="_blank" rel="noreferrer">{zh ? `打开 ${provider.label} 用量页` : `Open ${provider.label} usage`}<ExternalLink size={11}/></a> : null}
@@ -325,21 +326,27 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
         setExpanded(failures[0].id);
       } else setMessage(zh ? '设置已保存，额度已刷新。' : 'Settings saved and quotas refreshed.');
     }
-    catch (reason) { setMessage(reason?.message || String(reason)); }
+    catch (reason) {
+      const reasonText = reason?.message || String(reason);
+      setMessage(zh || !/\p{Script=Han}/u.test(reasonText)
+        ? reasonText
+        : 'Could not save settings. Check the fields below and try again.');
+    }
   };
-  const ready = draft.catalog.filter((provider) => ['detected', 'configured'].includes(provider.detection?.state));
+  const catalog = draft.catalog.map((provider) => quotaProviderCatalogCopy(provider, zh));
+  const ready = catalog.filter((provider) => ['detected', 'configured'].includes(provider.detection?.state));
   const enabledCount = Object.values(draft.providers).filter((provider) => provider.enabled).length;
   const settingsTabs = [
     ['detected', zh ? '已检测' : 'Detected'],
     ['all', zh ? '全部平台' : 'All platforms'],
   ];
-  const visible = draft.catalog.filter((provider) => {
+  const visible = catalog.filter((provider) => {
     const matches = !query || `${provider.label} ${provider.description}`.toLowerCase().includes(query.toLowerCase());
     if (!matches) return false;
     if (view === 'detected') return ['detected', 'configured'].includes(provider.detection?.state) || draft.providers[provider.id]?.enabled;
     return true;
   }).sort((a, b) => (draft.providers[b.id]?.enabled ? 1 : 0) - (draft.providers[a.id]?.enabled ? 1 : 0));
-  const catalogById = new Map(draft.catalog.map((provider) => [provider.id, provider]));
+  const catalogById = new Map(catalog.map((provider) => [provider.id, provider]));
   const orderedEnabled = draft.providerOrder
     .map((id) => catalogById.get(id))
     .filter((provider) => provider && draft.providers[provider.id]?.enabled);
@@ -411,7 +418,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
         <p>{zh ? '浏览器只提交你主动输入的凭据一次；服务端把手动凭据交给 macOS 钥匙串，普通 config.json 只保存开关、来源和变量名。接口响应永远不包含 Token 或 Cookie，只显示不暴露主目录的来源提示。' : 'The browser submits manually entered secrets once. The local server stores them in macOS Keychain; config.json keeps only toggles, source modes, and variable names. Responses never contain tokens or cookies and show only home-redacted source hints.'}</p>
       </details>
       <div className="limit-sticky-alerts">
-        {validationErrors.length ? <div className="provider-validation-errors" role="alert">{validationErrors.map((provider) => <div key={provider.id}><CircleAlert size={14}/><span><b>{provider.label}</b><small>{provider.error?.message || (zh ? '连接验证失败' : 'Connection validation failed')}</small></span><button type="button" onClick={() => { if (provider.id === 'copilot' || provider.id === 'opencode') { document.getElementById(`limit-account-provider-${provider.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; } setView('all'); setExpanded(provider.id); }}>{zh ? '去修复' : 'Fix'}</button></div>)}</div> : null}
+        {validationErrors.length ? <div className="provider-validation-errors" role="alert">{validationErrors.map((provider) => <div key={provider.id}><CircleAlert size={14}/><span><b>{provider.label}</b><small>{quotaErrorMessage(provider, zh)}</small></span><button type="button" onClick={() => { if (provider.id === 'copilot' || provider.id === 'opencode') { document.getElementById(`limit-account-provider-${provider.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; } setView('all'); setExpanded(provider.id); }}>{zh ? '去修复' : 'Fix'}</button></div>)}</div> : null}
         {message ? <p className="dialog-error" role="alert">{message}</p> : null}
       </div></div>
     {confirmDiscard ? <div className="dialog-dirty-bar" role="alertdialog" aria-label={zh ? '未保存的更改' : 'Unsaved changes'}>

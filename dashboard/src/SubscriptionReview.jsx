@@ -2,6 +2,7 @@ import {
   CalendarClock, Gauge, Gift, Layers3, Settings2, ShieldCheck, TrendingUp,
 } from 'lucide-react';
 import { compactNumber, displayDollars } from './format.js';
+import { quotaWindowLabel } from './subscription-limits-utils.js';
 import { ToolGlyph } from './tool-glyphs.js';
 
 function localizedCompact(value, zh) {
@@ -66,10 +67,10 @@ function CycleCapacityCard({ provider, zh, currency }) {
   return <article className="subscription-review-card cycle-capacity-review">
     <header><span><TrendingUp size={15}/><b>{zh ? '跨周期容量' : 'CROSS-CYCLE CAPACITY'}</b></span><small data-confidence={stats?.confidence || 'none'}>{confidenceCopy(stats?.confidence, zh)}</small></header>
     {stats ? <>
-      <div className="cycle-capacity-hero"><div><span>{window.label} · {stats.sampledCycles} {zh ? '个有效完整周期' : 'eligible completed cycles'}</span><strong>{localizedCompact(stats.median, zh)}</strong><small>{zh ? '历史中位容量' : 'historical median capacity'}</small></div><div><span>{zh ? '常见区间（P25–P75）' : 'Typical range (P25–P75)'}</span><strong>{localizedCompact(stats.low, zh)}–{localizedCompact(stats.high, zh)}</strong><small>{stabilityCopy(stats.stability, zh)}</small></div></div>
+      <div className="cycle-capacity-hero"><div><span>{quotaWindowLabel(provider.id, window, zh)} · {stats.sampledCycles} {zh ? '个有效完整周期' : 'eligible completed cycles'}</span><strong>{localizedCompact(stats.median, zh)}</strong><small>{zh ? '历史中位容量' : 'historical median capacity'}</small></div><div><span>{zh ? '常见区间（P25–P75）' : 'Typical range (P25–P75)'}</span><strong>{localizedCompact(stats.low, zh)}–{localizedCompact(stats.high, zh)}</strong><small>{stabilityCopy(stats.stability, zh)}</small></div></div>
       <div className="capacity-range" role="img" aria-label={zh ? `历史容量常见区间 ${localizedCompact(stats.low, zh)} 到 ${localizedCompact(stats.high, zh)}，中位数 ${localizedCompact(stats.median, zh)}` : `Typical capacity ${localizedCompact(stats.low, zh)} to ${localizedCompact(stats.high, zh)}, median ${localizedCompact(stats.median, zh)}`}><i/><b style={{ '--median-position': `${stats.high > stats.low ? Math.max(0, Math.min(100, (stats.median - stats.low) / (stats.high - stats.low) * 100)) : 50}%` }}/></div>
       <dl className="cycle-capacity-facts">
-        <div><dt>{zh ? '30 天等效中位数' : '30D MEDIAN'}</dt><dd>{localizedCompact(stats.monthlyMedian, zh)}</dd></div>
+        <div><dt>{zh ? '月度折算中位数' : 'MONTHLY EQUIV. MEDIAN'}</dt><dd>{localizedCompact(stats.monthlyMedian, zh)}</dd></div>
         <div><dt>{zh ? `只用 ${topModel?.id || '主力模型'}` : `ONLY ${topModel?.id || 'TOP MODEL'}`}</dt><dd>{topModel?.median == null ? '—' : `${localizedCompact(topModel.low, zh)}–${localizedCompact(topModel.high, zh)}`}</dd></div>
         <div><dt>{zh ? '周期稳定性' : 'STABILITY'}</dt><dd>{stabilityCopy(stats.stability, zh)}</dd></div>
       </dl>
