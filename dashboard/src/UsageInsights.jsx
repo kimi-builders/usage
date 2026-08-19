@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Award, CalendarClock, Flame, Pencil, ShieldCheck, Sparkles, Target, X } from 'lucide-react';
 import { compactNumber, displayDollars } from './format.js';
-import { Dialog } from './UsageDialogs.jsx';
+import { Dialog } from './Dialog.jsx';
 
 export const BUDGET_STORAGE_KEY = 'kbu.budget.v1';
 const BUDGET_DISMISSED_KEY = 'kbu.budget.dismissed.v1';

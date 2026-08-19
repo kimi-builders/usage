@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Activity, BarChart3, Cloud, CloudUpload, Command, Database, Download, ExternalLink, FileText,
   Circle, Gauge, Globe2, Home, Info, LayoutDashboard, Menu, Moon, RefreshCw, Settings2,
@@ -7,7 +7,7 @@ import {
 import { analyze, EMPTY_FILTERS, filterOptions } from './analytics.js';
 import { ActivityHeatmap, DailyTrend, DistributionCard, WeeklyTrend } from './UsageCharts.jsx';
 import { UsageAttributionSummary } from './UsageAttributionSummary.jsx';
-import { Dialog, ExportDialog, MethodDialog, ShareDialog } from './UsageDialogs.jsx';
+import { Dialog, DialogLocaleProvider } from './Dialog.jsx';
 import { UsageFilterBar } from './UsageFilters.jsx';
 import { UsageManagement } from './UsageManagement.jsx';
 import { RecordsSection } from './UsageRecords.jsx';
@@ -22,6 +22,18 @@ import { resolveCommunityStatus } from './device-authorization.js';
 import { isBenefitSection, isStandaloneSection, sectionFromHash, titleForSection, USAGE_SECTION_IDS } from './navigation.js';
 import { Button, PageState } from './ui.jsx';
 import { normalizeVibe } from './visual-preferences.js';
+
+function deferredDialog(exportName) {
+  const LazyDialog = lazy(() => import('./UsageDialogs.jsx').then((module) => ({ default: module[exportName] })));
+  return function DeferredDialog({ open, ...props }) {
+    if (!open) return null;
+    return <Suspense fallback={null}><LazyDialog open {...props}/></Suspense>;
+  };
+}
+
+const ExportDialog = deferredDialog('ExportDialog');
+const MethodDialog = deferredDialog('MethodDialog');
+const ShareDialog = deferredDialog('ShareDialog');
 
 const COPY = {
   zh: {
@@ -452,7 +464,7 @@ export function App() {
     disconnected: zh ? '未连接' : 'Not connected',
   }[communityStatus] || (zh ? '连接状态' : 'Connection');
 
-  return <div className="app-shell" id="top">
+  return <DialogLocaleProvider zh={zh}><div className="app-shell" id="top">
     <header className="global-topbar"><div className="mobile-brand-wrap"><button ref={menuButtonRef} className="mobile-menu-button" type="button" aria-label={zh ? '打开导航菜单' : 'Open navigation menu'} aria-expanded={drawer} aria-controls="mobile-dashboard-drawer" onClick={() => setDrawer(true)}><Menu size={20}/></button><a className="brand" href="#top" onClick={(event) => navigateSection(event, '#top')}><img src="/brand/logo-tile.svg" alt=""/><span>kimi<span>.</span>builders</span><small>LOCAL</small></a></div><div className="global-actions"><span className="local-pill"><ShieldCheck size={12}/>{t.local}</span><button className={`connection-pill ${communityStatus}`} type="button" onClick={openSync} aria-label={`${zh ? '社区连接状态' : 'Community connection status'}：${connectionLabel}`} title={zh ? '管理社区连接与同步' : 'Manage community connection and sync'}><Cloud size={13}/><span>{connectionLabel}</span></button><button className="icon-btn" type="button" onClick={openLimitSettings} aria-label={zh ? '权益设置' : 'Benefit settings'} title={zh ? '权益设置' : 'Benefit settings'}><Settings2 size={16}/></button><button className="icon-btn" type="button" onClick={() => setLocale(zh ? 'en' : 'zh')} aria-label={zh ? '切换为英文' : 'Switch to Chinese'} title="Language">{zh ? '文' : 'En'}</button><button className="icon-btn" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={zh ? '切换主题' : 'Switch theme'} title="Theme">{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}</button><button className="icon-btn" type="button" onClick={() => setVibe(vibe === 'poster' ? 'soft' : 'poster')} aria-label={zh ? '切换视觉气质' : 'Switch visual style'} title={zh ? '切换视觉气质(工程棱角/圆润经典)' : 'Switch visual style (sharp / classic)'}>{vibe === 'poster' ? <Circle size={16}/> : <Square size={16}/>}</button></div></header>
     <DesktopNav zh={zh} communityUrl={data.community.url} activeSection={activeSection} onNavigate={navigateSection} onSettings={openLimitSettings}/><MobileDrawer open={drawer} onClose={closeDrawer} zh={zh} communityUrl={data.community.url} theme={theme} setTheme={setTheme} vibe={vibe} setVibe={setVibe} setLocale={setLocale} activeSection={activeSection} onNavigate={navigateSection} onSettings={openLimitSettings} onSync={openSync}/><MobileNav zh={zh} activeSection={activeSection} onNavigate={navigateSection}/>
     <main className="page-content">
@@ -495,5 +507,5 @@ export function App() {
       <footer className="page-footer"><span>kimi.builders / usage · LOCAL</span><p>{zh ? '数据属于你。分析在本机，社区同步永远可选。' : 'Your data. Local analysis. Community sync is always optional.'}</p><a href={data.community.url} target="_blank" rel="noreferrer">{zh ? '社区版' : 'Community'}<ExternalLink size={12}/></a></footer>
     </main>
     <MethodDialog open={dialog === 'method'} onClose={closeDialog} zh={zh} data={data} report={report} currency={currency}/><ExportDialog open={dialog === 'export'} onClose={closeDialog} report={report} data={data} filters={filters} zh={zh}/><ShareDialog open={dialog === 'share'} onClose={closeDialog} data={data} filters={filters} initialRange={filters.range} zh={zh}/><BudgetDialog open={dialog === 'budget'} onClose={closeDialog} value={budget} onSave={saveBudget} zh={zh}/>{limitSettings ? <LimitSettingsDialog open={dialog === 'limit-settings'} settings={limitSettings} saving={limitSaving} onSave={saveLimitPreferences} onCopilotDeviceAction={copilotDeviceAction} onClose={closeDialog} zh={zh}/> : <Dialog open={dialog === 'limit-settings'} onClose={closeDialog} title={zh ? '账户权益与额度设置' : 'Account benefit and quota settings'} subtitle={zh ? '设置单独从本地服务读取；额度页面仍可独立工作。' : 'Settings load independently from the local service; quota views remain separate.'}><PageState kind={limitSettingsLoading ? 'loading' : 'error'} title={limitSettingsLoading ? (zh ? '正在读取权益设置' : 'Loading benefit settings') : (zh ? '权益设置读取失败' : 'Could not load benefit settings')} body={limitSettingsLoading ? (zh ? '正在读取本机配置，不会发起供应商请求。' : 'Reading local configuration without contacting providers.') : limitSettingsError || (zh ? '本地服务没有返回设置。' : 'The local service did not return settings.')} action={!limitSettingsLoading ? <Button variant="primary" onClick={loadLimitSettings}><RefreshCw size={14}/>{zh ? '重试读取' : 'Retry'}</Button> : null}/></Dialog>}<SyncDialog open={dialog === 'sync'} onClose={closeDialog} zh={zh} control={control} onControlAction={controlAction} onControlChange={loadControl}/>
-  </div>;
+  </div></DialogLocaleProvider>;
 }

@@ -1,39 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Check, Download, FileJson, FileSpreadsheet, ImagePlus, Info, LoaderCircle, Share2, ShieldCheck, Trash2, X } from 'lucide-react';
+import { Check, Download, FileJson, FileSpreadsheet, ImagePlus, Info, LoaderCircle, Share2, ShieldCheck, Trash2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { analyze, EMPTY_FILTERS, RANGE_OPTIONS } from './analytics.js';
+import { Dialog } from './Dialog.jsx';
 import { compactNumber, DISPLAY_CURRENCIES, DISPLAY_FX_AS_OF, DISPLAY_FX_SOURCE, DISPLAY_FX_SOURCE_URL, money, percent } from './format.js';
 import { UsagePoster } from './UsagePoster.jsx';
-
-export function Dialog({ open, onClose, title, subtitle, children, wide = false, method = false, className = '' }) {
-  const dialogRef = useRef(null);
-  const titleId = useId();
-  useEffect(() => {
-    if (!open) return undefined;
-    const previousFocus = document.activeElement;
-    const focusables = () => [...(dialogRef.current?.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled):not([tabindex="-1"]), select:not(:disabled), [tabindex]:not([tabindex="-1"])') || [])];
-    const onKey = (event) => {
-      if (event.key === 'Escape') { onClose(); return; }
-      if (event.key !== 'Tab') return;
-      const items = focusables();
-      if (!items.length) return;
-      const first = items[0]; const last = items.at(-1);
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    const frame = window.requestAnimationFrame(() => focusables()[0]?.focus());
-    document.addEventListener('keydown', onKey);
-    document.body.classList.add('dialog-open');
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener('keydown', onKey);
-      document.body.classList.remove('dialog-open');
-      if (previousFocus instanceof HTMLElement) previousFocus.focus();
-    };
-  }, [open, onClose]);
-  if (!open) return null;
-  return <div className="dialog-layer" role="presentation"><section ref={dialogRef} className={`dialog ${wide ? 'dialog--wide' : ''} ${method ? 'dialog--method' : ''} ${className}`} role="dialog" aria-modal="true" aria-labelledby={titleId}><header><div><h2 id={titleId}>{title}</h2>{subtitle ? <p>{subtitle}</p> : null}</div><button className="icon-btn" type="button" onClick={onClose} aria-label="Close"><X size={18}/></button></header>{children}</section></div>;
-}
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);

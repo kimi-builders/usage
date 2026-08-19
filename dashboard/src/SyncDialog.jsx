@@ -3,7 +3,7 @@ import {
   AlertTriangle, Check, CircleCheck, Cloud, CloudUpload, Copy, ExternalLink, LoaderCircle, LogOut, Monitor,
   RefreshCw, ShieldCheck, TimerReset, Trash2, Unplug,
 } from 'lucide-react';
-import { Dialog } from './UsageDialogs.jsx';
+import { Dialog } from './Dialog.jsx';
 import { SourceModeRows, policiesFromSources } from './DataSourceControls.jsx';
 import { DeviceAuthorizationCard } from './DeviceAuthorizationCard.jsx';
 import { buildSyncOutcome, formatSyncDuration } from './sync-feedback.js';

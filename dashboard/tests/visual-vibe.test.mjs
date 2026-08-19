@@ -77,11 +77,12 @@ test('elevation radii route through tokens so poster can flatten them', async ()
   assert.deepEqual(offenders, []);
 });
 
-test('segmented shells and standalone controls share the 36px outer height', async () => {
+test('range segments use the 44px touch shell while compact controls stay 36px', async () => {
   const css = await read('../src/styles.css');
-  // 分段/Tab 壳(3px padding + 1px 边框)内按钮 28px,独立控件 min-height 36px,
-  // 两者外框同为 36px——range-segment 曾被并入 control-height 组导致外框 44px。
-  assert.match(css, /\.range-segment button \{[^}]*min-height: 28px/);
+  // 范围分段使用 3px padding + 1px border + 36px 选项 = 44px 触控外框；
+  // 紧凑 Tab 与独立桌面控件仍保持 36px 外框，避免把所有控件无差别放大。
+  assert.match(css, /\.range-segment \{[^}]*padding: 3px;[^}]*border: 1px/);
+  assert.match(css, /\.range-segment button \{[^}]*min-height: 36px/);
   assert.match(css, /\.mini-tabs button, \.tiny-tabs button \{[^}]*min-height: 28px/);
   const group = css.match(/\.ghost-btn[^{]*\{[^}]*min-height: var\(--control-height\); \}/)?.[0] ?? '';
   assert.ok(group, 'expected the standalone control-height group');

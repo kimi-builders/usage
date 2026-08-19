@@ -89,10 +89,17 @@ test('save actions separate in-place quota refresh from save-and-close', async (
 
 test('dialog backdrops never dismiss settings or generic dialogs', async () => {
   const settingsDialog = await dialog();
-  const genericDialogs = await read('../src/UsageDialogs.jsx');
+  const genericDialogs = await read('../src/Dialog.jsx');
   for (const source of [settingsDialog, genericDialogs]) {
     assert.doesNotMatch(source, /className="dialog-layer"[^>]*onMouseDown/);
   }
+});
+
+test('generic dialog close control follows the dashboard locale', async () => {
+  const genericDialog = await read('../src/Dialog.jsx');
+  const app = await read('../src/App.jsx');
+  assert.match(genericDialog, /aria-label=\{zh \? '关闭对话框' : 'Close dialog'\}/);
+  assert.match(app, /<DialogLocaleProvider zh=\{zh\}>/);
 });
 
 test('refresh interval moved from the dialog to the benefit center footer', async () => {
