@@ -77,7 +77,7 @@ function labelIndexes(length, target = 9) {
 
 // Center the tooltip above the active mark. The returned top is the tooltip's
 // bottom anchor; CSS translates the card by its real height so the gap stays exact.
-function tooltipPosition(event, viewport, tipWidth = 280, tipHeight = 220) {
+function tooltipPosition(event, viewport, tipWidth = 244, tipHeight = 236) {
   if (!viewport) return { left: 8, top: 8, arrowX: tipWidth / 2 };
   const container = viewport.getBoundingClientRect();
   const target = event.currentTarget.getBoundingClientRect();
@@ -92,8 +92,7 @@ function tooltipPosition(event, viewport, tipWidth = 280, tipHeight = 220) {
 
 function TokenBreakdown({ row, zh }) {
   const values = [
-    [zh ? '输入' : 'Input', row.inputTokens || 0, COLORS.input],
-    [zh ? '缓存写' : 'Cache write', row.cacheWriteInputTokens || 0, COLORS.cacheWrite],
+    [zh ? '输入（含缓存写）' : 'Input + cache write', (row.inputTokens || 0) + (row.cacheWriteInputTokens || 0), COLORS.input],
     [zh ? '缓存读' : 'Cache read', row.cacheReadInputTokens || 0, COLORS.cache],
     [zh ? '输出' : 'Output', row.outputTokens || 0, COLORS.output],
     [zh ? '推理' : 'Reasoning', row.reasoningOutputTokens || 0, COLORS.reasoning],
@@ -308,13 +307,13 @@ export function ActivityHeatmap({ report, data, zh, currency, metric, onMetric }
     <section ref={heatmapPanel} className={`panel heatmap-panel${hovered ? ' is-tooltip-open' : ''}`} onMouseLeave={() => setHovered(null)}>
       <header className="panel-header"><div><h2>{zh ? '用量热力图' : 'Activity heatmap'}</h2><p>{zh ? '来源：本机 Collector · ' : 'Source: local Collector · '}{mode === 'week' ? (zh ? `${weekLabel(weekStartMs, zh)} · 单周实际用量` : `${weekLabel(weekStartMs, zh)} · single-week actuals`) : (zh ? '聚合 · 星期 × 本地小时 · 窗口跟随顶部筛选器' : 'Aggregate · weekday × local hour · window follows the filter bar')}</p></div><MetricTabs zh={zh} active={metric} onChange={onMetric} prompts controlsId={metricPanelId}/></header>
       <div className="heatmap-controls"><HeatModeTabs mode={mode} onChange={changeMode} zh={zh} label={zh ? '热图模式' : 'Heatmap mode'}/>{mode === 'week' ? <WeekPager label={weekLabel(weekStartMs, zh)} canPrev={firstWeekMs != null && weekStartMs > firstWeekMs} canNext={weekOffset < 0} onPrev={() => changeWeek(weekOffset - 1)} onNext={() => changeWeek(weekOffset + 1)} onCurrent={() => changeWeek(0)} showCurrent={weekOffset < 0} zh={zh} ariaLabel={zh ? '选择周' : 'Choose week'}/> : <span className="heat-mode-note">{zh ? '聚合所选范围内的星期 × 小时' : 'Aggregates weekday × hour across the selected range'}</span>}</div>
-      <div className="heatmap-scroll" id={metricPanelId} role="tabpanel" aria-labelledby={`${metricPanelId}-${metric}-tab`} tabIndex={0}><div className="heatmap-grid">{report.heatmap.cells.map((row, day) => <div className="heatmap-row" key={weekdays[day]}><span>{weekdayShort[day]}</span><div>{row.map((cell, hour) => {
+      <div className="heatmap-scroll" id={metricPanelId} role="tabpanel" aria-labelledby={`${metricPanelId}-${metric}-tab`} tabIndex={0}><div className="heatmap-grid">{cells.map((row, day) => <div className="heatmap-row" key={weekdays[day]}><span>{weekdayShort[day]}</span><div>{row.map((cell, hour) => {
         const value = metric === 'cost' ? cell.costMicros : metric === 'duration' ? cell.activeSeconds : metric === 'prompts' ? cell.userMessageCount : cell.totalTokens;
-        const level = value > 0 && view.max ? Math.max(1, Math.ceil((value / view.max) * 6)) : 0;
+        const level = value > 0 && view.max ? Math.max(1, Math.ceil((value / view.max) * 5)) : 0;
         const title = `${weekdays[day]} ${String(hour).padStart(2, '0')}:00 · ${compact(cell.totalTokens, zh)} tokens · ${costText(cell.costMicros, currency)} · ${duration(cell.activeSeconds, zh)} · ${compact(cell.userMessageCount, zh)} ${zh ? '条用户消息' : 'user messages'} · ${zh ? '输入' : 'input'} ${compact(cell.inputTokens + cell.cacheWriteInputTokens, zh)} · ${zh ? '缓存读' : 'cache'} ${compact(cell.cacheReadInputTokens, zh)} · ${zh ? '输出' : 'output'} ${compact(cell.outputTokens, zh)} · ${zh ? '推理' : 'reasoning'} ${compact(cell.reasoningOutputTokens, zh)}`;
         const peak = view.peak?.day === day && view.peak?.hour === hour && value > 0;
         if (!cell.observed) return <i key={hour} className="heatmap-missing" aria-hidden="true"/>;
-        return <button ref={(node) => { const key = `${day}-${hour}`; if (node) heatCellRefs.current.set(key, node); else heatCellRefs.current.delete(key); }} type="button" key={hour} tabIndex={rovingCell?.day === day && rovingCell?.hour === hour ? 0 : -1} data-level={level} data-peak={peak ? 'true' : undefined} data-active={hovered?.day === day && hovered?.hour === hour ? 'true' : undefined} aria-label={title} onKeyDown={(event) => onHeatmapKeyDown(event, day, hour)} onMouseEnter={(event) => setHovered({ day, hour, ...tooltipPosition(event, heatmapPanel.current, 258, 194) })} onFocus={(event) => { setFocusCell({ day, hour }); setHovered({ day, hour, ...tooltipPosition(event, heatmapPanel.current, 258, 194) }); }} onBlur={() => setHovered(null)}/>;
+        return <button ref={(node) => { const key = `${day}-${hour}`; if (node) heatCellRefs.current.set(key, node); else heatCellRefs.current.delete(key); }} type="button" key={hour} tabIndex={rovingCell?.day === day && rovingCell?.hour === hour ? 0 : -1} data-level={level} data-peak={peak ? 'true' : undefined} data-active={hovered?.day === day && hovered?.hour === hour ? 'true' : undefined} aria-label={title} onKeyDown={(event) => onHeatmapKeyDown(event, day, hour)} onMouseEnter={(event) => setHovered({ day, hour, ...tooltipPosition(event, heatmapPanel.current, 252, 230) })} onFocus={(event) => { setFocusCell({ day, hour }); setHovered({ day, hour, ...tooltipPosition(event, heatmapPanel.current, 252, 230) }); }} onBlur={() => setHovered(null)}/>;
       })}</div></div>)}<div/><div className="heatmap-hours">{Array.from({ length: 24 }, (_, hour) => <span key={hour}>{hour % 3 === 0 ? String(hour).padStart(2, '0') : ''}</span>)}</div></div></div>
       {hovered && selectedCell ? <aside className="heatmap-tooltip" role="tooltip" style={{ left: hovered.left, top: hovered.top, '--tooltip-arrow-left': `${hovered.arrowX}px` }}>
         <header><strong>{weekdays[hovered.day]} {String(hovered.hour).padStart(2, '0')}:00</strong><span>{compact(selectedCell.totalTokens, zh)} tokens</span><small>{zh ? '命中率' : 'hit'} {selectedHit == null ? '—' : percent(selectedHit)}</small></header>
@@ -324,7 +323,7 @@ export function ActivityHeatmap({ report, data, zh, currency, metric, onMetric }
         <div><span><i style={{ background: COLORS.reasoning }}/>{zh ? '推理' : 'Reasoning'}</span><b>{compact(selectedCell.reasoningOutputTokens, zh)}</b></div>
         <footer>{zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} {costText(selectedCell.costMicros, currency)} · {zh ? '活跃' : 'Active'} {duration(selectedCell.activeSeconds, zh)} · {compact(selectedCell.userMessageCount, zh)} {zh ? '条用户消息' : 'user messages'}</footer>
       </aside> : null}
-      <footer className="heatmap-footer"><div><span className="heatmap-ramp"><em>{zh ? '少' : 'Less'}</em>{[1,2,3,4,5,6].map((level) => <i key={level} data-level={level}/>)}<em>{zh ? '多' : 'More'}</em></span><span><i className="legend-missing"/>{zh ? '描边 = 未观测' : 'Dashed = not observed'}</span><span>{zh ? '白圈 = 峰值 · 悬停查看数值' : 'White ring = peak · hover for values'}</span></div><span>{zh ? `时区：${timezone}（浏览器本地）` : `Timezone: ${timezone} (browser local)`}</span></footer>
+      <footer className="heatmap-footer"><div><span className="heatmap-ramp"><em>{zh ? '少' : 'Less'}</em>{[1,2,3,4,5].map((level) => <i key={level} data-level={level}/>)}<em>{zh ? '多' : 'More'}</em></span><span><i className="legend-missing"/>{zh ? '描边 = 未观测' : 'Dashed = not observed'}</span><span>{zh ? '白圈 = 峰值 · 悬停查看数值' : 'White ring = peak · hover for values'}</span></div><span>{zh ? `时区：${timezone}（浏览器本地）` : `Timezone: ${timezone} (browser local)`}</span></footer>
     </section>
     <section className="panel busiest-panel"><header className="panel-header"><div><h2>{zh ? '最活跃时段' : 'Busiest slots'}</h2><p>{zh ? '来源：同一热图事实 · TOP 5' : 'Source: same heatmap facts · Top 5'}</p></div></header><ol>{view.slots.length ? view.slots.map((slot, index) => <li className={index === 0 ? 'is-focus' : ''} key={`${slot.day}-${slot.hour}`}><span>{String(index + 1).padStart(2, '0')}</span><div><b>{weekdays[slot.day]} {String(slot.hour).padStart(2, '0')}:00</b><i><em style={{ width: `${Math.max(2, slot.value / view.slots[0].value * 100)}%` }}/></i></div><strong>{heatValueText(slot.value, metric, zh, currency)}</strong></li>) : <li className="empty">{zh ? '当前范围暂无数据' : 'No data in this range'}</li>}</ol></section>
   </div>;
@@ -341,7 +340,7 @@ export function DistributionCard({ type, rows, zh, currency }) {
   const [metric, setMetric] = useState('tokens');
   const labels = { source: zh ? 'Agent' : 'Agents', model: zh ? '模型' : 'Models', project: zh ? '项目' : 'Projects', device: zh ? '设备' : 'Devices' };
   const Icon = DIST_ICONS[type] || CalendarDays;
-  const shown = [...rows].sort((a, b) => metric === 'cost' ? b.costMicros - a.costMicros : b.totalTokens - a.totalTokens).slice(0, 6);
+  const shown = [...rows].sort((a, b) => metric === 'cost' ? b.costMicros - a.costMicros : b.totalTokens - a.totalTokens).slice(0, 5);
   return <section className="panel distribution-card"><header className="panel-header"><div><h2><Icon size={14}/>{labels[type]}</h2><p>{zh ? '来源：当前筛选范围 · 可归因事实' : 'Source: current filters · attributable facts'}</p></div><MetricTabs active={metric} onChange={setMetric} zh={zh} items={DIST_METRICS} className="tiny-tabs" controlsId={metricPanelId}/></header><div className="distribution-list" id={metricPanelId} role="tabpanel" aria-labelledby={`${metricPanelId}-${metric}-tab`} tabIndex={0}>{shown.length ? shown.map((row, index) => {
     const share = distributionShare(rows, row, metric);
     return <div className={`distribution-row ${index === 0 ? 'is-focus' : ''}`} key={row.id}><span className="rank">{String(index + 1).padStart(2, '0')}</span><span className="distribution-name">{type === 'source' ? <ToolGlyph id={row.id} context="chart"/> : null}<b title={row.label || row.id}>{type === 'source' ? sourceLabel(row.id) : row.label || row.id || (zh ? '未上传' : 'Not uploaded')}</b></span><span className="distribution-value"><b>{metric === 'cost' ? costText(row.costMicros, currency) : compact(row.totalTokens, zh)}<small> · {percent(share)}</small></b><em>{metric === 'cost' ? `${compact(row.totalTokens, zh)} tokens` : costText(row.costMicros, currency)}</em></span><span className="distribution-track"><i style={{ width: `${Math.max(2, share * 100)}%` }}/></span></div>;

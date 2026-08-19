@@ -171,14 +171,14 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .primary-btn:hover { opacity: .9; }
 
 .filter-bar { min-height: 78px; display: flex; align-items: center; gap: 9px; border-bottom: 1px solid var(--line); }
-/* 分段/Tab 壳(3px padding + 1px 边框)内按钮 28px → 外框与独立控件同为 36px */
+/* 3px 壳 + 36px 选项 + 边框 = 44px，与社区筛选器同一触控高度。 */
 .range-segment { display: flex; align-items: center; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--card); }
-.range-segment button { min-width: 54px; min-height: 28px; padding: 0 10px; border: 0; border-radius: var(--radius-btn); background: transparent; color: var(--grey); font: 500 11px/1 'JetBrains Mono', monospace; transition: color .15s ease; }
+.range-segment button { min-width: 54px; min-height: 36px; padding: 0 10px; border: 0; border-radius: var(--radius-btn); background: transparent; color: var(--grey); font: 500 11px/1 'JetBrains Mono', monospace; transition: color .15s ease; }
 .range-segment button:hover { color: var(--paper); }
 .range-segment button.active { background: var(--paper); color: var(--bg); }
 .select-control { min-width: 120px; min-height: 36px; display: flex; align-items: center; gap: 7px; padding: 0 11px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--card); color: var(--grey); }
 .select-control select { min-width: 0; width: 100%; border: 0; appearance: none; background: transparent; color: var(--paper); font: 500 11px/1 'JetBrains Mono', monospace; }
-.more-filter { min-height: 36px; display: flex; align-items: center; gap: 6px; padding: 0 11px; border: 1px dashed var(--line); border-radius: var(--radius-btn); background: transparent; color: var(--grey); font: 500 11px/1 'JetBrains Mono', monospace; }
+.more-filter { min-height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 11px; border: 1px dashed var(--line); border-radius: var(--radius-btn); background: transparent; color: var(--grey); font: 500 11px/1 'JetBrains Mono', monospace; }
 .more-filter:hover { color: var(--paper); border-color: var(--line-strong); }
 
 .stale-banner { min-height: 76px; display: flex; align-items: center; gap: 12px; margin: 16px 0 20px; padding: 14px 17px; border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent); border-radius: var(--radius-panel); background: color-mix(in srgb, var(--amber) 5%, transparent); }
@@ -852,7 +852,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 
 .dimension-bar { display: flex; flex: 1 1 auto; align-items: center; flex-wrap: wrap; gap: 8px; }
 .dimension-filter { position: relative; }
-.dimension-trigger { min-width: 108px; min-height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 11px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--card); color: var(--paper); font: 500 11px/1 'JetBrains Mono', monospace; }
+.dimension-trigger { min-width: 108px; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 11px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--card); color: var(--paper); font: 500 11px/1 'JetBrains Mono', monospace; }
 .dimension-trigger small { margin-right: 5px; color: var(--grey); font-size: inherit; }
 .dimension-menu { position: absolute; z-index: 75; top: calc(100% + 6px); left: 0; width: 260px; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius-panel); background: var(--moon); box-shadow: var(--shadow-popover); }
 .dimension-menu > header { min-height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 11px; border-bottom: 1px solid var(--line); color: var(--grey); font-size: 11px; }
@@ -915,9 +915,9 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 
 .record-controls { display: flex; align-items: center; gap: 8px; }
 .columns-menu { position: relative; }
-.columns-menu > button { min-height: 37px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: transparent; color: var(--paper); font: 500 11px/1 'JetBrains Mono', monospace; }
+.columns-menu > button { min-height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: transparent; color: var(--paper); font: 500 11px/1 'JetBrains Mono', monospace; }
 .columns-menu > div { position: absolute; z-index: 70; top: calc(100% + 6px); right: 0; width: 185px; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius-btn); background: var(--moon); box-shadow: var(--shadow-popover); }
-.columns-menu label { min-height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 11px; color: var(--paper); font-size: 11px; cursor: pointer; }
+.columns-menu label { min-height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 11px; color: var(--paper); font-size: 11px; cursor: pointer; }
 .columns-menu label:hover { background: var(--card); }.columns-menu input { width: 15px; height: 15px; accent-color: var(--blue); }
 .hit-chip { color: var(--green); font: 500 11px/1 'JetBrains Mono', monospace; }
 .record-cards { display: none; }
@@ -1594,6 +1594,8 @@ body.drawer-open { overflow: hidden; }
 .records-panel tbody tr { border-top: 1px solid var(--line); transition: background .12s ease; }
 .records-panel tbody tr:hover { background: color-mix(in srgb, var(--paper) 3%, transparent); }
 .records-panel td { color: var(--paper); }
+.records-panel th.numeric,
+.records-panel td.numeric { text-align: right; font-variant-numeric: tabular-nums; }
 .records-panel td small { font-size: 11px; text-transform: none; }
 .records-panel .hit-chip { padding: 3px 8px; border-radius: var(--radius-btn); background: color-mix(in srgb, var(--green) 10%, transparent); font-size: 11px; }
 .records-panel .pagination { min-height: 58px; font-size: 11px; }
@@ -1645,9 +1647,9 @@ body.drawer-open { overflow: hidden; }
 .benefit-mix-card article strong small { display: inline; margin: 0; color: var(--grey); }
 
 /* ============================================================
-   v7 · Kimi official data-visualization parity (2026-08-18)
+   v8 · kimi.builders usage visualization parity (2026-08-19)
    Mirrors kimi.builders/docs/data-visualization.md. One focus blue,
-   neutral comparisons, sequential heatmaps, dotted grids, and explicit
+   neutral comparisons, five-step heatmaps, solid grids, and explicit
    attribution coverage. Status colors never act as categorical series.
    ============================================================ */
 :root {
@@ -1676,9 +1678,9 @@ body.drawer-open { overflow: hidden; }
   --viz-sequential-6: var(--viz-blue-deep);
   --chart-input: var(--viz-blue-primary);
   --chart-cache-write: var(--viz-blue-deep);
-  --chart-cache: var(--viz-blue-soft);
-  --chart-output: var(--viz-blue-bright);
-  --chart-reasoning: var(--viz-blue-electric);
+  --chart-cache: var(--viz-blue-bright);
+  --chart-output: var(--viz-blue-soft);
+  --chart-reasoning: var(--viz-purple-soft);
   --chart-average: var(--viz-neutral-mid);
 }
 
@@ -1704,8 +1706,8 @@ body.drawer-open { overflow: hidden; }
   border-bottom-color: var(--viz-grid);
 }
 
-.panel-header p { color: var(--grey); }
-.trend-grid-line { stroke: var(--viz-grid); stroke-dasharray: 2 4; }
+.panel-header p { color: var(--grey); font-family: var(--font-mono); }
+.trend-grid-line { stroke: var(--viz-grid); stroke-width: 1.2; stroke-dasharray: none; }
 .trend-axis-text { fill: var(--viz-axis); }
 .trend-average-line { stroke: var(--chart-average); stroke-dasharray: 5 5; }
 .trend-metric-bar { fill: var(--viz-blue-primary); }
@@ -1743,7 +1745,8 @@ body.drawer-open { overflow: hidden; }
 }
 .benefit-token-bar,
 .benefit-quota-point { cursor: pointer; }
-.trend-tooltip { width: 280px; padding: 10px; }
+.trend-tooltip { width: 244px; padding: 10px; }
+.heatmap-tooltip { width: 252px; }
 .trend-tooltip::after,
 .heatmap-tooltip::after {
   content: '';
@@ -1768,6 +1771,7 @@ body.drawer-open { overflow: hidden; }
 }
 .heatmap-row button:hover,
 .heatmap-row button:focus-visible,
+.heatmap-row button[data-active='true'],
 .benefit-heat-cell:not(:disabled):hover,
 .benefit-heat-cell:not(:disabled):focus-visible {
   position: relative;
@@ -1776,6 +1780,9 @@ body.drawer-open { overflow: hidden; }
   transform: scale(1.08);
   box-shadow: 0 0 0 1px var(--paper-strong), 0 0 0 3px color-mix(in srgb, var(--viz-blue-primary) 24%, transparent);
 }
+.heatmap-scroll { overflow-x: auto; }
+.heatmap-grid { min-width: 560px; }
+.filter-bar .currency-toggle button { min-height: 36px; }
 .benefit-mix-card article i { height: 6px; border-radius: 999px; }
 .benefit-mix-card article i em { border-radius: inherit; }
 .left-nav .center-sections a { border-left-width: 1px; }

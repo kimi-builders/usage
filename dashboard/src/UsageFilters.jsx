@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Filter, Settings2, X } from 'lucide-react';
+import { ChevronDown, Filter, X } from 'lucide-react';
 import { RANGE_OPTIONS } from './analytics.js';
 import { sourceLabel } from './format.js';
 import { ToolGlyph } from './tool-glyphs.js';
@@ -100,7 +100,7 @@ export function UsageFilterBar({ filters, options, onChange, currency, onCurrenc
       <RangeSegment active={filters.range} onChange={(range) => update('range', range)} zh={zh}/>
       <div className={`dimension-bar ${mobileOpen ? 'open' : ''}`}>
         {primary.map((dimension) => <DimensionDropdown key={dimension.key} dimension={dimension} values={options[dimension.key] || []} selected={filters[dimension.key] || []} onApply={(value) => update(dimension.key, value)} open={openMenu === dimension.key} setOpen={setOpenMenu} zh={zh}/>)}
-        <button className="more-filter" type="button" onClick={() => setMoreOpen((value) => !value)} aria-expanded={moreOpen}><Settings2 size={13}/>{moreOpen ? (zh ? '收起筛选' : 'Fewer filters') : `${zh ? '更多筛选' : 'More filters'} +${secondary.length}`}</button>
+        <button className="more-filter" type="button" onClick={() => setMoreOpen((value) => !value)} aria-expanded={moreOpen}>{moreOpen ? (zh ? '收起筛选' : 'Fewer filters') : `${zh ? '更多筛选' : 'More filters'} +${secondary.length}`}</button>
         {moreOpen ? secondary.map((dimension) => <DimensionDropdown key={dimension.key} dimension={dimension} values={options[dimension.key] || []} selected={filters[dimension.key] || []} onApply={(value) => update(dimension.key, value)} open={openMenu === dimension.key} setOpen={setOpenMenu} zh={zh}/>) : null}
         <div className="currency-toggle" role="radiogroup" aria-label={zh ? '展示币种' : 'Display currency'}>
           <button type="button" role="radio" aria-checked={currency !== 'cny'} className={currency !== 'cny' ? 'active' : ''} onClick={() => onCurrency?.('usd')}>{zh ? '$' : '$'}</button>
