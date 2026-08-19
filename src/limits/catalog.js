@@ -21,7 +21,7 @@ export const LIMIT_PROVIDER_CATALOG = [
     defaultAuthMode: 'local', authModes: ['local', 'environment', 'keychain'],
     defaultEnvironmentVariable: 'KIMI_AUTH_TOKEN', dashboardUrl: 'https://www.kimi.com/code/console',
     secretKind: 'Kimi 登录令牌',
-    localHint: '自动复用 Kimi Code CLI 登录；只有查看 Web 订阅总额度时才需要手动令牌。',
+    localHint: '自动复用并续期 Kimi Code CLI 登录；只有查看 Web 订阅总额度时才需要手动令牌。',
   },
   {
     id: 'cursor', label: 'Cursor', group: 'recommended', popular: true,

@@ -1,5 +1,6 @@
-import { loadKimiCredentials, resolveProviderSecret } from '../credentials.js';
+import { resolveProviderSecret } from '../credentials.js';
 import { asDate, asPercent, requestJson } from '../http.js';
+import { ensureFreshKimiCredentials, kimiIdentityHeaders } from './kimi-oauth.js';
 
 const CODE_USAGE_URL = 'https://api.kimi.com/coding/v1/usages';
 const WEB_USAGE_URL = 'https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages';
@@ -98,23 +99,31 @@ function webHeaders(token) {
 
 export async function fetchKimiLimits({ settings, environment = process.env, fetcher = fetch } = {}) {
   if (settings.authMode === 'local') {
-    const credential = loadKimiCredentials(environment);
+    let credential = await ensureFreshKimiCredentials({ environment, fetcher });
     if (!credential.found || !credential.fresh) {
       const error = new Error(credential.found
-        ? 'Kimi Code 登录已过期，请重新运行 kimi 登录。'
+        ? 'Kimi Code 登录已过期且无法自动续期，请重新登录。'
         : '未找到 Kimi Code 登录；也可在额度设置中使用环境变量或钥匙串。');
       error.code = credential.found ? 'unauthorized' : 'not_configured';
       throw error;
     }
-    const payload = await requestJson(CODE_USAGE_URL, {
+    const readUsage = (value) => requestJson(CODE_USAGE_URL, {
       headers: {
-        Authorization: `Bearer ${credential.accessToken}`,
-        'User-Agent': 'kbu-usage',
-        'X-Msh-Platform': 'kimi_code_cli',
-        'X-Msh-Version': '0.3',
+        ...kimiIdentityHeaders(value),
+        Authorization: `Bearer ${value.accessToken}`,
       },
       fetcher,
     });
+    let payload;
+    try {
+      payload = await readUsage(credential);
+    } catch (error) {
+      if (error?.code !== 'unauthorized') throw error;
+      const rejectedAccessToken = credential.accessToken;
+      credential = await ensureFreshKimiCredentials({ environment, fetcher, force: true });
+      if (!credential.fresh || credential.accessToken === rejectedAccessToken) throw error;
+      payload = await readUsage(credential);
+    }
     return parseKimiCodeUsage(payload);
   }
   const token = resolveProviderSecret('kimi-code', settings, environment);

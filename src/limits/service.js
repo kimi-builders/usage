@@ -118,7 +118,7 @@ function detectLocalProvider(providerId, providerSettings, environment, options 
     }
     if (providerId === 'kimi-code') {
       const value = loadKimiCredentials(environment);
-      return value.found && value.fresh ? detected('detected', '已检测到 Kimi Code 登录')
+      return value.found && (value.fresh || value.refreshable) ? detected('detected', '已检测到 Kimi Code 登录')
         : value.found ? detected('expired', 'Kimi 登录已过期') : detected('needs_login', '请先登录 Kimi Code');
     }
     if (providerId === 'cursor') {

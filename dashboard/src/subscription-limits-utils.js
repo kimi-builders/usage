@@ -219,7 +219,7 @@ const ENGLISH_CATALOG_COPY = {
   },
   'kimi-code': {
     description: '5-hour rolling rate limit, weekly quota, and subscription total',
-    localHint: 'Reuses the Kimi Code CLI login. A manual token is needed only for the Web subscription total.',
+    localHint: 'Reuses and renews the Kimi Code CLI login. A manual token is needed only for the Web subscription total.',
     secretKind: 'Kimi login token',
   },
   cursor: {

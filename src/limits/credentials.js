@@ -33,6 +33,15 @@ function jsonFile(path) {
   }
 }
 
+function textFile(path) {
+  try {
+    if (!existsSync(path) || !statSync(path).isFile()) return null;
+    return text(readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 function configuredHome(environment, key, fallback) {
   const value = text(environment[key]);
   return value ? resolve(value.replace(/^~(?=$|\/)/, homedir())) : fallback;
@@ -72,9 +81,22 @@ export function loadKimiCredentials(environment = process.env) {
   const path = join(root, 'credentials', 'kimi-code.json');
   const payload = jsonFile(path);
   const accessToken = text(payload?.access_token || payload?.accessToken);
-  const expiresAt = Number(payload?.expires_at ?? payload?.expiresAt);
+  const claims = decodeJwtPayload(accessToken);
+  const storedExpiry = Number(payload?.expires_at ?? payload?.expiresAt);
+  const claimExpiry = Number(claims.exp);
+  const expiresAt = Number.isFinite(storedExpiry) ? storedExpiry
+    : Number.isFinite(claimExpiry) ? claimExpiry : null;
+  const expiresIn = Number(payload?.expires_in ?? payload?.expiresIn);
+  const refreshToken = text(payload?.refresh_token || payload?.refreshToken);
   const fresh = accessToken && Number.isFinite(expiresAt) && expiresAt > Date.now() / 1_000 + 60;
-  return { found: Boolean(accessToken), fresh: Boolean(fresh), path, accessToken, claims: decodeJwtPayload(accessToken) };
+  return {
+    found: Boolean(accessToken), fresh: Boolean(fresh), refreshable: Boolean(refreshToken),
+    root, path, accessToken, refreshToken, expiresAt,
+    expiresIn: Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : null,
+    scope: text(payload?.scope) || '', tokenType: text(payload?.token_type || payload?.tokenType) || 'Bearer',
+    deviceId: textFile(join(root, 'device_id')),
+    claims,
+  };
 }
 
 export function loadClaudeCredentials(environment = process.env) {

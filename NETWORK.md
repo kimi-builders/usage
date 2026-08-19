@@ -57,7 +57,10 @@ points; only a fresh provider refresh can append a sanitized observation.
 - Codex: `https://chatgpt.com/backend-api/wham/usage` and the optional
   `wham/rate-limit-reset-credits` companion endpoint;
 - Claude Code: `https://api.anthropic.com/api/oauth/usage`;
-- Kimi Code: `https://api.kimi.com/coding/v1/usages`, or
+- Kimi Code: `https://api.kimi.com/coding/v1/usages`; when a locally owned CLI
+  access token is near expiry, `https://auth.kimi.com/api/oauth/token` rotates
+  it under Kimi Code's cross-process lock and atomically updates the owner-only
+  CLI credential file; or
   `https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages`
   and `https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats`
   when the user explicitly selects a Web token source;

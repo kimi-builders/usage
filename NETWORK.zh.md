@@ -48,7 +48,9 @@ CSP 和 no-store 响应。Token 分析始终离线。只有用户点击相应控
 - Codex：`https://chatgpt.com/backend-api/wham/usage`，以及可选的
   `wham/rate-limit-reset-credits` 辅助端点；
 - Claude Code：`https://api.anthropic.com/api/oauth/usage`；
-- Kimi Code：`https://api.kimi.com/coding/v1/usages`；当用户明确选择 Web Token 来源时，
+- Kimi Code：`https://api.kimi.com/coding/v1/usages`；本机 CLI access token 即将到期时，
+  通过 `https://auth.kimi.com/api/oauth/token` 在 Kimi Code 的跨进程锁保护下轮换，
+  并原子更新仅 owner 可读的 CLI 凭据文件；当用户明确选择 Web Token 来源时，
   使用 `https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages` 和
   `https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats`；
 - Cursor：`https://cursor.com/api/usage-summary`，以及可选的

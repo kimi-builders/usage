@@ -2,6 +2,7 @@ export const LIMIT_ALLOWED_HOSTS = new Set([
   'chatgpt.com',
   'chat.openai.com',
   'api.kimi.com',
+  'auth.kimi.com',
   'www.kimi.com',
   'app.warp.dev',
   'cloudcode-pa.googleapis.com',
