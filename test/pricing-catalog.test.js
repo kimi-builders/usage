@@ -104,3 +104,12 @@ test('matcher contract covers aliases, context tiers, and processing tiers', () 
   assert.equal(matchLocalPrice({ model: 'deepseek-v4-pro', processingTier: 'off-peak', bucketStart: at })?.input, 0.66);
   assert.equal(matchLocalPrice({ model: 'deepseek-v4-pro', processingTier: 'peak', bucketStart: at })?.input, 1.32);
 });
+
+test('embedded catalog carries the open-ended Codex auto-review correction', () => {
+  resetPriceCatalog();
+  assert.equal(EMBEDDED_PRICE_CATALOG.revision, 2);
+  assert.equal(EMBEDDED_PRICE_CATALOG.catalogVersion, '2026-08-20');
+  const entry = EMBEDDED_PRICE_CATALOG.entries.find((item) => item.pattern === 'codex-auto-review');
+  assert.equal(entry?.effectiveTo, null);
+  assert.equal(entry?.version, '2026-08-20');
+});

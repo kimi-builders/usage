@@ -37,6 +37,24 @@ test('missing GPT-5.6 context is transparent short-tier assumption', () => {
   assert.equal(estimate.status, 'priced');
 });
 
+test('Codex auto-review remains priced after the 2026-08-19 catalog boundary', () => {
+  const price = matchLocalPrice(bucket({
+    model: 'codex-auto-review',
+    bucketStart: '2026-08-20T12:00:00.000Z',
+  }));
+  assert.ok(price);
+  assert.deepEqual(
+    [price.input, price.cacheRead, price.output, price.version],
+    [2.5, 0.25, 15, '2026-08-20'],
+  );
+
+  assert.equal(matchLocalPrice(bucket({
+    source: 'claude-code',
+    model: 'codex-auto-review',
+    bucketStart: '2026-08-20T12:00:00.000Z',
+  })), null, 'the internal Codex alias must stay source-scoped');
+});
+
 test('2026-08-19 catalog matches the supplied current model price matrix', () => {
   const cases = [
     ['minimax-m3', '', '', 0.3, 0.06, null, 1.2],

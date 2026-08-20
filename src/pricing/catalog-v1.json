@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "matcherVersion": 1,
-  "revision": 1,
-  "catalogVersion": "2026-08-19",
-  "publishedAt": "2026-08-19T00:00:00.000Z",
+  "revision": 2,
+  "catalogVersion": "2026-08-20",
+  "publishedAt": "2026-08-20T00:00:00.000Z",
   "currency": "USD",
   "basis": "standard-api",
   "entries": [
@@ -814,7 +814,7 @@
       "contextTier": "",
       "processingTier": "standard",
       "effectiveFrom": "2026-04-01T00:00:00.000Z",
-      "effectiveTo": "2026-08-19T00:00:00.000Z",
+      "effectiveTo": null,
       "input": "2.5",
       "cacheWrite": null,
       "cacheWrite5m": null,
@@ -823,8 +823,8 @@
       "output": "15",
       "reasoning": null,
       "sourceUrl": "https://developers.openai.com/api/docs/pricing",
-      "verifiedAt": "2026-08-19",
-      "version": "2026-08-19",
+      "verifiedAt": "2026-08-20",
+      "version": "2026-08-20",
       "basis": "standard-api"
     },
     {
@@ -2050,7 +2050,6 @@
   ],
   "integrity": {
     "algorithm": "sha256",
-    "digest": "fcdf4e83b34bf513b98f3da696b074ef44478b17e2a51aaade3abb8b1ef949d6"
+    "digest": "c90c4b957146e5a86dc9983751149bd82b5aa0f4b0a17be53bdcc45312eb1c50"
   }
 }
-
