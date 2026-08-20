@@ -1,6 +1,32 @@
 import { c, setColorEnabled } from './cli-ui.js';
 import { getConfigPath, loadConfig } from './config.js';
 
+function parseInvocation(inputArgs = []) {
+  const args = [];
+  let lang;
+  let color;
+  let plain = false;
+  for (let index = 0; index < inputArgs.length; index += 1) {
+    const value = inputArgs[index];
+    if (value === '--lang' && inputArgs[index + 1] && !inputArgs[index + 1].startsWith('--')) {
+      lang = inputArgs[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === '--no-color' || value === '--plain') {
+      color = false;
+      plain ||= value === '--plain';
+      continue;
+    }
+    if (value === '--color') {
+      if (color !== false) color = true;
+      continue;
+    }
+    args.push(value);
+  }
+  return { args, lang, color, plain };
+}
+
 function option(args, name) {
   const index = args.indexOf(`--${name}`);
   if (index < 0) return undefined;
@@ -47,17 +73,14 @@ ${c.bold('▸ 辅助与自动补全')}
 `);
 }
 
-export async function run(args) {
-  if (args.includes('--no-color') || args.includes('--plain')) {
-    setColorEnabled(false);
-  } else if (args.includes('--color')) {
-    setColorEnabled(true);
-  }
+export async function run(inputArgs) {
+  const invocation = parseInvocation(inputArgs);
+  const args = invocation.args;
+  if (invocation.color !== undefined) setColorEnabled(invocation.color);
 
-  const langIndex = args.indexOf('--lang');
-  if (langIndex >= 0 && args[langIndex + 1]) {
+  if (invocation.lang) {
     const { setLocale } = await import('./cli-ui.js');
-    setLocale(args[langIndex + 1]);
+    setLocale(invocation.lang);
   }
 
   const command = args[0];
@@ -131,7 +154,7 @@ export async function run(args) {
       model: option(args, 'model'),
       project: option(args, 'project'),
       json: args.includes('--json'),
-      plain: args.includes('--plain'),
+      plain: invocation.plain,
     });
   }
   if (command === 'quota' || command === 'limits') {
@@ -141,7 +164,7 @@ export async function run(args) {
       all: args.includes('--all'),
       force: args.includes('--force') || args.includes('--refresh'),
       json: args.includes('--json'),
-      plain: args.includes('--plain'),
+      plain: invocation.plain,
     });
   }
   if (command === 'top') {

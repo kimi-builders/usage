@@ -1,0 +1,6 @@
+Date,Model,Input (w/o Cache Write),Input (w/ Cache Write),Cache Read,Output Tokens
+2026-08-19,kimi-k3,1000000,0,2000000,3000000
+2026-08-19,=1+1,1,0,0,0
+2026-08-19,+SUM(1;1),1,0,0,0
+2026-08-19,-1+1,1,0,0,0
+2026-08-19,@cmd,1,0,0,0

@@ -1,0 +1,10 @@
+{
+  "catalogVersion": "2026-08-19",
+  "model": "kimi-k3",
+  "inputTokens": 1000000,
+  "cacheReadInputTokens": 2000000,
+  "outputTokens": 3000000,
+  "totalTokens": 6000000,
+  "costUsd": "48.6000",
+  "pricingStatus": "priced"
+}
