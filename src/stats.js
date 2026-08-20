@@ -19,31 +19,33 @@ import {
 function parsePeriod(periodArg = '7d') {
   const str = String(periodArg || '7d').toLowerCase().trim();
   const now = Date.now();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStartMs = today.getTime();
+
   if (str === 'today') {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    return { name: 'today', startMs: start.getTime(), endMs: now, days: 1 };
+    return { name: 'today', startMs: todayStartMs, endMs: now, days: 1 };
   }
   if (str === '24h') {
     return { name: '24h', startMs: now - 24 * 3600 * 1000, endMs: now, days: 1 };
   }
   if (str === '7d' || str === '7') {
-    return { name: '7d', startMs: now - 7 * 86400 * 1000, endMs: now, days: 7 };
+    return { name: '7d', startMs: todayStartMs - 6 * 86400 * 1000, endMs: now, days: 7 };
   }
   if (str === '30d' || str === '30') {
-    return { name: '30d', startMs: now - 30 * 86400 * 1000, endMs: now, days: 30 };
+    return { name: '30d', startMs: todayStartMs - 29 * 86400 * 1000, endMs: now, days: 30 };
   }
   if (str === '90d' || str === '90') {
-    return { name: '90d', startMs: now - 90 * 86400 * 1000, endMs: now, days: 90 };
+    return { name: '90d', startMs: todayStartMs - 89 * 86400 * 1000, endMs: now, days: 90 };
   }
   if (str === 'all' || str === 'all-time') {
     return { name: 'all', startMs: 0, endMs: now, days: null };
   }
   const numeric = Number(str.replace(/d$/, ''));
   if (Number.isFinite(numeric) && numeric > 0) {
-    return { name: `${numeric}d`, startMs: now - numeric * 86400 * 1000, endMs: now, days: numeric };
+    return { name: `${numeric}d`, startMs: todayStartMs - (numeric - 1) * 86400 * 1000, endMs: now, days: numeric };
   }
-  return { name: '7d', startMs: now - 7 * 86400 * 1000, endMs: now, days: 7 };
+  return { name: '7d', startMs: todayStartMs - 6 * 86400 * 1000, endMs: now, days: 7 };
 }
 
 function formatDate(dateMs) {
@@ -119,9 +121,19 @@ export function computeStats(dashboardData, options = {}) {
     totals.requestCount += bucket.requestCount || 0;
   }
 
-  for (const session of filteredSessions) {
-    totals.activeSeconds += Number(session.activeSeconds || 0);
-    totals.durationSeconds += Number(session.durationSeconds || 0);
+  if (Array.isArray(dashboardData.activityHours)) {
+    for (const hour of dashboardData.activityHours) {
+      const time = Date.parse(hour.hourStart);
+      if (time < period.startMs || time > period.endMs) continue;
+      if (sourceFilter && hour.source.toLowerCase() !== sourceFilter) continue;
+      totals.activeSeconds += hour.activeSeconds || 0;
+      totals.durationSeconds += hour.engagedSeconds || 0;
+    }
+  } else {
+    for (const session of filteredSessions) {
+      totals.activeSeconds += Number(session.activeSeconds || 0);
+      totals.durationSeconds += Number(session.durationSeconds || 0);
+    }
   }
 
   totals.cost = totals.costMicros / 1e6;
@@ -226,7 +238,22 @@ export function computeStats(dashboardData, options = {}) {
     if (sourceMap.has(session.source)) {
       const data = sourceMap.get(session.source);
       data.sessions += 1;
-      data.activeSeconds += Number(session.activeSeconds || 0);
+    }
+  }
+  if (Array.isArray(dashboardData.activityHours)) {
+    for (const hour of dashboardData.activityHours) {
+      const time = Date.parse(hour.hourStart);
+      if (time < period.startMs || time > period.endMs) continue;
+      if (sourceFilter && hour.source.toLowerCase() !== sourceFilter) continue;
+      if (sourceMap.has(hour.source)) {
+        sourceMap.get(hour.source).activeSeconds += hour.activeSeconds || 0;
+      }
+    }
+  } else {
+    for (const session of filteredSessions) {
+      if (sourceMap.has(session.source)) {
+        sourceMap.get(session.source).activeSeconds += Number(session.activeSeconds || 0);
+      }
     }
   }
 

@@ -49,8 +49,13 @@ function localCalendarIndex(date) {
 export function rangeStart(range, now = new Date()) {
   if (range === 'all') return null;
   if (range === 'today') return startOfLocalDay(now);
-  const hours = range === '24h' ? 24 : Number.parseInt(range, 10) * 24;
-  return new Date(now.getTime() - hours * 60 * 60 * 1000);
+  if (range === '24h') return new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const days = Number.parseInt(range, 10);
+  if (Number.isFinite(days) && days > 0) {
+    const today = startOfLocalDay(now);
+    return new Date(today.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+  }
+  return new Date(now.getTime() - 24 * 60 * 60 * 1000);
 }
 
 function selected(values, value) {
