@@ -228,6 +228,17 @@ export function App() {
     return next;
   }, []);
 
+  const pricingAction = useCallback(async (action) => {
+    const response = await fetch('/api/pricing', {
+      method: 'POST', credentials: 'same-origin', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }),
+    });
+    const next = await response.json();
+    if (!response.ok) throw new Error(next?.error?.message || `Pricing action failed (${response.status})`);
+    await load(true, { throwOnError: true });
+    return next;
+  }, []);
+
   const loadLimits = async (refresh = false) => {
     setLimitLoading(true); setLimitError('');
     try {
@@ -475,7 +486,7 @@ export function App() {
       <SubscriptionCenter view={subscriptionView} onViewChange={(view) => navigateSection({ preventDefault() {} }, view === 'overview' ? '#subscriptions' : `#subscription-${view}`)} data={limitData} usageData={data} settings={limitSettings} loading={limitLoading} error={limitError} onRefresh={loadLimits} onSettings={openLimitSettings} onRefreshIntervalChange={limitSettings ? async (minutes) => { if (limitSettings.refreshMinutes === minutes) return; await saveLimitPreferences({ settings: { ...limitSettings, refreshMinutes: minutes }, secrets: {}, clearSecrets: [], accountSecrets: {}, clearAccountSecrets: [] }); } : undefined} zh={zh} currency={currency}/>
       </> : sourcesPage ? <>
       <section className="page-heading sources-page-heading"><div><h1><Database size={22}/>{zh ? '本机与数据源' : 'Device & data sources'}</h1><p>{zh ? '集中管理每个 Agent 的本机扫描与社区同步范围，并查看 Collector、终端、系统和解析健康度。' : 'Manage per-agent local scan and community sync scopes, then review Collector, terminal, OS, and parsing health.'}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{zh ? '扫描范围由你选择' : 'You choose scan scope'}</span><i/><span>{zh ? '诊断信息已脱敏' : 'Diagnostics are redacted'}</span></div></div><div className="page-actions"><Button onClick={() => setDialog('method')}><Info size={14}/>{t.method}</Button><Button onClick={() => load(true)} disabled={refreshing}><RefreshCw className={refreshing ? 'spin' : ''} size={14}/>{t.refresh}</Button><Button variant="primary" onClick={() => setDialog('sync')}><CloudUpload size={14}/>{t.sync}</Button></div></section>
-      <UsageManagement data={data} control={control} onControlAction={controlAction} onControlRefresh={loadControl} onRescan={() => load(true)} zh={zh}/>
+      <UsageManagement data={data} control={control} onControlAction={controlAction} onControlRefresh={loadControl} onRescan={() => load(true)} onPricingAction={pricingAction} zh={zh}/>
       </> : <>
       <section className="page-heading"><div><h1><BarChart3 size={22}/>{t.title}</h1><p>{t.subtitle}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{t.local}</span><i/><span>{t.lastSync} {new Date(data.generatedAt).toLocaleString(zh ? 'zh-CN' : 'en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>{staleHours > 24 ? <b>{zh ? `超过 ${Math.floor(staleHours)} 小时未扫描` : `${Math.floor(staleHours)}h stale`}</b> : null}</div></div><div className="page-actions"><Button onClick={() => setDialog('method')}><Info size={14}/>{t.method}</Button><Button onClick={() => setDialog('export')}><Download size={14}/>{t.export}</Button><Button onClick={() => setDialog('share')}><Share2 size={14}/>{t.share}</Button><Button onClick={() => load(true)} disabled={refreshing}><RefreshCw className={refreshing ? 'spin' : ''} size={14}/>{t.refresh}</Button><Button variant="primary" onClick={() => setDialog('sync')}><CloudUpload size={14}/>{t.sync}</Button></div></section>
 

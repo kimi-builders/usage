@@ -14,6 +14,7 @@ _kbu_usage_completion() {
     'summary:用量汇总概览'
     'dashboard:启动本地可视化 Web 看板'
     'status:查看当前配置、连接与服务状态'
+    'pricing:查看、更新或重置标准 API 价格目录'
     'export:导出本地用量数据为 CSV/JSON/JSONL'
     'doctor:执行离线数据一致性与协议体检'
     'inspect:离线调试与数据源目录探测'
@@ -100,6 +101,19 @@ _kbu_usage_completion() {
           _arguments \\
             '--full[全量同步模式]'
           ;;
+        pricing)
+          _arguments \\
+            '1:操作:(status update reset)' \\
+            '--api-url[社区地址]:url:' \\
+            '--force[忽略 ETag 并重新下载]' \\
+            '--json[以 JSON 输出]'
+          ;;
+        init)
+          _arguments \\
+            '--api-url[社区地址]:url:' \\
+            '--sync[连接成功后立即同步允许的数据源]' \\
+            '--skip-pricing-update[跳过公开价格目录更新]'
+          ;;
       esac
       ;;
   esac
@@ -117,7 +131,7 @@ _kbu_usage_bash_completion() {
   local cur prev words cword
   _init_completion || return
 
-  local commands="sync stats quota limits top summary dashboard status export doctor inspect sources daemon init reset completion"
+  local commands="sync stats quota limits top summary dashboard status pricing export doctor inspect sources daemon init reset completion"
   local global_opts="--help -h --version -v --lang --no-color --plain --color --json"
 
   if [[ $cword -eq 1 ]]; then
@@ -148,6 +162,12 @@ _kbu_usage_bash_completion() {
     sync)
       COMPREPLY=( $(compgen -W "--full" -- "$cur") )
       ;;
+    pricing)
+      COMPREPLY=( $(compgen -W "status update reset --api-url --force --json" -- "$cur") )
+      ;;
+    init)
+      COMPREPLY=( $(compgen -W "--api-url --sync --skip-pricing-update" -- "$cur") )
+      ;;
   esac
 }
 
@@ -158,7 +178,7 @@ complete -F _kbu_usage_bash_completion kbu-usage usage "npx @kimi.builders/usage
 export function generateFishCompletion() {
   return `# Fish completion for @kimi.builders/usage
 
-set -l commands sync stats quota limits top summary dashboard status export doctor inspect sources daemon init reset completion
+set -l commands sync stats quota limits top summary dashboard status pricing export doctor inspect sources daemon init reset completion
 
 complete -c kbu-usage -f
 complete -c kbu-usage -n "not __fish_seen_subcommand_from $commands" -a sync -d "从各个 Agent 扫描并同步用量数据"
@@ -169,6 +189,7 @@ complete -c kbu-usage -n "not __fish_seen_subcommand_from $commands" -a top -d "
 complete -c kbu-usage -n "not __fish_seen_subcommand_from $commands" -a summary -d "用量汇总概览"
 complete -c kbu-usage -n "not __fish_seen_subcommand_from $commands" -a dashboard -d "启动本地可视化 Web 看板"
 complete -c kbu-usage -n "not __fish_seen_subcommand_from $commands" -a status -d "查看当前配置与运行状态"
+complete -c kbu-usage -n "not __fish_seen_subcommand_from $commands" -a pricing -d "查看、更新或重置价格目录"
 complete -c kbu-usage -n "not __fish_seen_subcommand_from $commands" -a export -d "导出本地用量数据"
 complete -c kbu-usage -n "not __fish_seen_subcommand_from $commands" -a doctor -d "执行离线数据一致性体检"
 complete -c kbu-usage -n "not __fish_seen_subcommand_from $commands" -a inspect -d "离线调试与数据源目录探测"
@@ -183,6 +204,13 @@ complete -c kbu-usage -l lang -d "设置输出语言" -r -a "zh en"
 complete -c kbu-usage -l no-color -d "禁用彩色输出"
 complete -c kbu-usage -l plain -d "纯文本模式"
 complete -c kbu-usage -l json -d "以 JSON 格式输出"
+complete -c kbu-usage -n "__fish_seen_subcommand_from pricing" -a "status update reset"
+complete -c kbu-usage -n "__fish_seen_subcommand_from pricing" -l api-url -d "社区地址" -r
+complete -c kbu-usage -n "__fish_seen_subcommand_from pricing" -l force -d "忽略 ETag 并重新下载"
+complete -c kbu-usage -n "__fish_seen_subcommand_from pricing" -l json -d "以 JSON 格式输出"
+complete -c kbu-usage -n "__fish_seen_subcommand_from init" -l api-url -d "社区地址" -r
+complete -c kbu-usage -n "__fish_seen_subcommand_from init" -l sync -d "连接成功后立即同步"
+complete -c kbu-usage -n "__fish_seen_subcommand_from init" -l skip-pricing-update -d "跳过公开价格目录更新"
 `;
 }
 

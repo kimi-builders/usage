@@ -2,8 +2,10 @@
 
 > [中文](./NETWORK.zh.md)
 
-There is no telemetry, update check, advertising request, or hidden background
-connection. Local parsing modules do not import the network client. Background
+There is no telemetry, software-version update check, advertising request, or hidden background
+connection. Local parsing modules do not import the network client. The public pricing catalog is
+downloaded only during the one best-effort `init` check, an explicit `pricing update`, or the
+Dashboard's Check for updates action; no local usage is uploaded. Background
 sync exists only after an explicit `daemon install` and can be inspected or
 removed with the CLI at any time.
 
@@ -16,7 +18,9 @@ removed with the CLI at any time.
 | `inspect --dry-run` | No | Show local roots and parser results |
 | `doctor [--json]` | No | Redacted local compatibility report |
 | `reset --local` | No | Remove local sync checkpoints |
-| `init` | Yes | Device-code connection only; no usage upload unless `--sync` is explicit |
+| `pricing status/reset` | No | Inspect catalog status, or remove the downloaded cache and restore the bundled offline copy |
+| `pricing update` | Yes | Explicitly download, validate, and cache the public community price catalog; uploads no usage |
+| `init` | Yes | Connect a device and best-effort refresh public pricing; no usage upload unless `--sync` is explicit; `--skip-pricing-update` skips the download |
 | `sync [--full]` | Yes | Read privacy settings and upload changed aggregates; `--full` explicitly replays only sources marked Local + sync |
 | `daemon install/restart` | Yes, in the scheduled child | Manage a per-user OS scheduler and trigger its first incremental sync |
 | `daemon status/uninstall` | No | Inspect or remove the per-user scheduler |
@@ -34,6 +38,13 @@ For the default origin `https://kimi.builders`, the current endpoints are:
 - `POST /api/usage/ingest`
 - `DELETE /api/usage/ingest`
 - `GET /api/usage?days=N`
+- `GET /api/public/usage-pricing/v1/catalog` (public, no device key, ETag-aware)
+
+The catalog is public versioned JSON containing only model match rules, standard
+API USD rates, effective windows, and provenance. It is cached at
+`~/.kimi-builders/usage/pricing-catalog-v1.json`. Network or validation failures
+retain the last-known-good catalog; without one, the bundled npm snapshot remains
+available, so scanning and Dashboard startup never depend on the community API.
 
 `init --api-url` can point to another origin for development or self-hosting.
 The Collector sends the device API key only to the configured origin. Ingest

@@ -194,6 +194,41 @@ test('sync API distinguishes status reads from explicit local actions', async ()
   }
 });
 
+test('pricing API exposes status and requires an explicit protected update action', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'kbu-dashboard-pricing-'));
+  writeFileSync(join(root, 'index.html'), '<main>local dashboard</main>');
+  const actions = [];
+  const local = await startLocalDashboardServer({
+    launchBrowser: false,
+    buildRoot: root,
+    dataLoader: async () => ({ pricing: { version: 'v1' } }),
+    pricingStatusLoader: () => ({ version: 'v1', source: 'embedded', entryCount: 10 }),
+    pricingAction: async (payload) => {
+      actions.push(payload);
+      return { version: 'v2', source: 'downloaded', entryCount: 11, changed: true };
+    },
+  });
+  try {
+    const authorized = await http(local.port, new URL(local.url).pathname + new URL(local.url).search);
+    const cookie = authorized.headers['set-cookie'][0].split(';')[0];
+    assert.deepEqual(JSON.parse((await http(local.port, '/api/pricing', { Cookie: cookie })).body), {
+      version: 'v1', source: 'embedded', entryCount: 10,
+    });
+    const hostile = await http(local.port, '/api/pricing', {
+      Cookie: cookie, Origin: 'https://attacker.invalid', 'Content-Type': 'application/json',
+    }, { method: 'POST', body: '{"action":"update"}' });
+    assert.equal(hostile.status, 403);
+    const updated = await http(local.port, '/api/pricing', {
+      Cookie: cookie, Origin: local.origin, 'Content-Type': 'application/json',
+    }, { method: 'POST', body: '{"action":"update"}' });
+    assert.equal(JSON.parse(updated.body).version, 'v2');
+    assert.deepEqual(actions, [{ action: 'update' }]);
+  } finally {
+    await local.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('control API defers first scan until onboarding is complete', async () => {
   const root = mkdtempSync(join(tmpdir(), 'kbu-dashboard-control-'));
   writeFileSync(join(root, 'index.html'), '<main>local dashboard</main>');

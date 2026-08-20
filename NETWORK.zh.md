@@ -2,7 +2,8 @@
 
 > [English](./NETWORK.md)
 
-项目没有遥测、更新检查、广告请求或隐藏的后台连接。本地解析模块不导入网络客户端。只有用户
+项目没有遥测、软件版本更新检查、广告请求或隐藏的后台连接。本地解析模块不导入网络客户端。价格目录仅在
+`init` 的一次 best-effort 检查、用户运行 `pricing update`，或点击看板“检查更新”时下载；不会上传本机用量。只有用户
 明确执行 `daemon install` 后才会存在后台同步；它可随时通过 CLI 检查或移除。
 
 | 命令 | 是否联网 | 用途 |
@@ -14,7 +15,9 @@
 | `inspect --dry-run` | 否 | 显示本地读取目录和解析结果 |
 | `doctor [--json]` | 否 | 生成脱敏的本地兼容性报告 |
 | `reset --local` | 否 | 删除本地同步 checkpoint |
-| `init` | 是 | 只连接设备；除非显式加 `--sync`，否则不上传用量 |
+| `pricing status/reset` | 否 | 查看目录状态，或删除下载缓存并恢复随包内置离线目录 |
+| `pricing update` | 是 | 主动下载、校验并缓存社区公开价格目录；不上传用量 |
+| `init` | 是 | 连接设备并 best-effort 更新公开价格目录；除非显式加 `--sync`，否则不上传用量；`--skip-pricing-update` 可跳过价格下载 |
 | `sync [--full]` | 是 | 读取隐私设置并上传变化后的聚合；`--full` 只完整重放标记为“本机并同步”的来源 |
 | `daemon install/restart` | 是，由调度子进程联网 | 管理用户级系统调度器，并触发首次增量同步 |
 | `daemon status/uninstall` | 否 | 检查或移除用户级调度器 |
@@ -32,6 +35,11 @@
 - `POST /api/usage/ingest`
 - `DELETE /api/usage/ingest`
 - `GET /api/usage?days=N`
+- `GET /api/public/usage-pricing/v1/catalog`（公开价格目录；无设备 Key；支持 ETag）
+
+价格目录是公开、版本化 JSON，只包含模型匹配规则、标准 API 美元单价、生效窗口与来源；缓存于
+`~/.kimi-builders/usage/pricing-catalog-v1.json`。下载失败、校验失败或离线时保留上次可用版本，
+没有缓存时回退 npm 包内置快照，扫描和看板启动不会因此失败。
 
 `init --api-url` 可在开发或自托管场景指定其他地址。Collector 只把设备 API Key 发送给配置的
 社区 Origin。上传正文是 gzip 压缩 JSON；压缩只改变传输大小，不改变字段。

@@ -16,6 +16,9 @@ import {
   createCopilotDeviceController, getPublicLimitSettings, loadSubscriptionLimits, saveLimitSettings,
 } from '../limits/service.js';
 import { createDashboardControl } from './dashboard-control.js';
+import {
+  priceCatalogStatus, resetPriceCatalog, updatePriceCatalog,
+} from '../pricing/catalog.js';
 
 const DEFAULT_BUILD_ROOT = fileURLToPath(new URL('../../dashboard/dist/client/', import.meta.url));
 const COOKIE_NAME = 'kbu_local_session';
@@ -123,6 +126,7 @@ function browserError(error) {
     invalid_action: [400, 'Unsupported sync action.'],
     invalid_control_action: [400, 'Unsupported dashboard control action.'],
     invalid_control_input: [400, 'Dashboard control input is invalid.'],
+    invalid_pricing_action: [400, 'Unsupported pricing action.'],
   }[error?.code];
   if (declared) return { status: declared[0], code: error.code, message: declared[1] };
   return {
@@ -217,6 +221,18 @@ export async function runLocalSyncAction(payload = {}) {
   return { ...getLocalSyncStatus(), action, result };
 }
 
+export async function runLocalPricingAction(payload = {}) {
+  const action = String(payload.action || '');
+  if (action === 'update') {
+    const config = loadConfig();
+    return updatePriceCatalog({ apiUrl: config?.apiUrl || 'https://kimi.builders' });
+  }
+  if (action === 'reset') return resetPriceCatalog();
+  throw Object.assign(new Error('不支持的价格目录操作。'), {
+    statusCode: 400, code: 'invalid_pricing_action',
+  });
+}
+
 export async function startLocalDashboardServer({
   port = 0,
   launchBrowser = true,
@@ -230,6 +246,8 @@ export async function startLocalDashboardServer({
   copilotDeviceControl = null,
   syncStatusLoader = getLocalSyncStatus,
   syncAction = runLocalSyncAction,
+  pricingStatusLoader = priceCatalogStatus,
+  pricingAction = runLocalPricingAction,
   control = null,
 } = {}) {
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
@@ -371,6 +389,26 @@ export async function startLocalDashboardServer({
           }
           const payload = await readJson(request);
           sendJson(request, response, await syncAction(payload));
+          return;
+        }
+        send(response, 405, 'Method not allowed.', { Allow: 'GET, HEAD, POST' });
+        return;
+      }
+
+      if (url.pathname === '/api/pricing') {
+        if (request.method === 'GET' || request.method === 'HEAD') {
+          sendJson(request, response, pricingStatusLoader());
+          return;
+        }
+        if (request.method === 'POST') {
+          if (!String(request.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
+            send(response, 415, 'Content-Type must be application/json.');
+            return;
+          }
+          const payload = await readJson(request);
+          const result = await pricingAction(payload);
+          activeData = null;
+          sendJson(request, response, result);
           return;
         }
         send(response, 405, 'Method not allowed.', { Allow: 'GET, HEAD, POST' });

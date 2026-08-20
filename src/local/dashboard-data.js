@@ -6,9 +6,9 @@ import { effectiveSourcePolicies } from '../source-policy.js';
 import { collectLocalSnapshot, publicDoctorReport } from './snapshot.js';
 import {
   estimateLocalBucketCost,
-  LOCAL_PRICE_CATALOG,
-  LOCAL_PRICE_CATALOG_VERSION,
+  localPricingStatus,
 } from './pricing.js';
+import { getActivePriceCatalog, numericCatalogEntries } from '../pricing/catalog.js';
 
 function totalTokens(bucket) {
   return bucket.inputTokens
@@ -56,6 +56,8 @@ export function createDashboardData(snapshot, {
   device = deviceEnvironment(),
   agentVersions = detectAgentVersions(),
 } = {}) {
+  const pricingStatus = localPricingStatus();
+  const activePricing = numericCatalogEntries(getActivePriceCatalog().catalog);
   const diagnostic = publicDoctorReport(snapshot);
   const buckets = snapshot.data.buckets.map((bucket, index) => {
     const price = estimateLocalBucketCost(bucket);
@@ -106,10 +108,9 @@ export function createDashboardData(snapshot, {
     },
     sourcePolicies: effectiveSourcePolicies(config),
     pricing: {
-      version: LOCAL_PRICE_CATALOG_VERSION,
+      ...pricingStatus,
       basis: 'standard-api',
-      entryCount: LOCAL_PRICE_CATALOG.length,
-      entries: LOCAL_PRICE_CATALOG.map((price) => ({
+      entries: activePricing.map((price) => ({
         pattern: price.pattern,
         source: price.source,
         contextTier: price.contextTier,

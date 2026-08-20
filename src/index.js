@@ -47,9 +47,10 @@ ${c.bold('▸ 用量分析与额度')}
   npx @kimi.builders/usage summary [--days 7] [--remote]
   npx @kimi.builders/usage dashboard [--no-open] [--port 43120]
   npx @kimi.builders/usage status
+  npx @kimi.builders/usage pricing status|update|reset [--json]
 
 ${c.bold('▸ 社区同步与后台服务')}
-  npx @kimi.builders/usage init [--api-url URL] [--sync]
+  npx @kimi.builders/usage init [--api-url URL] [--sync] [--skip-pricing-update]
   npx @kimi.builders/usage sync [--full]
   npx @kimi.builders/usage daemon install [--interval 15]
   npx @kimi.builders/usage daemon status [--json]
@@ -94,7 +95,12 @@ export async function run(inputArgs) {
       apiUrl: option(args, 'api-url') || process.env.KBU_USAGE_API_URL || 'https://kimi.builders',
       manualKey: option(args, 'manual-key'),
       syncAfterConnect: args.includes('--sync'),
+      updatePricing: !args.includes('--skip-pricing-update'),
     });
+  }
+  if (command === 'pricing') {
+    const { runPricingCommand } = await import('./pricing/command.js');
+    return runPricingCommand(args.slice(1));
   }
   if (command === 'sync') {
     const { runManagedSync } = await import('./sync-runtime.js');

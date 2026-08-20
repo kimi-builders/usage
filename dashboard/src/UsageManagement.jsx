@@ -1,6 +1,6 @@
 import {
   AlertTriangle, CheckCircle2, CircleDollarSign, Clock3, Database, ExternalLink,
-  FileWarning, Monitor, ShieldCheck,
+  FileWarning, Monitor, RefreshCw, RotateCcw, ShieldCheck,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { sourceLabel } from './format.js';
@@ -14,11 +14,14 @@ function scanTime(value, zh) {
   });
 }
 
-export function UsageManagement({ data, control, onControlAction, onControlRefresh, onRescan, zh }) {
+export function UsageManagement({ data, control, onControlAction, onControlRefresh, onRescan, onPricingAction, zh }) {
   const [policies, setPolicies] = useState(() => policiesFromSources(control?.sources));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [pricingBusy, setPricingBusy] = useState('');
+  const [pricingMessage, setPricingMessage] = useState('');
+  const [pricingError, setPricingError] = useState('');
   useEffect(() => { setPolicies(policiesFromSources(control?.sources)); }, [control]);
   const savePolicies = async () => {
     setSaving(true); setSaved(false); setSaveError('');
@@ -55,6 +58,16 @@ export function UsageManagement({ data, control, onControlAction, onControlRefre
   const healthLabel = needsAttention
     ? (zh ? '需要留意' : 'Needs attention')
     : (zh ? '健康' : 'Healthy');
+  const changePricing = async (action) => {
+    setPricingBusy(action); setPricingMessage(''); setPricingError('');
+    try {
+      const next = await onPricingAction(action);
+      setPricingMessage(action === 'reset'
+        ? (zh ? '已恢复内置离线目录' : 'Bundled offline catalog restored')
+        : (next.changed ? (zh ? '价格目录已更新' : 'Pricing catalog updated') : (zh ? '已经是最新版本' : 'Already up to date')));
+    } catch (reason) { setPricingError(reason?.message || String(reason)); }
+    finally { setPricingBusy(''); }
+  };
 
   return <section className="management-page-stack" id="sources">
     <DataSourceControls control={control} policies={policies} onChange={setPolicies} onConfigure={configureSource} onSave={savePolicies} saving={saving} saved={saved} zh={zh}/>
@@ -75,7 +88,7 @@ export function UsageManagement({ data, control, onControlAction, onControlRefre
 
       <article className="panel privacy-card">
         <header className="panel-header"><div><h2>{zh ? '数据边界与所有权' : 'Data boundaries & ownership'}</h2><p>{zh ? '本机分析、供应商查询、社区同步与公开参与彼此独立' : 'Local analysis, provider checks, community sync, and public participation stay separate'}</p></div></header>
-        <dl><div><dt><ShieldCheck size={16}/>{zh ? '本机看板通信' : 'Local dashboard traffic'}</dt><dd>127.0.0.1</dd><p>{zh ? '浏览器只访问本机服务；“重新扫描”不会触发社区同步。' : 'The browser talks only to the local service; Rescan never triggers community sync.'}</p></div><div><dt><CircleDollarSign size={16}/>{zh ? '价值口径' : 'Value basis'}</dt><dd>USD</dd><p>{zh ? `${data.pricing.version} · ${data.pricing.entryCount} 条标准 API 价格；这是等价价值，不是实际账单，也不做隐含汇率换算。` : `${data.pricing.version} · ${data.pricing.entryCount} standard API prices; equivalent value, not a bill, with no implicit FX conversion.`}</p></div><div><dt><ShieldCheck size={16}/>{zh ? '社区数据控制' : 'Community data control'}</dt><dd className={data.community.connected ? 'connected' : ''}>{data.community.connected ? (zh ? '已连接' : 'Connected') : (zh ? '未连接' : 'Not connected')}</dd><p>{zh ? '你决定同步哪些 Agent；停止同步不删除历史，删除当前设备数据需要单独确认。公开参与由社区账号设置控制。' : 'You choose which agents sync. Stopping sync keeps history; deleting this device’s cloud data requires separate confirmation. Public participation is an account setting.'}</p></div></dl>
+        <dl><div><dt><ShieldCheck size={16}/>{zh ? '本机看板通信' : 'Local dashboard traffic'}</dt><dd>127.0.0.1</dd><p>{zh ? '浏览器只访问本机服务；“重新扫描”不会触发社区同步。' : 'The browser talks only to the local service; Rescan never triggers community sync.'}</p></div><div className="pricing-boundary"><dt><CircleDollarSign size={16}/>{zh ? '标准 API 价格目录' : 'Standard API pricing'}</dt><dd>{data.pricing.version}</dd><p>{zh ? `${data.pricing.entryCount} 条 · ${data.pricing.source === 'downloaded' ? '社区下载缓存' : '随包内置离线版本'}。只影响 API 等价估算，不是实际账单；更新只下载公开价格，不上传本机用量。` : `${data.pricing.entryCount} entries · ${data.pricing.source === 'downloaded' ? 'community-downloaded cache' : 'bundled offline copy'}. This affects API-equivalent estimates only; updating downloads public prices and uploads no local usage.`}</p><div className="pricing-actions"><button type="button" disabled={Boolean(pricingBusy)} onClick={() => changePricing('update')}><RefreshCw className={pricingBusy === 'update' ? 'spin' : ''} size={13}/>{pricingBusy === 'update' ? (zh ? '检查中' : 'Checking') : (zh ? '检查更新' : 'Check for updates')}</button><button type="button" disabled={Boolean(pricingBusy) || data.pricing.source !== 'downloaded'} onClick={() => changePricing('reset')}><RotateCcw size={13}/>{zh ? '恢复内置' : 'Use bundled'}</button></div>{pricingMessage ? <small className="pricing-feedback positive" role="status">{pricingMessage}</small> : null}{pricingError ? <small className="pricing-feedback warning" role="alert">{pricingError}</small> : null}</div><div><dt><ShieldCheck size={16}/>{zh ? '社区数据控制' : 'Community data control'}</dt><dd className={data.community.connected ? 'connected' : ''}>{data.community.connected ? (zh ? '已连接' : 'Connected') : (zh ? '未连接' : 'Not connected')}</dd><p>{zh ? '你决定同步哪些 Agent；停止同步不删除历史，删除当前设备数据需要单独确认。公开参与由社区账号设置控制。' : 'You choose which agents sync. Stopping sync keeps history; deleting this device’s cloud data requires separate confirmation. Public participation is an account setting.'}</p></div></dl>
         <a className="community-link" href={data.community.url} target="_blank" rel="noreferrer">{zh ? '打开社区用量中心' : 'Open community usage center'}<ExternalLink size={13}/></a>
       </article>
     </section>

@@ -872,6 +872,13 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .privacy-card dt { display: flex; align-items: center; gap: 7px; color: var(--paper); font-size: 11px; }.privacy-card dt svg { color: var(--blue); }
 .privacy-card dd { float: right; margin: -18px 0 0; color: var(--green); font: 600 11px/1 'JetBrains Mono', monospace; }
 .privacy-card p { margin: 8px 0 0; color: var(--grey); font-size: 11px; line-height: 1.65; }
+.pricing-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
+.pricing-actions button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--paper); font: 600 10px/1 'JetBrains Mono', monospace; cursor: pointer; }
+.pricing-actions button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--blue) 65%, var(--line)); color: var(--blue); }
+.pricing-actions button:disabled { cursor: not-allowed; opacity: .45; }
+.pricing-feedback { display: block; margin-top: 8px; font: 500 10px/1.5 'JetBrains Mono', monospace; }
+.pricing-feedback.positive { color: var(--green); }
+.pricing-feedback.warning { color: var(--red); }
 .community-link { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 20px; color: var(--blue); text-decoration: none; font: 500 11px/1 'JetBrains Mono', monospace; }
 
 .export-privacy { display: flex; align-items: flex-start; gap: 9px; margin: 0 20px 20px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--card); color: var(--grey); }

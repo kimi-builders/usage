@@ -213,10 +213,13 @@ Every launch creates a new browser capability token. The server rejects
 non-loopback peers, unexpected Host/Origin values, and unauthorized requests.
 “Rescan” refreshes local data only; “Sync data” is a separate explicit action.
 
-The local price catalog matches models by effective date, context tier, and
-processing tier against standard API prices. Pricing coverage, assumed prices,
-and unpriced tokens remain visible so an incomplete estimate cannot look like a
-real invoice.
+The versioned catalog matches models by effective date, context tier, and
+processing tier against standard API prices. `init` makes a best-effort download
+of the public community catalog; you can also update explicitly in the Dashboard
+or with `pricing update`. This downloads public prices and uploads no local usage.
+Strict validation, last-known-good caching, and a bundled offline snapshot keep
+analytics independent from the API. Coverage, assumptions, and unpriced tokens
+remain visible so an incomplete estimate cannot look like a real invoice.
 
 Session timing uses the same bounded-work definition across tools:
 
@@ -401,12 +404,13 @@ for a second confirmation.
 | `export [--format csv\|json\|jsonl] [-o PATH]` | Export local usage metrics as standard CSV / JSON / JSONL | No |
 | `dashboard [--no-open] [--port N]` | Start the local interactive visual Web dashboard | No by default |
 | `status` | Show local runtime status, config, and connection details | No |
+| `pricing status\|update\|reset` | Inspect or explicitly update pricing, or restore the bundled offline snapshot | status/reset No; update Yes |
 | `inspect --dry-run` | Show roots and parser results | No |
 | `doctor [--json]` | Produce a redacted compatibility report | No |
 | `sources list` | Show local usage-source status and policies | No |
 | `sources set <agent> off\|local\|private` | Set one agent's scan and sync scope | No |
 | `completion [zsh\|bash\|fish]` | Generate Shell auto-completion scripts | No |
-| `init [--api-url URL] [--sync]` | Connect a community device; no upload by default, `--sync` explicitly keeps connect-then-sync behavior | Yes |
+| `init [--api-url URL] [--sync] [--skip-pricing-update]` | Connect a community device and best-effort refresh public pricing; `--sync` alone uploads usage immediately | Yes |
 | `sync [--full]` | Upload changed aggregates; `--full` explicitly replays allowed sources | Yes |
 | `daemon install/status/restart/uninstall` | Manage background sync scheduler | See NETWORK |
 | `summary [--days N] [--remote]` | Read usage summary (local-first by default, `--remote` for cloud) | No local / Yes remote |

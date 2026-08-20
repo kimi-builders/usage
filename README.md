@@ -181,8 +181,10 @@ npx @kimi.builders/usage dashboard
 看板每次启动都会生成新的浏览器访问令牌，并拒绝非本机 Host、Origin 和未授权请求。
 “重新扫描”只刷新本机数据；“同步数据”才会执行社区增量同步。
 
-本地价格表按模型、生效时间、上下文档位和处理档位匹配标准 API 单价。看板会明确展示
-定价覆盖率、假设定价与未定价 Token，避免把一个不完整的估算伪装成真实账单。
+价格目录按模型、生效时间、上下文档位和处理档位匹配标准 API 单价。`init` 会 best-effort
+下载社区公开的版本化目录，也可在看板或通过 `pricing update` 主动更新；下载内容只含公开
+价格，不会上传本机用量。目录经过严格校验并保留 last-known-good，离线时始终可回退随包
+内置快照。看板会明确展示定价覆盖率、假设定价与未定价 Token，避免把不完整估算伪装成账单。
 
 会话时间采用跨工具一致的投入时间口径：
 
@@ -337,12 +339,13 @@ npx @kimi.builders/usage sync --full
 | `export [--format csv\|json\|jsonl] [-o PATH]` | 导出本地用量数据为标准 CSV / JSON / JSONL | 无 |
 | `dashboard [--no-open] [--port N]` | 启动本地交互式可视化 Web 看板 | 默认无 |
 | `status` | 查看本地运行状态、配置与连接信息 | 无 |
+| `pricing status\|update\|reset` | 查看、主动更新价格目录，或恢复随包内置离线快照 | status/reset 无；update 有 |
 | `inspect --dry-run` | 显示读取目录与来源扫描结果 | 无 |
 | `doctor [--json]` | 生成脱敏兼容性与数据一致性报告 | 无 |
 | `sources list` | 查看本地用量来源状态与策略 | 无 |
 | `sources set <agent> off\|local\|private` | 设置单个 Agent 的扫描与同步范围 | 无 |
 | `completion [zsh\|bash\|fish]` | 生成 Shell 自动补全脚本 | 无 |
-| `init [--api-url URL] [--sync]` | 连接社区设备；默认不上传，`--sync` 明确沿用连接后立即同步 | 有 |
+| `init [--api-url URL] [--sync] [--skip-pricing-update]` | 连接社区设备并 best-effort 更新公开价格；默认不上传，`--sync` 才立即同步 | 有 |
 | `sync [--full]` | 上传变化的聚合数据；`--full` 经确认后完整重传允许同步的来源 | 有 |
 | `daemon install/status/restart/uninstall` | 管理后台定时同步服务 | 见 NETWORK |
 | `summary [--days N] [--remote]` | 查看用量汇总（默认本地优先，`--remote` 查看云端） | 本地无 / 远端有 |

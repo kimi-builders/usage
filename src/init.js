@@ -28,7 +28,9 @@ function openBrowser(url) {
   execFile(command, args, () => {});
 }
 
-export async function runInit({ apiUrl = 'https://kimi.builders', manualKey, syncAfterConnect = false } = {}) {
+export async function runInit({
+  apiUrl = 'https://kimi.builders', manualKey, syncAfterConnect = false, updatePricing = true,
+} = {}) {
   const normalizedApiUrl = normalizeCommunityUrl(apiUrl);
   const existing = loadConfig();
   const sessionSalt = existing?.sessionSalt || createSessionSalt();
@@ -79,6 +81,19 @@ export async function runInit({ apiUrl = 'https://kimi.builders', manualKey, syn
     newInstallSourcePolicies({ sync: syncAfterConnect }),
   ));
   console.log(`[3/3] 设备已连接，配置保存到 owner-only 文件。Key 前缀：${apiKey.slice(0, 12)}…`);
+  if (updatePricing) {
+    try {
+      const { updatePriceCatalog } = await import('./pricing/catalog.js');
+      const pricing = await updatePriceCatalog({ apiUrl: normalizedApiUrl });
+      console.log(pricing.changed
+        ? `标准 API 价格目录已更新至 ${pricing.version}。`
+        : `标准 API 价格目录已就绪：${pricing.version}。`);
+    } catch (error) {
+      console.warn(`⚠ 价格目录暂时无法更新，将继续使用随包内置或上次可用版本：${error?.message || error}`);
+    }
+  } else {
+    console.log('已跳过价格目录更新；本地估费继续使用随包内置或上次可用版本。');
+  }
   if (syncAfterConnect) {
     console.log('你明确使用了 --sync；现在开始扫描并上传已允许的数据源。');
     const { runSync } = await import('./sync.js');
