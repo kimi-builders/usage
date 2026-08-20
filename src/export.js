@@ -4,11 +4,12 @@ import { loadConfig } from './config.js';
 import { collectLocalSnapshot } from './local/snapshot.js';
 import { createDashboardData } from './local/dashboard-data.js';
 import { computeStats } from './stats.js';
-import { c, formatBytes, formatNumber, getLocale, t } from './cli-ui.js';
+import { c, formatBytes, formatNumber, getLocale } from './cli-ui.js';
 
 function escapeCsvField(value) {
   if (value == null) return '';
-  const str = String(value);
+  const raw = String(value);
+  const str = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
   if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
     return `"${str.replaceAll('"', '""')}"`;
   }
@@ -31,13 +32,26 @@ export function formatBucketsCsv(buckets) {
     'reasoning_output_tokens',
     'total_tokens',
     'cost_usd',
+    'pricing_status',
+    'priced_tokens',
+    'unpriced_tokens',
+    'assumed_tokens',
+    'price_version',
     'request_count',
     'project',
   ];
 
   const rows = [headers.join(',')];
   for (const b of buckets) {
-    const costUsd = b.costMicros != null ? (b.costMicros / 1e6).toFixed(4) : '0.0000';
+    const pricingStatus = b.status
+      || ((b.unpricedTokens || 0) > 0
+        ? ((b.pricedTokens || 0) > 0 ? 'partial' : 'unpriced')
+        : (b.costMicros == null ? 'unpriced' : 'priced'));
+    const costUsd = pricingStatus === 'unpriced'
+      ? ''
+      : Number.isFinite(b.costMicros)
+        ? (b.costMicros / 1e6).toFixed(4)
+        : '';
     const row = [
       escapeCsvField(b.source),
       escapeCsvField(b.model),
@@ -53,12 +67,39 @@ export function formatBucketsCsv(buckets) {
       b.reasoningOutputTokens || 0,
       b.totalTokens || 0,
       costUsd,
+      escapeCsvField(pricingStatus),
+      b.pricedTokens || 0,
+      b.unpricedTokens || 0,
+      b.assumedTokens || 0,
+      escapeCsvField(b.priceVersion || ''),
       b.requestCount || 0,
       escapeCsvField(b.project || ''),
     ];
     rows.push(row.join(','));
   }
   return rows.join('\n');
+}
+
+export function validateExportOptions(formatValue = 'csv', typeValue = 'buckets', isZh = false) {
+  const format = String(formatValue || 'csv').toLowerCase().trim();
+  const type = String(typeValue || 'buckets').toLowerCase().trim();
+  const allowedTypes = {
+    csv: new Set(['buckets', 'sessions']),
+    json: new Set(['buckets', 'sessions', 'summary', 'all']),
+    jsonl: new Set(['buckets', 'sessions']),
+  };
+  if (!allowedTypes[format]) {
+    throw new Error(isZh
+      ? `不支持的导出格式“${format}”；可用格式：csv、json、jsonl。`
+      : `Unsupported export format "${format}"; use csv, json, or jsonl.`);
+  }
+  if (!allowedTypes[format].has(type)) {
+    const choices = [...allowedTypes[format]].join(', ');
+    throw new Error(isZh
+      ? `${format.toUpperCase()} 不支持“${type}”类型；可用类型：${choices}。`
+      : `${format.toUpperCase()} does not support type "${type}"; use ${choices}.`);
+  }
+  return { format, type };
 }
 
 export function formatSessionsCsv(sessions) {
@@ -91,14 +132,13 @@ export function formatSessionsCsv(sessions) {
 }
 
 export async function runExport(options = {}) {
+  const isZh = getLocale() === 'zh';
+  const { format, type } = validateExportOptions(options.format, options.type, isZh);
   const config = loadConfig();
   const snapshot = await collectLocalSnapshot({ config });
   const dashboardData = createDashboardData(snapshot, { config });
 
-  const format = String(options.format || 'csv').toLowerCase().trim();
-  const type = String(options.type || 'buckets').toLowerCase().trim();
   const outputPath = options.output ? resolve(options.output) : null;
-  const isZh = getLocale() === 'zh';
 
   // Apply period/source/model filters if specified
   const period = options.period || (options.days ? `${options.days}d` : 'all');
@@ -143,7 +183,6 @@ export async function runExport(options = {}) {
     const items = type === 'sessions' ? sessions : buckets;
     outputContent = items.map((item) => JSON.stringify(item)).join('\n');
   } else {
-    // Default CSV
     outputContent = type === 'sessions'
       ? formatSessionsCsv(sessions)
       : formatBucketsCsv(buckets);
@@ -152,7 +191,13 @@ export async function runExport(options = {}) {
   if (outputPath) {
     writeFileSync(outputPath, outputContent, 'utf8');
     const bytes = Buffer.byteLength(outputContent, 'utf8');
-    const rowCount = type === 'sessions' ? sessions.length : buckets.length;
+    const rowCount = type === 'sessions'
+      ? sessions.length
+      : type === 'all'
+        ? buckets.length + sessions.length
+        : type === 'summary'
+          ? 1
+          : buckets.length;
     console.log(`\n${c.green('✓')} ${isZh ? '导出成功' : 'Export completed'}: ${c.bold(outputPath)}`);
     console.log(`  • ${isZh ? '格式' : 'Format'}: ${format.toUpperCase()} (${type})`);
     console.log(`  • ${isZh ? '记录数' : 'Rows'}: ${formatNumber(rowCount)}`);

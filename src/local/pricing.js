@@ -1,4 +1,4 @@
-export const LOCAL_PRICE_CATALOG_VERSION = '2026-08-14';
+export const LOCAL_PRICE_CATALOG_VERSION = '2026-08-19';
 
 const SOURCES = {
   openai: 'https://developers.openai.com/api/docs/pricing',
@@ -26,7 +26,7 @@ function entry(pattern, input, cacheRead, output, options = {}) {
     output,
     reasoning: options.reasoning ?? null,
     sourceUrl: options.sourceUrl || '',
-    verifiedAt: options.verifiedAt || '2026-08-08',
+    verifiedAt: options.verifiedAt || '2026-08-19',
     version: options.version || LOCAL_PRICE_CATALOG_VERSION,
     basis: 'standard-api',
   };
@@ -79,30 +79,57 @@ const contextPrices = (pattern, short, long, options = {}) => [
 ];
 
 const CURRENT_PRICE_START = '2026-08-14T00:00:00.000Z';
+const PRICE_MATRIX_START = '2026-08-19T00:00:00.000Z';
 
 export const LOCAL_PRICE_CATALOG = [
   entry('grok-4.5', 2, 0.3, 6, { effectiveFrom: CURRENT_PRICE_START }),
+  ...contextPrices('grok-4.6',
+    { input: 2, cacheRead: 0.5, output: 6 },
+    { input: 4, cacheRead: 1, output: 12 },
+    { effectiveFrom: PRICE_MATRIX_START }),
+  entry('grok-build-0.1', 1, 0.2, 2, { effectiveFrom: PRICE_MATRIX_START }),
+  entry('muse-spark-1.2-contributor', 0.1, 0.002, 0.2, { effectiveFrom: PRICE_MATRIX_START }),
+  entry('muse-spark-1.2', 1.25, 0.15, 4.25, { effectiveFrom: PRICE_MATRIX_START }),
   entry('kimi-k3', 3, 0.3, 15, { effectiveFrom: '2026-07-16T00:00:00.000Z', sourceUrl: SOURCES.kimi }),
   entry('kimi-k2.7-code', 0.95, 0.19, 4, { effectiveFrom: '2026-06-01T00:00:00.000Z', sourceUrl: SOURCES.kimi }),
   entry('kimi-k2.6', 0.95, null, 4, {
     effectiveFrom: '2026-06-01T00:00:00.000Z', effectiveTo: CURRENT_PRICE_START, sourceUrl: SOURCES.kimi,
   }),
   entry('kimi-k2.6', 0.95, 0.16, 4, { effectiveFrom: CURRENT_PRICE_START, sourceUrl: SOURCES.kimi }),
-  entry('kimi-k2.5', 0.6, null, 3, { effectiveFrom: '2026-06-01T00:00:00.000Z', sourceUrl: SOURCES.kimi }),
-  entry('kimi-k2-thinking', 1.15, null, 8, { effectiveFrom: '2025-11-06T00:00:00.000Z', sourceUrl: SOURCES.kimi }),
-  entry('kimi-k2-turbo', 1.15, null, 8, { effectiveFrom: '2025-08-01T00:00:00.000Z', sourceUrl: SOURCES.kimi }),
+  entry('kimi-k2.5', 0.6, null, 3, {
+    effectiveFrom: '2026-06-01T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START, sourceUrl: SOURCES.kimi,
+  }),
+  entry('kimi-k2.5', 0.6, 0.1, 3, { effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.kimi }),
+  entry('kimi-k2-thinking', 1.15, null, 8, {
+    effectiveFrom: '2025-11-06T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START, sourceUrl: SOURCES.kimi,
+  }),
+  entry('kimi-k2-turbo', 1.15, null, 8, {
+    effectiveFrom: '2025-08-01T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START, sourceUrl: SOURCES.kimi,
+  }),
   claude('claude-fable-5', 10, 1, 50, { effectiveFrom: '2026-06-01T00:00:00.000Z' }),
   claude('claude-opus-5', 5, 0.5, 25, { effectiveFrom: '2026-06-01T00:00:00.000Z' }),
-  claude('claude-sonnet-5', 2, 0.2, 10, {
-    effectiveFrom: '2026-06-01T00:00:00.000Z',
-    effectiveTo: '2026-09-01T00:00:00.000Z',
-  }),
-  claude('claude-sonnet-5', 3, 0.3, 15, { effectiveFrom: '2026-09-01T00:00:00.000Z' }),
+  claude('claude-opus-4-8', 5, 0.5, 25, { effectiveFrom: PRICE_MATRIX_START }),
+  claude('claude-opus-4-7', 5, 0.5, 25, { effectiveFrom: PRICE_MATRIX_START }),
+  claude('claude-opus-4-6', 5, 0.5, 25, { effectiveFrom: PRICE_MATRIX_START }),
+  claude('claude-opus-4-5', 5, 0.5, 25, { effectiveFrom: PRICE_MATRIX_START }),
+  claude('claude-sonnet-5', 2, 0.2, 10, { effectiveFrom: '2026-06-01T00:00:00.000Z' }),
+  claude('claude-sonnet-4-6', 3, 0.3, 15, { effectiveFrom: PRICE_MATRIX_START }),
+  claude('claude-sonnet-4-5', 3, 0.3, 15, { effectiveFrom: PRICE_MATRIX_START, contextTier: 'short' }),
+  claude('claude-sonnet-4-5', 6, 0.6, 22.5, { effectiveFrom: PRICE_MATRIX_START, contextTier: 'long' }),
   claude('claude-haiku-4-5', 1, 0.1, 5, { effectiveFrom: '2025-10-01T00:00:00.000Z' }),
-  claude('claude-opus-4-1', 15, 1.5, 75, { effectiveFrom: '2025-08-05T00:00:00.000Z' }),
-  claude('claude-opus-4', 5, 0.5, 25, { effectiveFrom: '2025-05-01T00:00:00.000Z' }),
-  claude('claude-sonnet-4', 3, 0.3, 15, { effectiveFrom: '2025-05-01T00:00:00.000Z' }),
-  ...gpt56('gpt-5.6', 5, 6.25, 0.5, 30, { effectiveFrom: '2026-07-09T00:00:00.000Z' }),
+  claude('claude-opus-4-1', 15, 1.5, 75, {
+    effectiveFrom: '2025-08-05T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START,
+  }),
+  claude('claude-opus-4', 5, 0.5, 25, {
+    effectiveFrom: '2025-05-01T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START,
+  }),
+  claude('claude-sonnet-4', 3, 0.3, 15, {
+    effectiveFrom: '2025-05-01T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START,
+  }),
+  ...gpt56('gpt-5.6', 5, 6.25, 0.5, 30, {
+    effectiveFrom: '2026-07-09T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START,
+  }),
+  ...gpt56('gpt-5.6-sol', 5, 6.25, 0.5, 30, { effectiveFrom: PRICE_MATRIX_START }),
   ...gpt56('gpt-5.6-terra', 2.5, 3.125, 0.25, 15, {
     effectiveFrom: '2026-07-09T00:00:00.000Z',
     effectiveTo: '2026-07-30T00:00:00.000Z',
@@ -114,23 +141,63 @@ export const LOCAL_PRICE_CATALOG = [
   }),
   ...gpt56('gpt-5.6-luna', 0.2, 0.25, 0.02, 1.2, { effectiveFrom: '2026-07-30T00:00:00.000Z' }),
   entry('codex-auto-review', 2.5, 0.25, 15, {
-    match: 'exact', source: 'codex', effectiveFrom: '2026-04-01T00:00:00.000Z', sourceUrl: SOURCES.openai,
+    match: 'exact', source: 'codex', effectiveFrom: '2026-04-01T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START, sourceUrl: SOURCES.openai,
   }),
-  entry('gpt-5.5-pro', 30, null, 180, { effectiveFrom: '2026-06-01T00:00:00.000Z', sourceUrl: SOURCES.openai }),
-  entry('gpt-5.5', 5, 0.5, 30, { effectiveFrom: '2026-06-01T00:00:00.000Z', sourceUrl: SOURCES.openai }),
+  entry('gpt-5.5-pro', 30, null, 180, {
+    effectiveFrom: '2026-06-01T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START, sourceUrl: SOURCES.openai,
+  }),
+  entry('gpt-5.5-pro', 30, 30, 180, { effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.openai }),
+  entry('gpt-5.5', 5, 0.5, 30, {
+    effectiveFrom: '2026-06-01T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START, sourceUrl: SOURCES.openai,
+  }),
+  ...contextPrices('gpt-5.5',
+    { input: 5, cacheRead: 0.5, output: 30 },
+    { input: 10, cacheRead: 1, output: 45 },
+    { effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.openai }),
   entry('gpt-5.4-mini', 0.75, 0.075, 4.5, { effectiveFrom: '2026-04-01T00:00:00.000Z', sourceUrl: SOURCES.openai }),
-  entry('gpt-5.4', 2.5, 0.25, 15, { effectiveFrom: '2026-04-01T00:00:00.000Z', sourceUrl: SOURCES.openai }),
-  entry('gpt-5.3-codex', 1.75, null, 14, { effectiveFrom: '2026-03-01T00:00:00.000Z', sourceUrl: SOURCES.openai }),
+  entry('gpt-5.4-nano', 0.2, 0.02, 1.25, { effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.openai }),
+  entry('gpt-5.4-pro', 30, 30, 180, { effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.openai }),
+  entry('gpt-5.4', 2.5, 0.25, 15, {
+    effectiveFrom: '2026-04-01T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START, sourceUrl: SOURCES.openai,
+  }),
+  ...contextPrices('gpt-5.4',
+    { input: 2.5, cacheRead: 0.25, output: 15 },
+    { input: 5, cacheRead: 0.5, output: 22.5 },
+    { effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.openai }),
+  entry('gpt-5.3-codex', 1.75, null, 14, {
+    effectiveFrom: '2026-03-01T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START, sourceUrl: SOURCES.openai,
+  }),
+  entry('gpt-5.3-codex', 1.75, 0.175, 14, { effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.openai }),
   entry('gpt-5.2-codex', 1.75, 0.175, 14, { effectiveFrom: '2026-02-01T00:00:00.000Z', sourceUrl: SOURCES.openai }),
   entry('gpt-5.2', 1.75, 0.175, 14, { effectiveFrom: '2026-02-01T00:00:00.000Z', sourceUrl: SOURCES.openai }),
-  entry('gpt-5.1-codex-mini', 0.25, null, 2, { effectiveFrom: '2026-02-01T00:00:00.000Z', sourceUrl: SOURCES.openai }),
-  entry('gpt-5.1-codex', 1.25, 0.125, 10, { effectiveFrom: '2026-02-01T00:00:00.000Z', sourceUrl: SOURCES.openai }),
-  entry('gpt-5.1', 1.25, 0.125, 10, { effectiveFrom: '2026-02-01T00:00:00.000Z', sourceUrl: SOURCES.openai }),
-  entry('gpt-5-codex', 1.25, 0.125, 10, { effectiveFrom: '2025-09-15T00:00:00.000Z', sourceUrl: SOURCES.openai }),
-  entry('gpt-5', 1.25, 0.125, 10, { effectiveFrom: '2025-08-07T00:00:00.000Z', sourceUrl: SOURCES.openai }),
+  entry('gpt-5.1-codex-mini', 0.25, null, 2, {
+    effectiveFrom: '2026-02-01T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START, sourceUrl: SOURCES.openai,
+  }),
+  entry('gpt-5.1-codex-mini', 0.25, 0.025, 2, { effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.openai }),
+  entry('gpt-5.1-codex-max', 1.25, 0.125, 10, { effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.openai }),
+  entry('gpt-5.1-codex', 1.25, 0.125, 10, {
+    effectiveFrom: '2026-02-01T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START, sourceUrl: SOURCES.openai,
+  }),
+  entry('gpt-5.1-codex', 1.07, 0.107, 8.5, { effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.openai }),
+  entry('gpt-5.1', 1.25, 0.125, 10, {
+    effectiveFrom: '2026-02-01T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START, sourceUrl: SOURCES.openai,
+  }),
+  entry('gpt-5.1', 1.07, 0.107, 8.5, { effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.openai }),
+  entry('gpt-5-codex', 1.25, 0.125, 10, {
+    effectiveFrom: '2025-09-15T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START, sourceUrl: SOURCES.openai,
+  }),
+  entry('gpt-5-codex', 1.07, 0.107, 8.5, { effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.openai }),
+  entry('gpt-5-nano', 0.05, 0.005, 0.4, { effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.openai }),
+  entry('gpt-5', 1.25, 0.125, 10, {
+    effectiveFrom: '2025-08-07T00:00:00.000Z', effectiveTo: PRICE_MATRIX_START, sourceUrl: SOURCES.openai,
+  }),
+  entry('gpt-5', 1.07, 0.107, 8.5, { effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.openai }),
   entry('glm-5.3', 1.4, 0.26, 4.4, { effectiveFrom: CURRENT_PRICE_START, sourceUrl: SOURCES.zai }),
   entry('glm-5.2', 1.4, 0.26, 4.4, { effectiveFrom: '2026-06-13T00:00:00.000Z', sourceUrl: SOURCES.zai }),
   entry('glm-5.1', 1.4, 0.26, 4.4, { effectiveFrom: '2026-01-01T00:00:00.000Z', sourceUrl: SOURCES.zai }),
+  entry('glm-5', 1, 0.2, 3.2, {
+    match: 'exact', effectiveFrom: PRICE_MATRIX_START, sourceUrl: SOURCES.zai,
+  }),
   entry('mimo-v2.5-pro', 0.435, 0.003625, 0.87, { effectiveFrom: CURRENT_PRICE_START }),
   entry('mimo-v2.5', 0.14, 0.0028, 0.28, { effectiveFrom: CURRENT_PRICE_START }),
   entry('minimax-m3', 0.6, null, 2.4, {
@@ -153,16 +220,32 @@ export const LOCAL_PRICE_CATALOG = [
     { input: 0.5, cacheRead: 0.05, cacheWrite: 0.625, output: 3 },
     { input: 2, cacheRead: 0.2, cacheWrite: 2.5, output: 6 },
     { effectiveFrom: CURRENT_PRICE_START }),
-  entry('deepseek-v4-pro', 0.435, 0.003625, 0.87, { effectiveFrom: CURRENT_PRICE_START }),
-  entry('deepseek-v4-flash', 0.14, 0.0028, 0.28, { effectiveFrom: CURRENT_PRICE_START }),
+  entry('qwen3.5-plus', 0.2, 0.02, 1.2, { effectiveFrom: PRICE_MATRIX_START, cacheWrite: 0.25 }),
+  entry('deepseek-v4-pro', 0.435, 0.003625, 0.87, { effectiveFrom: CURRENT_PRICE_START, effectiveTo: PRICE_MATRIX_START }),
+  entry('deepseek-v4-pro', 1.32, 0.044, 3.96, { effectiveFrom: PRICE_MATRIX_START }),
+  entry('deepseek-v4-pro', 1.32, 0.044, 3.96, { effectiveFrom: PRICE_MATRIX_START, processingTier: 'peak' }),
+  entry('deepseek-v4-pro', 0.66, 0.022, 1.98, { effectiveFrom: PRICE_MATRIX_START, processingTier: 'off-peak' }),
+  entry('deepseek-v4-flash', 0.14, 0.0028, 0.28, { effectiveFrom: CURRENT_PRICE_START, effectiveTo: PRICE_MATRIX_START }),
+  entry('deepseek-v4-flash', 0.44, 0.014, 1.32, { effectiveFrom: PRICE_MATRIX_START }),
+  entry('deepseek-v4-flash', 0.44, 0.014, 1.32, { effectiveFrom: PRICE_MATRIX_START, processingTier: 'peak' }),
+  entry('deepseek-v4-flash', 0.22, 0.007, 0.66, { effectiveFrom: PRICE_MATRIX_START, processingTier: 'off-peak' }),
   entry('hy3', 0.14, 0.035, 0.58, { effectiveFrom: CURRENT_PRICE_START }),
-  entry('gemini-3.7-pro', 2.5, 0.25, 15, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
-  entry('gemini-3.5-pro', 2.5, 0.25, 15, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
-  entry('gemini-3.1-pro', 2.5, 0.25, 15, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
-  entry('gemini-3.7-flash', 0.5, 0.05, 3, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
-  entry('gemini-3.5-flash', 0.5, 0.05, 3, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
-  entry('gemini-3-flash-preview', 0.5, 0.05, 3, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
-  entry('gemini-3-flash', 0.5, null, 3, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
+  entry('gemini-3.7-flash', 1.5, 0.15, 7.5, { effectiveFrom: PRICE_MATRIX_START }),
+  entry('gemini-3.6-flash', 1.5, 0.15, 7.5, { effectiveFrom: PRICE_MATRIX_START }),
+  ...contextPrices('gemini-3.1-pro',
+    { input: 2, cacheRead: 0.2, output: 12 },
+    { input: 4, cacheRead: 0.4, output: 18 },
+    { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google, verifiedAt: '2026-08-19' }),
+  entry('gemini-3.5-flash', 1.5, 0.15, 9, {
+    effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google, verifiedAt: '2026-08-19',
+  }),
+  entry('gemini-3.5-flash-lite', 0.3, 0.03, 2.5, { effectiveFrom: PRICE_MATRIX_START }),
+  entry('gemini-3-flash-preview', 0.5, 0.05, 3, {
+    effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google, verifiedAt: '2026-08-19',
+  }),
+  entry('gemini-3-flash', 0.5, 0.05, 3, {
+    effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google, verifiedAt: '2026-08-19',
+  }),
 ];
 
 function contextRank(price, contextTier) {
@@ -206,7 +289,10 @@ export function matchLocalPrice(bucket) {
     : [model];
   const candidates = [...new Set(names.flatMap((name) => {
     const normalized = name.toLowerCase().replace(/[\s_]+/g, '-');
-    return normalized === name ? [name] : [name, normalized];
+    const claudeVersionAlias = normalized.startsWith('claude-')
+      ? normalized.replace(/-(\d+)\.(\d+)(?=-|$)/g, '-$1-$2')
+      : normalized;
+    return [name, normalized, claudeVersionAlias];
   }))];
   for (const candidate of candidates) {
     const match = matchCandidate(candidate, bucket, at);

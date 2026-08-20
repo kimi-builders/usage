@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeStats, renderStatsReport, runStats } from '../src/stats.js';
+import { computeStats, formatDayKey, parsePeriod, renderStatsReport, runStats } from '../src/stats.js';
 import { setLocale } from '../src/cli-ui.js';
 
 function createMockDashboardData() {
@@ -135,4 +135,46 @@ test('renderStatsReport generates clean formatted text report', () => {
   assert.match(reportEn, /Total Tokens/);
 
   setLocale(null);
+});
+
+test('model and project filters expose only attributable session and timing evidence', () => {
+  const data = createMockDashboardData();
+  const byModel = computeStats(data, { period: 'all', model: 'kimi-k3' });
+  assert.deepEqual(byModel.attribution, {
+    sessions: 'unavailable:model',
+    timing: 'unavailable:model',
+  });
+  assert.equal(byModel.totals.sessionCount, null);
+  assert.equal(byModel.totals.activeSeconds, null);
+  assert.equal(byModel.sources[0].sessions, null);
+  assert.equal(byModel.sources[0].activeSeconds, null);
+  assert.equal(byModel.projects[0].sessions, null);
+
+  const byProject = computeStats(data, { period: 'all', project: 'project-beta' });
+  assert.deepEqual(byProject.attribution, {
+    sessions: 'exact',
+    timing: 'unavailable:project',
+  });
+  assert.equal(byProject.totals.sessionCount, 1);
+  assert.equal(byProject.totals.activeSeconds, null);
+  assert.equal(byProject.sources[0].sessions, 1);
+  assert.equal(byProject.sources[0].activeSeconds, null);
+
+  setLocale('en');
+  assert.match(renderStatsReport(byModel), /not attributable to models/);
+  assert.match(renderStatsReport(byProject), /not attributable to projects/);
+  setLocale(null);
+});
+
+test('date-key labels do not reinterpret a local calendar day as UTC', () => {
+  assert.equal(formatDayKey('2026-08-19'), '08-19');
+});
+
+test('24H remains an elapsed window while day ranges use local calendar boundaries', () => {
+  const now = new Date('2026-03-10T12:00:00-07:00');
+  const rolling = parsePeriod('24h', now);
+  const sevenDays = parsePeriod('7d', now);
+  assert.equal(rolling.endMs - rolling.startMs, 24 * 3_600_000);
+  assert.equal(new Date(sevenDays.startMs).getHours(), 0);
+  assert.equal(new Date(sevenDays.startMs).getDate(), 4);
 });

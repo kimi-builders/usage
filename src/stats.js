@@ -12,16 +12,21 @@ import {
   pad,
   renderBar,
   renderTable,
-  stringWidth,
-  t,
 } from './cli-ui.js';
 
-function parsePeriod(periodArg = '7d') {
+export function parsePeriod(periodArg = '7d', nowValue = new Date()) {
   const str = String(periodArg || '7d').toLowerCase().trim();
-  const now = Date.now();
-  const today = new Date();
+  const current = new Date(nowValue);
+  const now = current.getTime();
+  const today = new Date(current);
   today.setHours(0, 0, 0, 0);
   const todayStartMs = today.getTime();
+
+  const calendarStart = (days) => {
+    const start = new Date(today);
+    start.setDate(start.getDate() - (days - 1));
+    return start.getTime();
+  };
 
   if (str === 'today') {
     return { name: 'today', startMs: todayStartMs, endMs: now, days: 1 };
@@ -30,22 +35,22 @@ function parsePeriod(periodArg = '7d') {
     return { name: '24h', startMs: now - 24 * 3600 * 1000, endMs: now, days: 1 };
   }
   if (str === '7d' || str === '7') {
-    return { name: '7d', startMs: todayStartMs - 6 * 86400 * 1000, endMs: now, days: 7 };
+    return { name: '7d', startMs: calendarStart(7), endMs: now, days: 7 };
   }
   if (str === '30d' || str === '30') {
-    return { name: '30d', startMs: todayStartMs - 29 * 86400 * 1000, endMs: now, days: 30 };
+    return { name: '30d', startMs: calendarStart(30), endMs: now, days: 30 };
   }
   if (str === '90d' || str === '90') {
-    return { name: '90d', startMs: todayStartMs - 89 * 86400 * 1000, endMs: now, days: 90 };
+    return { name: '90d', startMs: calendarStart(90), endMs: now, days: 90 };
   }
   if (str === 'all' || str === 'all-time') {
     return { name: 'all', startMs: 0, endMs: now, days: null };
   }
   const numeric = Number(str.replace(/d$/, ''));
   if (Number.isFinite(numeric) && numeric > 0) {
-    return { name: `${numeric}d`, startMs: todayStartMs - (numeric - 1) * 86400 * 1000, endMs: now, days: numeric };
+    return { name: `${numeric}d`, startMs: calendarStart(numeric), endMs: now, days: numeric };
   }
-  return { name: '7d', startMs: todayStartMs - 6 * 86400 * 1000, endMs: now, days: 7 };
+  return { name: '7d', startMs: calendarStart(7), endMs: now, days: 7 };
 }
 
 function formatDate(dateMs) {
@@ -53,6 +58,11 @@ function formatDate(dateMs) {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${month}-${day}`;
+}
+
+export function formatDayKey(dayKey) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dayKey || ''));
+  return match ? `${match[2]}-${match[3]}` : formatDate(Date.parse(dayKey));
 }
 
 function formatFullDate(dateMs) {
@@ -68,6 +78,16 @@ export function computeStats(dashboardData, options = {}) {
   const sourceFilter = options.source ? String(options.source).toLowerCase() : null;
   const modelFilter = options.model ? String(options.model).toLowerCase() : null;
   const projectFilter = options.project ? String(options.project).toLowerCase() : null;
+  const sessionCountAttributable = !modelFilter;
+  const timingAttributable = !modelFilter && !projectFilter;
+  const attribution = {
+    sessions: sessionCountAttributable ? 'exact' : 'unavailable:model',
+    timing: timingAttributable
+      ? 'exact'
+      : modelFilter
+        ? 'unavailable:model'
+        : 'unavailable:project',
+  };
 
   const filteredBuckets = [];
   for (const bucket of dashboardData.buckets) {
@@ -102,9 +122,9 @@ export function computeStats(dashboardData, options = {}) {
     pricedTokens: 0,
     unpricedTokens: 0,
     requestCount: 0,
-    activeSeconds: 0,
-    durationSeconds: 0,
-    sessionCount: filteredSessions.length,
+    activeSeconds: timingAttributable ? 0 : null,
+    durationSeconds: timingAttributable ? 0 : null,
+    sessionCount: sessionCountAttributable ? filteredSessions.length : null,
     bucketCount: filteredBuckets.length,
   };
 
@@ -121,7 +141,7 @@ export function computeStats(dashboardData, options = {}) {
     totals.requestCount += bucket.requestCount || 0;
   }
 
-  if (Array.isArray(dashboardData.activityHours)) {
+  if (timingAttributable && Array.isArray(dashboardData.activityHours)) {
     for (const hour of dashboardData.activityHours) {
       const time = Date.parse(hour.hourStart);
       if (time < period.startMs || time > period.endMs) continue;
@@ -129,7 +149,7 @@ export function computeStats(dashboardData, options = {}) {
       totals.activeSeconds += hour.activeSeconds || 0;
       totals.durationSeconds += hour.engagedSeconds || 0;
     }
-  } else {
+  } else if (timingAttributable) {
     for (const session of filteredSessions) {
       totals.activeSeconds += Number(session.activeSeconds || 0);
       totals.durationSeconds += Number(session.durationSeconds || 0);
@@ -225,8 +245,8 @@ export function computeStats(dashboardData, options = {}) {
         tokens: 0,
         costMicros: 0,
         requests: 0,
-        sessions: 0,
-        activeSeconds: 0,
+        sessions: sessionCountAttributable ? 0 : null,
+        activeSeconds: timingAttributable ? 0 : null,
       });
     }
     const data = sourceMap.get(bucket.source);
@@ -234,13 +254,13 @@ export function computeStats(dashboardData, options = {}) {
     data.costMicros += bucket.costMicros || 0;
     data.requests += bucket.requestCount || 0;
   }
-  for (const session of filteredSessions) {
+  for (const session of sessionCountAttributable ? filteredSessions : []) {
     if (sourceMap.has(session.source)) {
       const data = sourceMap.get(session.source);
       data.sessions += 1;
     }
   }
-  if (Array.isArray(dashboardData.activityHours)) {
+  if (timingAttributable && Array.isArray(dashboardData.activityHours)) {
     for (const hour of dashboardData.activityHours) {
       const time = Date.parse(hour.hourStart);
       if (time < period.startMs || time > period.endMs) continue;
@@ -249,7 +269,7 @@ export function computeStats(dashboardData, options = {}) {
         sourceMap.get(hour.source).activeSeconds += hour.activeSeconds || 0;
       }
     }
-  } else {
+  } else if (timingAttributable) {
     for (const session of filteredSessions) {
       if (sourceMap.has(session.source)) {
         sourceMap.get(session.source).activeSeconds += Number(session.activeSeconds || 0);
@@ -279,7 +299,7 @@ export function computeStats(dashboardData, options = {}) {
         tokens: 0,
         costMicros: 0,
         requests: 0,
-        sessions: 0,
+        sessions: sessionCountAttributable ? 0 : null,
       });
     }
     const data = projectMap.get(bucket.project);
@@ -287,7 +307,7 @@ export function computeStats(dashboardData, options = {}) {
     data.costMicros += bucket.costMicros || 0;
     data.requests += bucket.requestCount || 0;
   }
-  for (const session of filteredSessions) {
+  for (const session of sessionCountAttributable ? filteredSessions : []) {
     if (session.project && projectMap.has(session.project)) {
       projectMap.get(session.project).sessions += 1;
     }
@@ -305,6 +325,7 @@ export function computeStats(dashboardData, options = {}) {
 
   return {
     period,
+    attribution,
     totals,
     daily,
     models,
@@ -352,8 +373,12 @@ export function renderStatsReport(stats) {
     ],
     [
       isZh ? '• 活跃时长' : '• Active Duration',
-      c.bold(formatDuration(totals.activeSeconds)),
-      `${isZh ? '共' : 'Total'} ${totals.sessionCount} ${isZh ? '个会话' : 'sessions'} · ${totals.requestCount} ${isZh ? '次请求' : 'requests'}`,
+      totals.activeSeconds == null ? c.dim('—') : c.bold(formatDuration(totals.activeSeconds)),
+      totals.sessionCount == null
+        ? `${isZh ? '模型维度无法归因会话与时长' : 'Sessions and timing are not attributable to models'} · ${totals.requestCount} ${isZh ? '次请求' : 'requests'}`
+        : totals.activeSeconds == null
+          ? `${isZh ? `共 ${totals.sessionCount} 个会话 · 项目维度无法归因时长` : `${totals.sessionCount} sessions · timing is not attributable to projects`} · ${totals.requestCount} ${isZh ? '次请求' : 'requests'}`
+          : `${isZh ? '共' : 'Total'} ${totals.sessionCount} ${isZh ? '个会话' : 'sessions'} · ${totals.requestCount} ${isZh ? '次请求' : 'requests'}`,
     ],
   ];
 
@@ -368,7 +393,7 @@ export function renderStatsReport(stats) {
     lines.push(`\n${c.bold(chartTitle)}`);
     const maxDayTokens = Math.max(...daily.map((d) => d.tokens), 1);
     for (const d of daily) {
-      const dayLabel = formatDate(Date.parse(d.day));
+      const dayLabel = formatDayKey(d.day);
       const bar = renderBar(d.tokens, maxDayTokens, 16, { color: 'cyan' });
       const tokenStr = pad(formatTokens(d.tokens), 8, 'right');
       const topModelStr = d.topModel ? `[${d.topModel.slice(0, 24)}]` : '';
@@ -397,8 +422,8 @@ export function renderStatsReport(stats) {
       { key: 'source', header: isZh ? 'Agent 来源' : 'Agent Source', align: 'left', minWidth: 16 },
       { key: 'tokens', header: 'Tokens', align: 'right', format: (val) => formatTokens(val) },
       { key: 'cost', header: isZh ? '费用' : 'Cost', align: 'right', format: (val) => formatCurrency(val) },
-      { key: 'sessions', header: isZh ? '会话数' : 'Sessions', align: 'right', format: (val) => formatNumber(val) },
-      { key: 'activeSeconds', header: isZh ? '活跃时长' : 'Active Time', align: 'right', format: (val) => formatDuration(val) },
+      { key: 'sessions', header: isZh ? '会话数' : 'Sessions', align: 'right', format: (val) => val == null ? '—' : formatNumber(val) },
+      { key: 'activeSeconds', header: isZh ? '活跃时长' : 'Active Time', align: 'right', format: (val) => val == null ? '—' : formatDuration(val) },
     ];
     lines.push(renderTable({ columns: sourceCols, rows: sources, divider: '─' }));
   }
@@ -411,7 +436,7 @@ export function renderStatsReport(stats) {
       { key: 'project', header: isZh ? '项目名' : 'Project', align: 'left', minWidth: 20 },
       { key: 'tokens', header: 'Tokens', align: 'right', format: (val) => formatTokens(val) },
       { key: 'cost', header: isZh ? '费用' : 'Cost', align: 'right', format: (val) => formatCurrency(val) },
-      { key: 'sessions', header: isZh ? '会话' : 'Sessions', align: 'right', format: (val) => formatNumber(val) },
+      { key: 'sessions', header: isZh ? '会话' : 'Sessions', align: 'right', format: (val) => val == null ? '—' : formatNumber(val) },
     ];
     lines.push(renderTable({ columns: projectCols, rows: projects.slice(0, 5), divider: '─' }));
   }

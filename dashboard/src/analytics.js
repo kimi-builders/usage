@@ -53,7 +53,8 @@ export function rangeStart(range, now = new Date()) {
   const days = Number.parseInt(range, 10);
   if (Number.isFinite(days) && days > 0) {
     const today = startOfLocalDay(now);
-    return new Date(today.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+    today.setDate(today.getDate() - (days - 1));
+    return today;
   }
   return new Date(now.getTime() - 24 * 60 * 60 * 1000);
 }
