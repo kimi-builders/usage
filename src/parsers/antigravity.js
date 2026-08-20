@@ -50,8 +50,11 @@ const DISPLAY_NAME_MAP = {
   'claude opus 4.6': 'claude-opus-4-6',
   'claude opus 4.5': 'claude-opus-4-5',
   'claude sonnet 4.6': 'claude-sonnet-4-6',
+  'gemini 3.7 flash': 'gemini-3.7-flash',
   'gemini 3.5 flash': 'gemini-3.5-flash',
   'gemini 3 flash': 'gemini-3-flash',
+  'gemini 3.7 pro': 'gemini-3.7-pro',
+  'gemini 3.5 pro': 'gemini-3.5-pro',
   'gemini 3.1 pro': 'gemini-3.1-pro',
 };
 

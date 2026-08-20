@@ -109,7 +109,8 @@ function firstMessage(fields, num) {
  * carries no token usage (error/planning placeholders have none).
  */
 export function parseGenMetadataBlob(buf) {
-  const chatModel = firstMessage(decodeMessage(buf), 1);
+  const decoded = decodeMessage(buf);
+  const chatModel = firstMessage(decoded, 1);
   if (!chatModel) return null;
 
   const usage = firstMessage(chatModel, 4);
@@ -131,6 +132,18 @@ export function parseGenMetadataBlob(buf) {
   const seconds = createdAt ? firstVarint(createdAt, 1) : undefined;
   const timestamp = seconds ? new Date(seconds * 1000) : null;
 
+  let lastStepIndex = null;
+  const metaEntries = chatModel.get(20) || [];
+  for (const entry of metaEntries) {
+    if (entry.wireType === 2 && entry.value) {
+      const sub = decodeMessage(entry.value);
+      if (firstString(sub, 1) === 'last_step_index') {
+        const val = Number(firstString(sub, 2));
+        if (Number.isFinite(val)) lastStepIndex = val;
+      }
+    }
+  }
+
   return {
     inputTokens,
     outputTokens,
@@ -138,6 +151,7 @@ export function parseGenMetadataBlob(buf) {
     thinkingOutputTokens,
     responseId,
     timestamp,
+    lastStepIndex,
     displayName: firstString(chatModel, 21) || '',
     responseModel: firstString(chatModel, 19) || '',
   };
@@ -199,11 +213,46 @@ export function listDbCascades(conversationsDir) {
 export function readDbUsageRecords(conversationsDir, cascadeId) {
   let rows;
   try {
-    rows = queryCascadeDb(conversationsDir, cascadeId, 'SELECT hex(data) AS h FROM gen_metadata ORDER BY idx');
+    rows = queryCascadeDb(conversationsDir, cascadeId, 'SELECT idx, hex(data) AS h FROM gen_metadata ORDER BY idx');
   } catch (error) {
     if (isSqliteUnavailableError(error)) throw error;
     return [];
   }
+  if (!rows.length) return [];
+
+  let stepMap = null;
+  let sortedStepIndices = null;
+  const getStepTimestamp = (stepIdx) => {
+    if (stepMap === null) {
+      stepMap = new Map();
+      sortedStepIndices = [];
+      try {
+        const stepRows = queryCascadeDb(
+          conversationsDir,
+          cascadeId,
+          'SELECT idx, hex(metadata) AS h FROM steps WHERE metadata IS NOT NULL ORDER BY idx',
+        );
+        for (const s of stepRows) {
+          if (!s.h) continue;
+          const parsed = parseStepMetadata(Buffer.from(s.h, 'hex'));
+          if (parsed?.timestamp) {
+            stepMap.set(s.idx, parsed.timestamp);
+            sortedStepIndices.push(s.idx);
+          }
+        }
+      } catch {
+        // Step query fallback error is non-fatal
+      }
+    }
+    if (stepMap.has(stepIdx)) return stepMap.get(stepIdx);
+    let best = null;
+    for (const idx of sortedStepIndices) {
+      if (idx <= stepIdx) best = stepMap.get(idx);
+      else break;
+    }
+    return best || (sortedStepIndices && sortedStepIndices.length > 0 ? stepMap.get(sortedStepIndices[0]) : null);
+  };
+
   const records = [];
   for (const row of rows) {
     if (!row.h) continue;
@@ -213,7 +262,12 @@ export function readDbUsageRecords(conversationsDir, cascadeId) {
     } catch {
       continue; // one malformed blob must not kill the rest
     }
-    if (record) records.push(record);
+    if (!record) continue;
+    if (!record.timestamp) {
+      const stepIdx = record.lastStepIndex ?? row.idx;
+      record.timestamp = getStepTimestamp(stepIdx);
+    }
+    if (record.timestamp) records.push(record);
   }
   return records;
 }

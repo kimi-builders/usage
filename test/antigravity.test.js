@@ -42,7 +42,7 @@ const sfield = (num, str) => lfield(num, Buffer.from(str, 'utf-8'));
 // GeneratorMetadata blob: chatModel(1) { usage(4), chatStartMetadata(9),
 // responseModel(19), modelDisplayName(21) } — tag numbers cross-verified
 // against the language server's GetCascadeTrajectory JSON.
-function buildUsageBlob({ input, output, cache, thinking, responseId, seconds, responseModel, displayName }) {
+function buildUsageBlob({ input, output, cache, thinking, responseId, seconds, responseModel, displayName, lastStepIndex }) {
   const usageParts = [];
   if (input != null) usageParts.push(vfield(2, input));
   if (output != null) usageParts.push(vfield(3, output));
@@ -55,6 +55,9 @@ function buildUsageBlob({ input, output, cache, thinking, responseId, seconds, r
   if (seconds != null) chatModelParts.push(lfield(9, lfield(4, vfield(1, seconds))));
   if (responseModel != null) chatModelParts.push(sfield(19, responseModel));
   if (displayName != null) chatModelParts.push(sfield(21, displayName));
+  if (lastStepIndex != null) {
+    chatModelParts.push(lfield(20, Buffer.concat([sfield(1, 'last_step_index'), sfield(2, String(lastStepIndex))])));
+  }
 
   return lfield(1, Buffer.concat(chatModelParts));
 }
@@ -199,4 +202,36 @@ test('records without timestamps are dropped; steps-only cascade still yields a 
   assert.equal(result.sessions.length, 1);
   assert.equal(result.sessions[0].project, 'steps-only');
   assert.equal(result.sessions[0].activeSeconds, 120);
+});
+
+test('records lacking direct timestamp resolve timestamp from steps timing', async (t) => {
+  if (!DatabaseSync) return t.skip('node:sqlite unavailable');
+  const dir = useDir('step-fallback');
+  buildCascade(dir, 'cascade-1', {
+    workspaceUri: 'file:///x/step-fallback',
+    usageBlobs: [
+      buildUsageBlob({
+        input: 1200,
+        output: 80,
+        cache: 500,
+        thinking: 30,
+        responseId: 'RESP_STEP_TS',
+        responseModel: 'gemini-3.7-flash',
+        displayName: 'Gemini 3.7 Flash',
+        lastStepIndex: 2,
+      }),
+    ],
+    stepBlobs: [
+      buildStepBlob({ source: 4, seconds: 1785578460 }),
+      buildStepBlob({ source: 2, seconds: 1785578520 }),
+      buildStepBlob({ source: 2, seconds: 1785578580 }),
+    ],
+  });
+  const result = await parse({ sessionSalt: SALT });
+  assert.deepEqual(sumTokens(result), {
+    input: 1200, cacheWrite: 0, cacheRead: 500, output: 80, reasoning: 30, requests: 1,
+  });
+  assert.equal(result.buckets.length, 1);
+  assert.equal(result.buckets[0].model, 'gemini-3.7-flash');
+  assert.equal(result.sessions.length, 1);
 });

@@ -156,6 +156,11 @@ export const LOCAL_PRICE_CATALOG = [
   entry('deepseek-v4-pro', 0.435, 0.003625, 0.87, { effectiveFrom: CURRENT_PRICE_START }),
   entry('deepseek-v4-flash', 0.14, 0.0028, 0.28, { effectiveFrom: CURRENT_PRICE_START }),
   entry('hy3', 0.14, 0.035, 0.58, { effectiveFrom: CURRENT_PRICE_START }),
+  entry('gemini-3.7-pro', 2.5, 0.25, 15, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
+  entry('gemini-3.5-pro', 2.5, 0.25, 15, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
+  entry('gemini-3.1-pro', 2.5, 0.25, 15, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
+  entry('gemini-3.7-flash', 0.5, 0.05, 3, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
+  entry('gemini-3.5-flash', 0.5, 0.05, 3, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
   entry('gemini-3-flash-preview', 0.5, 0.05, 3, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
   entry('gemini-3-flash', 0.5, null, 3, { effectiveFrom: '2026-05-01T00:00:00.000Z', sourceUrl: SOURCES.google }),
 ];
