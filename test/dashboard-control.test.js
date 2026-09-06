@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import test from 'node:test';
 import { createDashboardControl } from '../src/local/dashboard-control.js';
 
@@ -265,7 +265,7 @@ test('Dashboard manages extra roots without returning full local paths to the br
       action: 'configure-source', sourceId: 'codex', operation: 'add-root', path: directory,
     });
     assert.deepEqual(config.sourceOptions.codex.extraRoots, [directory]);
-    assert.equal(added.sources[0].configuration.locations[0].label, directory.split('/').at(-1));
+    assert.equal(added.sources[0].configuration.locations[0].label, basename(directory));
     assert.equal(JSON.stringify(added).includes(directory), false);
     const rootId = added.sources[0].configuration.locations[0].id;
     const removed = await control.act({

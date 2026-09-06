@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { join, resolve } from 'node:path';
 import { normalizeLimitSettings, publicLimitSettings } from '../src/limits/catalog.js';
 import { normalizeCookieSecret } from '../src/limits/credentials.js';
 import { parseClaudeUsage } from '../src/limits/providers/claude.js';
@@ -505,7 +506,7 @@ test('reads Kiro CLI token and profile from its read-only SQLite state', () => {
   assert.equal(credentials.found, true);
   assert.equal(credentials.fresh, true);
   assert.equal(credentials.profileArn, 'arn:aws:codewhisperer:us-east-1:123:profile/test');
-  assert.equal(seen[0][0], '/safe/kiro/data.sqlite3');
+  assert.equal(seen[0][0], join(resolve('/safe/kiro'), 'data.sqlite3'));
   assert.equal(seen.length, 2);
 });
 
