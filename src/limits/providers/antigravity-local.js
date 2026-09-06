@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync, readdirSync, readlinkSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { basename } from 'node:path';
@@ -93,11 +94,49 @@ function parseListeningPorts(output, pid, platform) {
   return [...ports].filter((port) => Number.isInteger(port) && port > 0 && port <= 65_535);
 }
 
-function listeningPorts(runtime, { run, platform }) {
+export function parseProcNetListeningPorts(content, socketInodes) {
+  const ports = new Set();
+  for (const line of String(content || '').split(/\r?\n/)) {
+    const columns = line.trim().split(/\s+/);
+    if (columns.length <= 9 || columns[3] !== '0A' || !socketInodes.has(columns[9])) continue;
+    const separator = columns[1]?.lastIndexOf(':') ?? -1;
+    const port = Number.parseInt(columns[1]?.slice(separator + 1), 16);
+    if (separator >= 0 && Number.isInteger(port) && port > 0 && port <= 65_535) ports.add(port);
+  }
+  return ports;
+}
+
+function procListeningPorts(pid, procRoot = '/proc') {
+  const processRoot = `${procRoot}/${pid}`;
+  const socketInodes = new Set();
+  try {
+    for (const entry of readdirSync(`${processRoot}/fd`)) {
+      try {
+        const target = readlinkSync(`${processRoot}/fd/${entry}`);
+        const match = target.match(/^socket:\[([^\]]+)]$/);
+        if (match?.[1]) socketInodes.add(match[1]);
+      } catch { /* descriptor may close while it is inspected */ }
+    }
+  } catch {
+    return [];
+  }
+  if (!socketInodes.size) return [];
+  const ports = new Set();
+  for (const table of ['tcp', 'tcp6']) {
+    try {
+      const parsed = parseProcNetListeningPorts(readFileSync(`${processRoot}/net/${table}`, 'utf8'), socketInodes);
+      for (const port of parsed) ports.add(port);
+    } catch { /* one address family may be absent */ }
+  }
+  return [...ports].sort((a, b) => a - b);
+}
+
+function listeningPorts(runtime, { run, platform, procRoot = '/proc' }) {
   const output = platform === 'win32'
     ? commandOutput(run, 'netstat.exe', ['-ano', '-p', 'tcp'])
     : commandOutput(run, 'lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-a', '-p', String(runtime.pid)]);
   const ports = parseListeningPorts(output, runtime.pid, platform);
+  if (platform === 'linux' && !ports.length) ports.push(...procListeningPorts(runtime.pid, procRoot));
   if (runtime.extensionPort && !ports.includes(runtime.extensionPort)) ports.push(runtime.extensionPort);
   return ports;
 }
@@ -178,6 +217,7 @@ export async function fetchAntigravityLocalQuota({
   run = spawnSync,
   platform = process.platform,
   requester = requestAntigravityLoopback,
+  procRoot = '/proc',
 } = {}) {
   const runtimes = parseAntigravityProcessList(processList({ run, platform }), platform)
     .sort((a, b) => ['app', 'cli', 'ide'].indexOf(a.kind) - ['app', 'cli', 'ide'].indexOf(b.kind));
@@ -187,7 +227,7 @@ export async function fetchAntigravityLocalQuota({
     throw error;
   }
   for (const runtime of runtimes) {
-    const ports = listeningPorts(runtime, { run, platform });
+    const ports = listeningPorts(runtime, { run, platform, procRoot });
     const headers = runtime.csrfToken ? { 'X-Codeium-Csrf-Token': runtime.csrfToken } : {};
     for (const port of ports) {
       for (const endpoint of ENDPOINTS) {

@@ -11,6 +11,7 @@ import { parseCopilotUsage } from '../src/limits/providers/copilot.js';
 import { parseCursorUsage } from '../src/limits/providers/cursor.js';
 import { parseJetBrainsQuota } from '../src/limits/providers/jetbrains.js';
 import { parseKimiCodeUsage } from '../src/limits/providers/kimi.js';
+import { parseKiroUsage } from '../src/limits/providers/kiro.js';
 import { parseOpenCodeGoUsage } from '../src/limits/providers/opencode.js';
 import { parseQoderUsage } from '../src/limits/providers/qoder.js';
 import { parseWarpUsage } from '../src/limits/providers/warp.js';
@@ -25,6 +26,7 @@ const PARSERS = {
   codex: (input) => parseCodexUsage(input, { plan: 'pro' }, { now: NOW }),
   'claude-code': (input) => parseClaudeUsage(input, { plan: 'max' }, { now: NOW }),
   'kimi-code': (input) => parseKimiCodeUsage(input, { now: NOW }),
+  kiro: (input) => parseKiroUsage(input, {}, { now: NOW }),
   cursor: (input) => parseCursorUsage(input, {}, { now: NOW }),
   copilot: (input) => parseCopilotUsage(input, {}, { now: NOW }),
   antigravity: (input) => parseAntigravityQuota(input, {}, { now: NOW }),

@@ -5,6 +5,7 @@ export const SOURCE_LABELS = {
   opencode: 'opencode',
   'gemini-cli': 'Gemini CLI',
   antigravity: 'antigravity',
+  kiro: 'Kiro',
   'copilot-cli': 'Copilot CLI',
   'roo-code': 'Roo Code',
   'pi-coding-agent': 'Pi',

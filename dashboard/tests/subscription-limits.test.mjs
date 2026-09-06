@@ -90,6 +90,9 @@ test('quota copy localizes provider fields and normalizes legacy seven-day label
   assert.equal(utils.quotaWindowDetail('antigravity', { detail: 'Antigravity 返回的 每周额度池' }, false), 'Antigravity weekly quota pool');
   assert.equal(utils.quotaSourceDisplay('Kimi Web 登录令牌', false), 'Kimi Web token');
   assert.equal(utils.quotaProviderNotice('额度来自 Kimi 账户接口，按请求/订阅窗口展示。', false), 'Quotas come from the Kimi account API and are shown by request or subscription cycle.');
+  assert.equal(utils.quotaWindowLabel('kiro', { id: 'monthly', label: '月度 Credits' }, false), 'Monthly credits');
+  assert.match(utils.quotaProviderNotice('额度来自 Kiro CLI 本地登录对应的官方 CodeWhisperer 账户接口；单位为 Credits。', false), /official CodeWhisperer account API/);
+  assert.equal(utils.quotaSourceDisplay('OpenCode Go API Key · Personal', false), 'OpenCode Go API key · Personal');
   assert.equal(utils.quotaProviderCatalogCopy({
     id: 'deepseek', label: 'DeepSeek', description: 'API 账户货币余额与 DeepSeek 模型本机用量',
     localHint: '中文提示', detection: { state: 'manual', label: '需要一次手动连接' },

@@ -11,7 +11,8 @@ import { parseCursorUsage } from '../src/limits/providers/cursor.js';
 import { fetchAntigravityLimits, parseAntigravityQuota } from '../src/limits/providers/antigravity.js';
 import { fetchDeepSeekLimits, parseDeepSeekBalance } from '../src/limits/providers/deepseek.js';
 import { parseJetBrainsQuota } from '../src/limits/providers/jetbrains.js';
-import { parseKimiCodeUsage, parseKimiWebUsage } from '../src/limits/providers/kimi.js';
+import { fetchKimiLimits, parseKimiCodeUsage, parseKimiWebUsage } from '../src/limits/providers/kimi.js';
+import { fetchKiroLimits, loadKiroCredentials, parseKiroUsage } from '../src/limits/providers/kiro.js';
 import { fetchOpenCodeGoLimits, parseOpenCodeGoUsage } from '../src/limits/providers/opencode.js';
 import { parseQoderUsage } from '../src/limits/providers/qoder.js';
 import { parseWarpUsage } from '../src/limits/providers/warp.js';
@@ -98,7 +99,7 @@ test('normalizes multi-account settings and keeps OpenCode Cookie separate from 
   } });
   assert.equal(value.providers.opencode.workspaceId, '');
   assert.deepEqual(value.providers.opencode.accounts, [{
-    id: 'personal', label: 'Personal', externalIdentifier: '', workspaceId: 'wrk_personal',
+    id: 'personal', label: 'Personal', externalIdentifier: '', connectionType: 'workspace', workspaceId: 'wrk_personal',
     entitlementType: 'unknown', subscriptionPrice: null, subscriptionCurrency: 'usd',
     billingCycle: 'monthly', renewsAt: '',
   }]);
@@ -107,6 +108,27 @@ test('normalizes multi-account settings and keeps OpenCode Cookie separate from 
   });
   assert.equal(exposed.providers.opencode.accounts[0].hasSecret, true);
   assert.equal(JSON.stringify(exposed).includes('must-not-persist'), false);
+});
+
+test('normalizes OpenCode API key accounts without requiring or retaining a Workspace', () => {
+  const value = normalizeLimitSettings({ providers: { opencode: {
+    enabled: true,
+    accounts: [{
+      id: 'api', label: 'API account', connectionType: 'api-key',
+      workspaceId: 'not-a-workspace', entitlementType: 'free',
+    }],
+  } } });
+  assert.equal(value.providers.opencode.accounts[0].connectionType, 'api-key');
+  assert.equal(value.providers.opencode.accounts[0].workspaceId, '');
+  assert.equal(value.providers.opencode.accounts[0].entitlementType, 'free');
+});
+
+test('does not leak OpenCode connection fields into other account providers', () => {
+  const value = normalizeLimitSettings({ providers: { copilot: {
+    accounts: [{ id: 'github', label: 'GitHub', externalIdentifier: 'octocat' }],
+  } } });
+  assert.equal(Object.hasOwn(value.providers.copilot.accounts[0], 'connectionType'), false);
+  assert.equal(value.providers.copilot.accounts[0].workspaceId, '');
 });
 
 test('keeps OpenCode subscription metadata per account and migrates legacy spend only once', () => {
@@ -164,6 +186,21 @@ test('public settings recognize a saved OpenCode account Cookie after reload', (
   assert.equal(exposed.providers.opencode.accounts[0].hasSecret, true);
   assert.equal(exposed.catalog.find((provider) => provider.id === 'opencode').detection.state, 'configured');
   assert.ok(reads.includes('opencode:personal'));
+});
+
+test('public settings recognize a saved OpenCode API-key account without a Workspace', () => {
+  const config = { subscriptionLimits: normalizeLimitSettings({ providers: { opencode: {
+    enabled: true,
+    accounts: [{ id: 'api', label: 'API account', connectionType: 'api-key' }],
+    activeAccountId: 'api',
+  } } }) };
+  const exposed = getPublicLimitSettings(config, {
+    keychainAvailable: true,
+    readSecret: (key) => key === 'opencode:api' ? 'sk-opencode-test' : null,
+  });
+  assert.equal(exposed.providers.opencode.accounts[0].workspaceId, '');
+  assert.equal(exposed.providers.opencode.accounts[0].hasSecret, true);
+  assert.equal(exposed.catalog.find((provider) => provider.id === 'opencode').detection.state, 'configured');
 });
 
 test('saves each account credential under its own key and deletes removed accounts', () => {
@@ -421,6 +458,112 @@ test('OpenCode Go queries the Workspace paired with its Cookie', async () => {
   assert.equal(result.windows[0].remainingPercent, 70);
 });
 
+test('OpenCode Go API key accounts use the official usage endpoint without a Workspace', async () => {
+  const requests = [];
+  const result = await fetchOpenCodeGoLimits({
+    settings: {
+      authMode: 'environment', environmentVariable: 'OPENCODE_API_KEY',
+      connectionType: 'api-key', workspaceId: '', accountLabel: 'Personal',
+    },
+    environment: { OPENCODE_API_KEY: 'go_secret' },
+    fetcher: async (url, init) => {
+      requests.push({ url: String(url), authorization: init.headers.Authorization });
+      return new Response(JSON.stringify({ usage: {
+        rolling: { percent: 18, resetsAt: '2026-08-12T02:00:00.000Z' },
+        weekly: { percent: 33, resetsAt: '2026-08-18T00:00:00.000Z' },
+      } }), { status: 200, headers: { 'content-type': 'application/json' } });
+    },
+  });
+  assert.equal(new URL(requests[0].url).pathname, '/zen/go/v1/usage');
+  assert.equal(requests[0].authorization, 'Bearer go_secret');
+  assert.deepEqual(result.windows.map((window) => window.remainingPercent), [82, 67]);
+  assert.match(result.notice, /官方 API/);
+});
+
+test('OpenCode Go API key mode fails before network access when the key is missing', async () => {
+  let requested = false;
+  await assert.rejects(fetchOpenCodeGoLimits({
+    settings: { authMode: 'environment', environmentVariable: 'OPENCODE_API_KEY', connectionType: 'api-key' },
+    environment: {},
+    fetcher: async () => { requested = true; return new Response('{}'); },
+  }), (error) => error.code === 'not_configured');
+  assert.equal(requested, false);
+});
+
+test('reads Kiro CLI token and profile from its read-only SQLite state', () => {
+  const payload = Buffer.from(JSON.stringify({ exp: 4_102_444_800 })).toString('base64url');
+  const token = `header.${payload}.signature`;
+  const seen = [];
+  const credentials = loadKiroCredentials({ KIRO_DATA_DIR: '/safe/kiro' }, {
+    exists: () => true,
+    query: (path, sql) => {
+      seen.push([path, sql]);
+      if (sql.includes('auth_kv')) return [{ value: JSON.stringify({ access_token: token }) }];
+      return [{ value: JSON.stringify({ arn: 'arn:aws:codewhisperer:us-east-1:123:profile/test' }) }];
+    },
+  });
+  assert.equal(credentials.found, true);
+  assert.equal(credentials.fresh, true);
+  assert.equal(credentials.profileArn, 'arn:aws:codewhisperer:us-east-1:123:profile/test');
+  assert.equal(seen[0][0], '/safe/kiro/data.sqlite3');
+  assert.equal(seen.length, 2);
+});
+
+test('maps Kiro plan and overage credits without treating them as Token quota', () => {
+  const result = parseKiroUsage({
+    usageBreakdownList: [{
+      resourceType: 'CREDIT', currentUsageWithPrecision: 48, usageLimitWithPrecision: 100,
+      currentOveragesWithPrecision: 8, overageCapWithPrecision: 20,
+      nextDateReset: 1_788_220_800, bonuses: [],
+    }],
+    overageConfiguration: { overageStatus: 'ENABLED' },
+  }, {}, { now: NOW });
+  assert.deepEqual(result.windows.map((window) => [window.id, window.value, window.limit]), [
+    ['monthly', 40, 100], ['overage', 8, 20],
+  ]);
+  assert.deepEqual(result.windows.map((window) => window.remainingPercent), [60, 60]);
+  assert.equal(result.windows[0].unit, 'credits');
+});
+
+test('Kiro bonus credits suppress an unverifiable plan split', () => {
+  const result = parseKiroUsage({
+    usageBreakdownList: [{
+      resourceType: 'CREDIT', currentUsageWithPrecision: 70, usageLimitWithPrecision: 100,
+      currentOveragesWithPrecision: 5, overageCapWithPrecision: 20,
+      nextDateReset: 1_788_220_800,
+      bonuses: [{ amount: 25 }],
+    }],
+    overageConfiguration: { overageStatus: 'ENABLED' },
+  }, {}, { now: NOW });
+  assert.deepEqual(result.windows.map((window) => window.id), ['overage']);
+  assert.match(result.notice, /无法可靠拆分/);
+});
+
+test('Kiro quota lookup uses the official API contract and local CLI login only', async () => {
+  const seen = [];
+  const result = await fetchKiroLimits({
+    credentialLoader: () => ({
+      found: true, fresh: true, accessToken: 'kiro-token',
+      profileArn: 'arn:aws:codewhisperer:us-east-1:123:profile/test',
+    }),
+    fetcher: async (url, init) => {
+      seen.push({ url: String(url), init });
+      return new Response(JSON.stringify({ usageBreakdownList: [{
+        resourceType: 'CREDIT', currentUsageWithPrecision: 25, usageLimitWithPrecision: 100,
+        nextDateReset: 1_788_220_800,
+      }] }), { status: 200 });
+    },
+  });
+  assert.equal(new URL(seen[0].url).hostname, 'codewhisperer.us-east-1.amazonaws.com');
+  assert.equal(seen[0].init.method, 'POST');
+  assert.equal(seen[0].init.headers.Authorization, 'Bearer kiro-token');
+  assert.equal(seen[0].init.headers['X-Amz-Target'], 'AmazonCodeWhispererService.GetUsageLimits');
+  assert.deepEqual(JSON.parse(seen[0].init.body), {
+    profileArn: 'arn:aws:codewhisperer:us-east-1:123:profile/test',
+  });
+  assert.equal(result.windows[0].remainingPercent, 75);
+});
+
 test('OpenCode Go refuses quota lookup when its account Workspace is missing', async () => {
   let requested = false;
   await assert.rejects(fetchOpenCodeGoLimits({
@@ -519,7 +662,9 @@ test('maps Kimi Code local and web quota shapes', () => {
   const local = parseKimiCodeUsage({
     usage: { limit: '1000', used: '300', resetTime: '2026-08-18T12:00:00Z' },
     limits: [{ window: { duration: 5, timeUnit: 'TIME_UNIT_HOUR' }, detail: { limit: '100', remaining: '80', reset_at: '2026-08-11T15:00:00Z' } }],
+    user: { membership: { level: 'LEVEL_ADVANCED' } }, version: 'GOODS_VERSION_V1',
   }, { now: NOW });
+  assert.equal(local.plan, 'Allegro');
   assert.equal(local.windows[0].windowSeconds, 18_000);
   assert.equal(local.windows[0].label, '5 小时滚动（5H 频限）');
   assert.equal(local.windows[0].remainingPercent, 80);
@@ -538,11 +683,59 @@ test('maps Kimi Code local and web quota shapes', () => {
   }, {
     subscriptionBalance: { amountUsedRatio: 0.46, expireTime: '2026-09-01T00:00:00Z' },
     ratelimitCode7d: { ratio: 0.25, resetTime: '2026-08-18T00:00:00Z' },
-  }, { now: NOW });
+  }, { now: NOW, planPayload: { subscription: {
+    active: true, status: 'SUBSCRIPTION_STATUS_ACTIVE', goods: { title: 'Kimi Code Max' },
+  } } });
+  assert.equal(web.plan, 'Kimi Code Max');
   assert.deepEqual(web.windows.map((item) => item.remainingPercent), [80, 80, 75, 54]);
   assert.equal(web.windows[0].label, '5 小时滚动（5H 频限）');
   assert.equal(web.windows[1].label, '每周');
   assert.equal(web.windows[2].label, 'Code 每周');
+});
+
+test('Kimi preserves completed optional subscription facts when another enrichment fails', async () => {
+  const usage = {
+    usages: [{
+      scope: 'FEATURE_CODING', detail: { limit: '200', used: '40' },
+      limits: [{
+        window: { duration: 5, timeUnit: 'TIME_UNIT_HOUR' },
+        detail: { limit: '100', remaining: '80' },
+      }],
+    }],
+  };
+  const fetchWith = (failedEndpoint) => fetchKimiLimits({
+    settings: { authMode: 'environment', environmentVariable: 'KIMI_TEST_TOKEN' },
+    environment: { KIMI_TEST_TOKEN: 'test-token' },
+    fetcher: async (url) => {
+      const endpoint = String(url);
+      if (endpoint.includes('GetUsages')) return new Response(JSON.stringify(usage), { status: 200 });
+      if (new URL(endpoint).pathname.endsWith(failedEndpoint)) {
+        return new Response('{"error":"unavailable"}', { status: 503 });
+      }
+      if (endpoint.includes('GetSubscriptionStats')) return new Response(JSON.stringify({
+        subscriptionBalance: { amountUsedRatio: 0.4 },
+      }), { status: 200 });
+      if (endpoint.includes('GetSubscription')) return new Response(JSON.stringify({ subscription: {
+        active: true, status: 'SUBSCRIPTION_STATUS_ACTIVE', goods: { title: 'Kimi Code Ultra' },
+      } }), { status: 200 });
+      throw new Error(`unexpected endpoint ${endpoint}`);
+    },
+  });
+
+  const withoutStats = await fetchWith('GetSubscriptionStats');
+  assert.equal(withoutStats.plan, 'Kimi Code Ultra');
+  assert.equal(withoutStats.windows.some((window) => window.id === 'total'), false);
+
+  const withoutPlan = await fetchWith('GetSubscription');
+  assert.equal(withoutPlan.plan, null);
+  assert.equal(withoutPlan.windows.find((window) => window.id === 'total')?.usedPercent, 40);
+});
+
+test('Kimi keeps unknown membership levels without inventing a plan name', () => {
+  assert.equal(parseKimiCodeUsage({
+    usage: { limit: '100', used: '1' },
+    user: { membership: { level: 'LEVEL_FUTURE' } }, version: 'GOODS_VERSION_V2',
+  }, { now: NOW }).plan, 'LEVEL_FUTURE');
 });
 
 test('maps Warp GraphQL request and bonus credits', () => {
@@ -752,6 +945,32 @@ test('subscription limit service queries and isolates every configured account',
   assert.equal(result.providers[0].activeAccountId, 'work');
   assert.equal(result.providers[0].windows[0].usedPercent, 70);
   assert.deepEqual(result.providers[0].accounts.map((account) => account.accountId), ['personal', 'work']);
+});
+
+test('subscription limit service queries an OpenCode API-key account without a Workspace', async () => {
+  clearLimitCache();
+  const seen = [];
+  const result = await loadSubscriptionLimits({
+    force: true,
+    config: { subscriptionLimits: {
+      enabled: true, providerOrder: ['opencode'], providers: { opencode: {
+        enabled: true,
+        accounts: [{ id: 'api', label: 'API account', connectionType: 'api-key' }],
+        activeAccountId: 'api',
+      } },
+    } },
+    historyLoader: () => ({ schemaVersion: 1, observations: [] }),
+    historyRecorder: () => {},
+    fetchers: { opencode: async ({ settings }) => {
+      seen.push([settings.accountId, settings.connectionType, settings.workspaceId, settings.credentialKey]);
+      return {
+        id: 'opencode', label: 'OpenCode Go', status: 'ok', updatedAt: NOW.toISOString(),
+        account: settings.accountLabel, source: 'OpenCode Go API Key', windows: [],
+      };
+    } },
+  });
+  assert.deepEqual(seen, [['api', 'api-key', '', 'opencode:api']]);
+  assert.equal(result.providers[0].accounts[0].status, 'ok');
 });
 
 test('subscription limit service never queries an incomplete OpenCode account', async () => {

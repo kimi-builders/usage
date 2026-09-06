@@ -77,7 +77,10 @@ points; only a fresh provider refresh can append a sanitized observation.
   CLI credential file; or
   `https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages`
   and `https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats`
-  when the user explicitly selects a Web token source;
+  when the user explicitly selects a Web token source, with optional
+  `https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscription`
+  enrichment for the official plan name. Failure of either optional enrichment
+  never hides quota facts already obtained;
 - Cursor: `https://cursor.com/api/usage-summary` and the optional
   `https://cursor.com/api/auth/me` identity endpoint;
 - GitHub Copilot: GitHub's device authorization endpoints
@@ -85,10 +88,11 @@ points; only a fresh provider refresh can append a sanitized observation.
   account identity at `https://api.github.com/user`, then quota facts at
   `https://api.github.com/copilot_internal/user`; device authorization starts
   only after the user presses Connect and supports separately stored accounts;
-- OpenCode Go: `https://opencode.ai/_server` is used to discover the signed-in
-  account's Workspace, then `https://opencode.ai/workspace/{id}/go` supplies the
-  rolling, weekly, and monthly subscription windows. Each saved account has its
-  own user-supplied Cookie; a `wrk_…` Workspace ID is an optional override only;
+- OpenCode Go: each account independently selects one connection method. API-key
+  accounts request `https://opencode.ai/zen/go/v1/usage`; web-session accounts use
+  their own Cookie with `https://opencode.ai/workspace/{id}/go`. A web-session
+  Cookie and its `wrk_…` Workspace ID must belong to the same account and are never
+  shared across accounts;
 - Qoder: `https://qoder.com/api/v2/me/usages/big_model_credits`, or the
   equivalent `qoder.com.cn` endpoint when the user selects the China site;
 - Warp: `https://app.warp.dev/graphql/v2?op=GetRequestLimitInfo`;
@@ -104,6 +108,12 @@ points; only a fresh provider refresh can append a sanitized observation.
 - DeepSeek: `https://api.deepseek.com/user/balance` reads the API account's
   per-currency total, topped-up, and granted money balances with an explicitly
   configured API key. No browser session or private Platform endpoint is read;
+- Kiro: the local Kiro CLI `data.sqlite3` is opened read-only to obtain its access
+  token and profile ARN, then `https://codewhisperer.us-east-1.amazonaws.com/`
+  receives `AmazonCodeWhispererService.GetUsageLimits`. usage-cli does not execute
+  Kiro CLI or take ownership of token refresh; an expired login must be renewed with
+  `kiro-cli login`. When bonus credits cannot be separated reliably, no plan balance
+  is guessed;
 - JetBrains AI: no network; the latest local IDE quota file is read.
 Trae is visible in the setup catalog but disabled because this version has no
 stable, independently verifiable subscription-quota interface for it. Merely

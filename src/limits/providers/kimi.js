@@ -5,6 +5,35 @@ import { ensureFreshKimiCredentials, kimiIdentityHeaders } from './kimi-oauth.js
 const CODE_USAGE_URL = 'https://api.kimi.com/coding/v1/usages';
 const WEB_USAGE_URL = 'https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages';
 const SUBSCRIPTION_URL = 'https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats';
+const PLAN_URL = 'https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscription';
+
+function kimiCodePlan(payload) {
+  const level = typeof payload?.user?.membership?.level === 'string'
+    ? payload.user.membership.level.trim()
+    : '';
+  if (!level || level === 'LEVEL_UNSPECIFIED') return null;
+  // These names belong to the official V1 goods catalog. Unknown versions or
+  // future levels remain visible as raw provider facts instead of being guessed.
+  const version = payload?.version;
+  if (version != null && version !== 'GOODS_VERSION_V1') return level;
+  return {
+    LEVEL_FREE: 'Adagio',
+    LEVEL_TRIAL: 'Andante',
+    LEVEL_BASIC: 'Moderato',
+    LEVEL_INTERMEDIATE: 'Allegretto',
+    LEVEL_ADVANCED: 'Allegro',
+  }[level] || level;
+}
+
+function kimiWebPlan(payload) {
+  const subscription = payload?.subscription;
+  const title = typeof subscription?.goods?.title === 'string'
+    ? subscription.goods.title.trim()
+    : '';
+  return subscription?.active === true
+    && subscription?.status === 'SUBSCRIPTION_STATUS_ACTIVE'
+    && title ? title : null;
+}
 
 function detailWindow(detail, { id, label, windowSeconds = null } = {}) {
   if (!detail || typeof detail !== 'object') return null;
@@ -49,12 +78,14 @@ export function parseKimiCodeUsage(payload, { now = new Date(), source = '~/.kim
   ].filter(Boolean);
   return {
     id: 'kimi-code', label: 'Kimi Code', status: windows.length ? 'ok' : 'empty',
-    account: null, plan: null, source, updatedAt: now.toISOString(), windows,
-    notice: 'Kimi Code 本机登录可读取 5 小时滚动（5H 频限）与每周额度；订阅总额度需要 Kimi Web 登录令牌。',
+    account: null, plan: kimiCodePlan(payload), source, updatedAt: now.toISOString(), windows,
+    notice: 'Kimi Code 本机登录可读取会员等级、5 小时滚动（5H 频限）与每周额度；订阅总额度需要 Kimi Web 登录令牌。',
   };
 }
 
-export function parseKimiWebUsage(usagePayload, subscriptionPayload, { now = new Date(), claims = {} } = {}) {
+export function parseKimiWebUsage(usagePayload, subscriptionPayload, {
+  now = new Date(), claims = {}, planPayload = null,
+} = {}) {
   const coding = Array.isArray(usagePayload?.usages)
     ? usagePayload.usages.find((item) => item?.scope === 'FEATURE_CODING')
     : null;
@@ -79,7 +110,7 @@ export function parseKimiWebUsage(usagePayload, subscriptionPayload, { now = new
   ].filter(Boolean);
   return {
     id: 'kimi-code', label: 'Kimi Code', status: windows.length ? 'ok' : 'empty',
-    account: claims.email || null, plan: claims.plan || null, source: 'Kimi Web 登录令牌',
+    account: claims.email || null, plan: kimiWebPlan(planPayload) || claims.plan || null, source: 'Kimi Web 登录令牌',
     updatedAt: now.toISOString(), windows, notice: '额度来自 Kimi 账户接口，按请求/订阅窗口展示。',
   };
 }
@@ -133,13 +164,16 @@ export async function fetchKimiLimits({ settings, environment = process.env, fet
     throw error;
   }
   const headers = webHeaders(token);
-  const [usage, subscription] = await Promise.all([
+  const [usage, subscription, plan] = await Promise.all([
     requestJson(WEB_USAGE_URL, {
       method: 'POST', headers, body: { scope: ['FEATURE_CODING'] }, fetcher,
     }),
     requestJson(SUBSCRIPTION_URL, {
-      method: 'POST', headers, body: {}, fetcher,
+      method: 'POST', headers, body: {}, fetcher, timeoutMs: 2_000,
+    }).catch(() => null),
+    requestJson(PLAN_URL, {
+      method: 'POST', headers, body: {}, fetcher, timeoutMs: 2_000,
     }).catch(() => null),
   ]);
-  return parseKimiWebUsage(usage, subscription, { claims: {} });
+  return parseKimiWebUsage(usage, subscription, { claims: {}, planPayload: plan });
 }

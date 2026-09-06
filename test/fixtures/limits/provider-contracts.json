@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "sanitized": true,
-  "lastReviewedAt": "2026-08-12",
+  "lastReviewedAt": "2026-09-05",
   "providers": [
     {
       "id": "codex",
@@ -113,6 +113,25 @@
       },
       "invalidBehavior": "throws",
       "expected": { "status": "ok", "windowIds": [], "remainingPercents": [] }
+    },
+    {
+      "id": "kiro",
+      "upstreamShape": "AmazonCodeWhispererService.GetUsageLimits CREDIT breakdown",
+      "input": {
+        "usageBreakdownList": [{
+          "resourceType": "CREDIT",
+          "currentUsageWithPrecision": 48,
+          "usageLimitWithPrecision": 100,
+          "currentOveragesWithPrecision": 8,
+          "overageCapWithPrecision": 20,
+          "nextDateReset": 1788220800,
+          "bonuses": []
+        }],
+        "overageConfiguration": { "overageStatus": "ENABLED" }
+      },
+      "invalidInput": { "usageBreakdownList": [] },
+      "invalidBehavior": "throws",
+      "expected": { "status": "ok", "windowIds": ["monthly", "overage"], "remainingPercents": [60, 60] }
     },
     {
       "id": "opencode",

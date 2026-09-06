@@ -62,7 +62,7 @@ _kbu_usage_completion() {
           ;;
         quota|limits)
           _arguments \\
-            '--provider[指定 AI 平台]:provider:(claude-code codex kimi-code cursor copilot antigravity deepseek opencode warp qoder jetbrains-ai)' \\
+            '--provider[指定 AI 平台]:provider:(claude-code codex kimi-code cursor copilot antigravity kiro deepseek opencode warp qoder jetbrains-ai)' \\
             '--all[全量扫描所有平台]' \\
             '--force[强制刷新，绕过缓存]' \\
             '--json[以 JSON 输出]'

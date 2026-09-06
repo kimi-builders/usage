@@ -63,16 +63,20 @@ CSP 和 no-store 响应。Token 分析始终离线。只有用户点击相应控
   通过 `https://auth.kimi.com/api/oauth/token` 在 Kimi Code 的跨进程锁保护下轮换，
   并原子更新仅 owner 可读的 CLI 凭据文件；当用户明确选择 Web Token 来源时，
   使用 `https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages` 和
-  `https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats`；
+  `https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats`，
+  并以可选的
+  `https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscription`
+  补充官方订阅名称；任一可选补充接口失败都不会遮蔽已取得的额度；
 - Cursor：`https://cursor.com/api/usage-summary`，以及可选的
   `https://cursor.com/api/auth/me` 身份端点；
 - GitHub Copilot：GitHub 设备授权端点 `https://github.com/login/device/code` 和
   `https://github.com/login/oauth/access_token`，账户身份端点 `https://api.github.com/user`，
   再通过 `https://api.github.com/copilot_internal/user` 读取额度事实；只有用户点击连接后才
   开始设备授权，并支持分别保存多个账户；
-- OpenCode Go：先用 `https://opencode.ai/_server` 发现已登录账户的 Workspace，再通过
-  `https://opencode.ai/workspace/{id}/go` 获取滚动、每周和每月订阅窗口。每个已保存账户有
-  自己由用户提供的 Cookie；`wrk_…` Workspace ID 只是可选覆盖值；
+- OpenCode Go：每个账户独立选择一种连接方式。API Key 方式请求
+  `https://opencode.ai/zen/go/v1/usage`；网页登录方式使用该账户自己的 Cookie 请求
+  `https://opencode.ai/workspace/{id}/go`。网页登录方式的 Cookie 与 `wrk_…` Workspace ID
+  必须来自同一账户，不会跨账户共享；
 - Qoder：`https://qoder.com/api/v2/me/usages/big_model_credits`；用户选择中国站时使用等价的
   `qoder.com.cn` 端点；
 - Warp：`https://app.warp.dev/graphql/v2?op=GetRequestLimitInfo`；
@@ -86,6 +90,10 @@ CSP 和 no-store 响应。Token 分析始终离线。只有用户点击相应控
 - DeepSeek：使用用户明确配置的 API Key 请求 `https://api.deepseek.com/user/balance`，只读取
   API 账户按币种返回的总余额、充值余额与赠送余额；不读取浏览器会话，也不访问私有 Platform
   接口；
+- Kiro：只读打开 Kiro CLI 的本地 `data.sqlite3`，读取其 access token 与 profile ARN，再请求
+  `https://codewhisperer.us-east-1.amazonaws.com/` 的
+  `AmazonCodeWhispererService.GetUsageLimits`。工具不执行 Kiro CLI、不接管令牌续期；登录过期时
+  由用户运行 `kiro-cli login`。奖励 Credits 无法和套餐可靠拆分时不会猜测套餐余额；
 - JetBrains AI：不联网，只读取最新的本地 IDE 额度文件。
 
 Trae 会显示在配置目录中，但当前版本没有稳定、可独立验证的订阅额度接口，因此保持禁用。

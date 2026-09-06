@@ -291,7 +291,7 @@ The Collector contacts a provider only after you enable it, using an existing
 local login or a credential source you choose.
 
 Current integrations cover Codex, Claude Code, Kimi Code, Cursor, GitHub
-Copilot, Antigravity, DeepSeek, OpenCode Go, Qoder, Warp, and JetBrains AI.
+Copilot, Antigravity, Kiro, DeepSeek, OpenCode Go, Qoder, Warp, and JetBrains AI.
 Depending on the provider, setup can use local detection, an
 environment variable, or macOS Keychain. Trae has no stable independently
 verifiable personal-limit interface, so it is labeled unavailable rather than
@@ -304,6 +304,12 @@ already-running, signed-in Antigravity or `agy` loopback service to read the
 Gemini and Claude/GPT five-hour and weekly pools. Quota checks never start or
 terminate the user's process. Explicit Antigravity OAuth or CodexBar credentials
 are used only when no usable local service is available.
+
+Kiro reuses the local Kiro CLI login read-only and queries official credits;
+usage-cli neither executes Kiro CLI nor owns token refresh. Each OpenCode Go
+account independently chooses either an API key or Cookie + Workspace ID. Its
+credential, quota facts, and user-entered subscription details are never shared
+with another account.
 
 DeepSeek uses an explicitly configured API key with the public balance endpoint.
 It shows per-currency total, topped-up, and granted money balances and never

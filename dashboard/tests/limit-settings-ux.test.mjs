@@ -49,25 +49,28 @@ test('dirty guard intercepts close and escape instead of discarding silently', a
   assert.match(jsx, /放弃并关闭/);
 });
 
-test('openCode account name, cookie, and workspace validation fires on blur', async () => {
+test('OpenCode validates the selected per-account credential tuple on blur', async () => {
   const jsx = await dialog();
   assert.match(jsx, /const fieldError = \(accountId, kind\) => \{/);
   assert.equal((jsx.match(/isValidOpenCodeWorkspaceId\(account\.workspaceId\)/g) || []).length, 2);
   assert.match(jsx, /\[`label:\$\{account\.id\}`\]: true/);
-  assert.match(jsx, /onBlur=\{\(\) => setTouched\(\(current\) => \(\{ \.\.\.current, \[`cookie:\$\{account\.id\}`\]: true \}\)\)\}/);
+  assert.match(jsx, /\[`credential:\$\{account\.id\}`\]: true/);
   assert.match(jsx, /\[`workspace:\$\{account\.id\}`\]: true/);
-  assert.match(jsx, /每个账户都必须填写名称、Cookie 与有效的 wrk_… Workspace ID/);
+  assert.match(jsx, /完整配置 API Key 或 Cookie \+ 有效的 wrk_… Workspace ID/);
+  assert.match(jsx, /account\.connectionType !== 'api-key'/);
 });
 
-test('every OpenCode account card owns its name, Cookie, and Workspace fields', async () => {
+test('every OpenCode account card owns its connection method and credential fields', async () => {
   const jsx = await dialog();
   const css = await read('../src/styles.css');
   assert.match(jsx, /className="opencode-account-label"/);
+  assert.match(jsx, /className="opencode-connection-type"/);
   assert.match(jsx, /className="opencode-cookie-field"/);
   assert.match(jsx, /className="opencode-workspace-field"/);
+  assert.match(jsx, /<option value="api-key">API Key<\/option>/);
   assert.match(css, /\.opencode-account-list fieldset \{[^}]*grid-template-columns: 24px minmax\(0,1fr\) auto/);
-  assert.match(css, /\.opencode-account-list \.opencode-cookie-field \{ grid-column: 2 \/ -1;/);
-  assert.match(css, /\.opencode-account-list \.opencode-workspace-field \{ grid-column: 2 \/ -1; grid-row: 3;/);
+  assert.match(css, /\.opencode-account-list \.opencode-cookie-field \{ grid-column: 2 \/ -1; grid-row: 3;/);
+  assert.match(css, /\.opencode-account-list \.opencode-workspace-field \{ grid-column: 2 \/ -1; grid-row: 4;/);
   assert.doesNotMatch(jsx, /Workspace discovery is automatic/);
 });
 
@@ -76,7 +79,7 @@ test('every OpenCode account owns subscription metadata instead of sharing a pro
   const css = await read('../src/styles.css');
   assert.match(jsx, /<EntitlementFields className="account-entitlement" item=\{account\}/);
   assert.match(jsx, /item\.enabled && provider\.id !== 'opencode'/);
-  assert.match(css, /\.opencode-account-list \.account-entitlement \{[^}]*grid-column: 2 \/ -1;[^}]*grid-row: 4;/);
+  assert.match(css, /\.opencode-account-list \.account-entitlement \{[^}]*grid-column: 2 \/ -1;[^}]*grid-row: 5;/);
 });
 
 test('save actions separate in-place quota refresh from save-and-close', async () => {

@@ -50,6 +50,12 @@ export const LIMIT_PROVIDER_CATALOG = [
     localHint: '优先复用已运行的 Antigravity 或 agy 本机服务；也可复用 CodexBar OAuth，或提供 OAuth 凭据 JSON。',
   },
   {
+    id: 'kiro', label: 'Kiro', group: 'more',
+    description: '月度与可选超额 Credits', quotaSupport: 'automatic', quotaCoverage: 'best-effort',
+    defaultAuthMode: 'local', authModes: ['local'], dashboardUrl: 'https://app.kiro.dev',
+    localHint: '只读复用 Kiro CLI 登录；未登录或登录过期时运行 kiro-cli login。奖励 Credits 无法可靠拆分时不会猜测套餐余额。',
+  },
+  {
     id: 'deepseek', label: 'DeepSeek', group: 'recommended', popular: true,
     description: 'API 账户货币余额与 DeepSeek 模型本机用量', quotaSupport: 'manual',
     quotaCoverage: 'balance-only',
@@ -63,8 +69,8 @@ export const LIMIT_PROVIDER_CATALOG = [
     description: '5 小时、每周与每月 Go 订阅额度', quotaSupport: 'manual',
     defaultAuthMode: 'keychain', authModes: ['environment', 'keychain'],
     defaultEnvironmentVariable: 'OPENCODE_SESSION_COOKIE', dashboardUrl: 'https://opencode.ai/auth',
-    secretKind: 'OpenCode Go Session Cookie', extraFields: ['workspaceId'], accountMode: 'cookie-workspace-required',
-    localHint: '每个账户独立保存名称、Cookie 与 Workspace ID；三项齐全后才会查询该账户额度。',
+    secretKind: 'OpenCode Go 凭据', extraFields: ['workspaceId'], accountMode: 'account-credential',
+    localHint: '每个账户可选择 API Key，或 Cookie + Workspace ID；凭据、额度与订阅信息都按账户独立保存。',
   },
   {
     id: 'qoder', label: 'Qoder', group: 'more', popular: true,
@@ -104,7 +110,7 @@ export const LIMIT_ENTITLEMENT_TYPES = ['unknown', 'paid', 'free', 'promotion', 
 // explicit so new providers never reshuffle a user's existing dashboard.
 export const DEFAULT_LIMIT_PROVIDER_ORDER = [
   'kimi-code', 'codex', 'claude-code', 'cursor', 'copilot', 'antigravity',
-  'deepseek', 'opencode', 'qoder', 'warp', 'jetbrains-ai', 'trae',
+  'kiro', 'deepseek', 'opencode', 'qoder', 'warp', 'jetbrains-ai', 'trae',
 ];
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -193,6 +199,9 @@ function normalizeAccounts(candidate, provider, legacySubscription) {
       id,
       label,
       externalIdentifier: safeText(account?.externalIdentifier, 160),
+      ...(provider.id === 'opencode' ? {
+        connectionType: account?.connectionType === 'api-key' ? 'api-key' : 'workspace',
+      } : {}),
       workspaceId: provider.id === 'opencode' ? safeWorkspaceId(account?.workspaceId) : '',
       ...subscription,
     };

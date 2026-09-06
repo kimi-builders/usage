@@ -21,6 +21,7 @@ import { fetchDeepSeekLimits } from './providers/deepseek.js';
 import { detectAntigravityLocalRuntime } from './providers/antigravity-local.js';
 import { fetchJetBrainsLimits } from './providers/jetbrains.js';
 import { fetchKimiLimits } from './providers/kimi.js';
+import { fetchKiroLimits, loadKiroCredentials } from './providers/kiro.js';
 import { fetchOpenCodeGoLimits } from './providers/opencode.js';
 import { fetchQoderLimits } from './providers/qoder.js';
 import { fetchWarpLimits } from './providers/warp.js';
@@ -32,6 +33,7 @@ const FETCHERS = {
   codex: fetchCodexLimits,
   'claude-code': fetchClaudeLimits,
   'kimi-code': fetchKimiLimits,
+  kiro: fetchKiroLimits,
   cursor: fetchCursorLimits,
   copilot: fetchCopilotLimits,
   warp: fetchWarpLimits,
@@ -92,6 +94,9 @@ function accountSettings(providerId, settings, account) {
     credentialKey: providerAccountCredentialKey(providerId, account.id),
     accountId: account.id,
     accountLabel: account.label,
+    ...(providerId === 'opencode' ? {
+      connectionType: account.connectionType || 'workspace',
+    } : {}),
     workspaceId: account.workspaceId || '',
   };
 }
@@ -108,7 +113,9 @@ function detectLocalProvider(providerId, providerSettings, environment, options 
   try {
     if (providerId === 'codex') {
       const value = loadCodexCredentials(environment);
-      return value.found ? detected('detected', '已检测到 Codex 登录') : detected('needs_login', '请先登录 Codex CLI', '运行 codex 并完成登录');
+      return value.found && value.fresh ? detected('detected', '已检测到 Codex 登录')
+        : value.found ? detected('expired', 'Codex 登录已过期', '运行 codex 重新登录')
+          : detected('needs_login', '请先登录 Codex CLI', '运行 codex 并完成登录');
     }
     if (providerId === 'claude-code') {
       const value = loadClaudeCredentials(environment);
@@ -126,6 +133,12 @@ function detectLocalProvider(providerId, providerSettings, environment, options 
       return value.found && value.fresh ? detected('detected', '已检测到 Cursor 桌面端登录')
         : value.found ? detected('expired', 'Cursor 登录已过期', '在 Cursor 桌面端重新登录')
           : detected('needs_login', '未检测到 Cursor 登录', '打开 Cursor 桌面端并登录');
+    }
+    if (providerId === 'kiro') {
+      const value = loadKiroCredentials(environment);
+      return value.found && value.fresh ? detected('detected', '已检测到 Kiro CLI 登录')
+        : value.found ? detected('expired', 'Kiro CLI 登录已过期', '运行 kiro-cli login 重新登录')
+          : detected('needs_login', '请先登录 Kiro CLI', '运行 kiro-cli login');
     }
     if (providerId === 'copilot') {
       if (providerSettings.accounts?.length) {
@@ -161,14 +174,14 @@ function providerDetection(provider, settings, { environment, hasKeychainSecret,
   if (provider.id === 'opencode') {
     if (settings.accounts?.length) {
       const ready = settings.accounts.filter((account) => (
-        Boolean(account.label && account.workspaceId)
+        Boolean(account.label && (account.connectionType === 'api-key' || account.workspaceId))
         && hasSecret(providerAccountCredentialKey(provider.id, account.id))
       )).length;
       return ready === settings.accounts.length
         ? detected('configured', `${ready} 个 OpenCode Go 账户已配置`)
-        : detected('manual', `${ready}/${settings.accounts.length} 个 OpenCode Go 账户已配置`, '每个账户都需要名称、Cookie 与 Workspace ID');
+        : detected('manual', `${ready}/${settings.accounts.length} 个 OpenCode Go 账户已配置`, '每个账户需要名称，并完整配置 API Key 或 Cookie + Workspace ID');
     }
-    return detected('manual', '需要连接 OpenCode Go 账户', '添加账户并填写名称、Cookie 与 Workspace ID');
+    return detected('manual', '需要连接 OpenCode Go 账户', '添加账户并选择 API Key 或 Cookie + Workspace ID');
   }
   const variable = settings.environmentVariable || provider.defaultEnvironmentVariable;
   if (variable && environmentSecret(variable, environment)) return detected('configured', `已配置环境变量 ${variable}`);
@@ -361,8 +374,10 @@ async function fetchEnabled(settings, options = {}) {
       if (provider.accountMode && configuredAccounts.length) {
         const accounts = await Promise.all(configuredAccounts.map(async (account) => {
           try {
-            if (provider.id === 'opencode' && (!account.label || !account.workspaceId)) {
-              const error = new Error('OpenCode Go 账户需要名称、Cookie 与 Workspace ID 才能查询额度。');
+            if (provider.id === 'opencode' && (
+              !account.label || (account.connectionType !== 'api-key' && !account.workspaceId)
+            )) {
+              const error = new Error('OpenCode Go 账户需要名称，并完整配置 API Key 或 Cookie + Workspace ID。');
               error.code = 'not_configured';
               throw error;
             }

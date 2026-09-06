@@ -1,5 +1,5 @@
 import { normalizeCookieSecret, resolveProviderSecret } from '../credentials.js';
-import { asDate, asPercent, requestText } from '../http.js';
+import { asDate, asPercent, requestJson, requestText } from '../http.js';
 
 const BASE_URL = 'https://opencode.ai';
 
@@ -82,7 +82,9 @@ function normalizedWindow(object, fallback, now) {
   return fallback;
 }
 
-export function parseOpenCodeGoUsage(text, { now = new Date(), source = 'OpenCode Go Web 登录' } = {}) {
+export function parseOpenCodeGoUsage(text, {
+  now = new Date(), source = 'OpenCode Go Web 登录', notice,
+} = {}) {
   const object = parseJson(text);
   const rolling = normalizedWindow(locate(object, [
     'rollingUsage', 'rolling_usage', 'rolling', 'rollingWindow', 'rolling_window',
@@ -116,7 +118,7 @@ export function parseOpenCodeGoUsage(text, { now = new Date(), source = 'OpenCod
   return {
     id: 'opencode', label: 'OpenCode Go', status: 'ok', account: null, plan: null,
     source, updatedAt: now.toISOString(), windows,
-    notice: '额度来自 OpenCode Go Workspace 订阅；本机 OpenCode Token 用量与该额度分开统计。',
+    notice: notice || '额度来自 OpenCode Go Workspace 订阅；本机 OpenCode Token 用量与该额度分开统计。',
   };
 }
 
@@ -155,10 +157,24 @@ async function fetchUsagePage(workspace, cookie, fetcher) {
 }
 
 export async function fetchOpenCodeGoLimits({ settings, environment = process.env, fetcher = fetch } = {}) {
-  const cookie = normalizeCookieSecret(
-    resolveProviderSecret('opencode', settings, environment),
-    ['auth', '__Host-auth'],
-  );
+  const secret = resolveProviderSecret('opencode', settings, environment);
+  const apiKeyMode = settings.connectionType === 'api-key';
+  if (apiKeyMode) {
+    if (!secret) {
+      const error = new Error('未找到 OpenCode Go API Key。');
+      error.code = 'not_configured';
+      throw error;
+    }
+    const payload = await requestJson(`${BASE_URL}/zen/go/v1/usage`, {
+      headers: { Authorization: `Bearer ${secret}`, 'User-Agent': 'kbu-usage' },
+      fetcher,
+    });
+    return parseOpenCodeGoUsage(JSON.stringify(payload), {
+      source: settings.accountLabel ? `OpenCode Go API Key · ${settings.accountLabel}` : 'OpenCode Go API Key',
+      notice: '额度来自 OpenCode Go 官方 API；本机 OpenCode Token 用量与该额度分开统计。',
+    });
+  }
+  const cookie = normalizeCookieSecret(secret, ['auth', '__Host-auth']);
   if (!cookie) {
     const error = new Error('未找到 OpenCode Go auth Cookie；登录 opencode.ai 后，可粘贴 Cookie 请求头或 cURL 片段。');
     error.code = 'not_configured';

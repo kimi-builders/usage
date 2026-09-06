@@ -104,6 +104,11 @@ export async function fetchCodexLimits({ environment = process.env, fetcher = fe
     error.code = 'not_configured';
     throw error;
   }
+  if (!credentials.fresh) {
+    const error = new Error('Codex 登录已过期，请运行 codex 重新登录。');
+    error.code = 'unauthorized';
+    throw error;
+  }
   const headers = {
     Authorization: `Bearer ${credentials.accessToken}`,
     'User-Agent': 'kbu-usage',

@@ -247,7 +247,7 @@ Codex、Antigravity、Pi、Grok 与 Trae CLI 支持在“本机与数据源”�
 订阅额度与本地 Token 消耗不是同一类数据。它默认关闭；只有你在本地设置里启用某个平台，
 Collector 才会复用该平台的本机登录或读取你指定的凭据并发起查询。
 
-当前支持 Codex、Claude Code、Kimi Code、Cursor、GitHub Copilot、Antigravity、
+当前支持 Codex、Claude Code、Kimi Code、Cursor、GitHub Copilot、Antigravity、Kiro、
 DeepSeek、OpenCode Go、Qoder、Warp 与 JetBrains AI。不同平台支持自动检测、
 环境变量或 macOS 钥匙串中的一种或多种方式。Trae 暂无稳定且可独立验证的个人额度接口，
 因此只显示“暂不可查”，不会生成猜测数据。
@@ -257,6 +257,10 @@ Gemini CLI 本机 Token 历史仍由离线 Parser 保留。Antigravity 会优先
 Antigravity 或 `agy` 回环服务，读取 Gemini 与 Claude/GPT 的 5 小时和每周额度；工具不会为
 额度查询自动启动或终止用户进程。没有可用本机服务时，才会使用用户明确配置的 Antigravity
 OAuth 或 CodexBar 凭据。
+
+Kiro 会只读复用 Kiro CLI 的本地登录并查询官方 Credits；工具不会执行 Kiro CLI 或接管
+令牌续期。OpenCode Go 的每个账户可单独选择 API Key，或选择 Cookie + Workspace ID；
+两种方式的凭据、额度与用户填写的订阅信息都不会跨账户共享。
 
 DeepSeek 使用用户明确配置的 API Key 查询公开余额接口，只展示按币种返回的总余额、充值余额
 与赠送余额，不把货币换算成 Token 额度。权益中心会另外按 DeepSeek 模型标识汇总各 Agent 的

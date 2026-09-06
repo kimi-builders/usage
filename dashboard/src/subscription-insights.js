@@ -11,6 +11,7 @@ const PROVIDER_SOURCES = {
   copilot: ['copilot-cli'],
   opencode: ['opencode'],
   antigravity: ['antigravity'],
+  kiro: ['kiro'],
   qoder: ['qoder'],
   warp: ['warp'],
   'jetbrains-ai': ['jetbrains-ai'],

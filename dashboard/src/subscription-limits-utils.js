@@ -6,6 +6,7 @@ export const PROVIDER_TONES = {
   codex: 'blue', 'kimi-code': 'amber', warp: 'violet',
   antigravity: 'green', 'jetbrains-ai': 'pink', 'claude-code': 'amber', cursor: 'blue',
   copilot: 'violet', deepseek: 'blue', opencode: 'amber', qoder: 'green', trae: 'blue',
+  kiro: 'violet',
 };
 
 export function idSegment(value) {
@@ -70,6 +71,9 @@ const QUOTA_WINDOW_LABELS = {
   opencode: {
     rolling: ['5 小时滚动', '5-hour rolling'], weekly: ['每周', 'Weekly'],
     monthly: ['每月', 'Monthly'],
+  },
+  kiro: {
+    monthly: ['月度 Credits', 'Monthly credits'], overage: ['超额 Credits', 'Overage credits'],
   },
   warp: {
     credits: ['月度 Credits', 'Monthly credits'], bonus: ['附加 Credits', 'Bonus credits'],
@@ -150,6 +154,9 @@ const ENGLISH_PROVIDER_NOTICES = new Map([
   ['同一模型家族显示剩余比例最低的文本模型额度，避免高估可用量。', 'Each model family shows the text-model quota with the lowest remaining percentage to avoid overstating availability.'],
   ['DeepSeek 公开 API 只返回账户货币余额，不提供 Token、5 小时或每周额度窗口；本机 DeepSeek 模型用量与余额分别展示。', 'The public DeepSeek API returns account money balances, not Token, 5-hour, or weekly quota windows. Local DeepSeek model usage is shown separately from the balance.'],
   ['额度来自 OpenCode Go Workspace 订阅；本机 OpenCode Token 用量与该额度分开统计。', 'Quotas come from the OpenCode Go Workspace subscription; local OpenCode Token usage is tracked separately.'],
+  ['额度来自 OpenCode Go 官方 API；本机 OpenCode Token 用量与该额度分开统计。', 'Quotas come from the official OpenCode Go API; local OpenCode Token usage is tracked separately.'],
+  ['额度来自 Kiro CLI 本地登录对应的官方 CodeWhisperer 账户接口；单位为 Credits。', 'Quotas come from the official CodeWhisperer account API for the local Kiro CLI login and are measured in credits.'],
+  ['Kiro 返回了奖励 Credits，无法可靠拆分套餐与奖励用量；仅展示可独立验证的超额额度。', 'Kiro reported bonus credits, so plan and bonus usage cannot be split reliably; only independently verifiable overage quota is shown.'],
   ['已合并个人额度与团队共享额度，避免低估可用 Credits。', 'Personal and team-shared allowances are combined to avoid understating available credits.'],
   ['Qoder 按账户 Big Model Credits 展示。', 'Qoder is shown using account-level Big Model Credits.'],
   ['Warp 以 Credits 计量；主额度与附加额度分开显示。', 'Warp is measured in credits, with primary and bonus allowances shown separately.'],
@@ -171,6 +178,8 @@ const ENGLISH_SOURCES = new Map([
   ['GitHub CLI 登录', 'GitHub CLI login'],
   ['Qoder Web 登录', 'Qoder Web login'],
   ['OpenCode Go Web 登录', 'OpenCode Go Web login'],
+  ['OpenCode Go API Key', 'OpenCode Go API key'],
+  ['Kiro CLI 登录', 'Kiro CLI login'],
   ['本工具 macOS 钥匙串', 'usage-cli macOS Keychain'],
   ['agy 本机服务', 'Local agy service'],
   ['Antigravity IDE 本机服务', 'Local Antigravity IDE service'],
@@ -184,6 +193,7 @@ export function quotaSourceDisplay(value, zh) {
   if (zh) return value;
   if (ENGLISH_SOURCES.has(value)) return ENGLISH_SOURCES.get(value);
   if (value.startsWith('GitHub 设备授权 · ')) return value.replace('GitHub 设备授权 · ', 'GitHub device authorization · ');
+  if (value.startsWith('OpenCode Go API Key · ')) return value.replace('OpenCode Go API Key · ', 'OpenCode Go API key · ');
   return /\p{Script=Han}/u.test(value) ? 'Local provider credential' : value;
 }
 
@@ -235,6 +245,10 @@ const ENGLISH_CATALOG_COPY = {
     localHint: 'Uses a running Antigravity or agy local service first. CodexBar OAuth or an OAuth credentials JSON can also be used.',
     secretKind: 'OAuth credentials JSON',
   },
+  kiro: {
+    description: 'Monthly credits and optional overage allowance',
+    localHint: 'Reads the Kiro CLI login only. Run kiro-cli login when no login is found or it has expired; plan balances are not guessed when bonus credits cannot be split reliably.',
+  },
   deepseek: {
     description: 'API account balance and local DeepSeek model usage',
     localHint: 'Uses an API key to query only DeepSeek’s public balance endpoint. It does not read browser sessions or convert money into a Token quota.',
@@ -242,7 +256,7 @@ const ENGLISH_CATALOG_COPY = {
   },
   opencode: {
     description: '5-hour, weekly, and monthly Go subscription quotas',
-    localHint: 'Each account stores its name, Cookie, and Workspace ID separately; all three are required before its quota is queried.',
+    localHint: 'Each account independently stores either an API key or Cookie + Workspace ID, together with its quota and subscription details.',
   },
   qoder: {
     description: 'Personal and shared Big Model Credits',
@@ -297,9 +311,11 @@ function englishDetection(provider) {
   else if (provider.id === 'cursor' && state === 'needs_login') detail = 'Open the Cursor desktop app and sign in';
   else if (provider.id === 'cursor' && state === 'expired') detail = 'Sign in again in the Cursor desktop app';
   else if (provider.id === 'copilot' && state === 'needs_login') detail = 'Run gh auth login';
+  else if (provider.id === 'kiro' && state === 'needs_login') detail = 'Run kiro-cli login';
+  else if (provider.id === 'kiro' && state === 'expired') detail = 'Run kiro-cli login again';
   else if (provider.id === 'antigravity' && state === 'detected' && String(detection.detail || '').includes('127.0.0.1')) detail = 'The local 127.0.0.1 quota service is preferred when available';
   else if (provider.id === 'antigravity' && state === 'not_detected') detail = 'Start and sign in to Antigravity, or run agy';
-  else if (provider.id === 'opencode' && state === 'manual') detail = 'Each account needs a name, Cookie, and Workspace ID';
+  else if (provider.id === 'opencode' && state === 'manual') detail = 'Each account needs a name and either an API key or Cookie + Workspace ID';
   else if (detection.detail && !/\p{Script=Han}/u.test(detection.detail)) detail = detection.detail;
   return { ...detection, label, detail };
 }

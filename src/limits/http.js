@@ -15,6 +15,7 @@ export const LIMIT_ALLOWED_HOSTS = new Set([
   'qoder.com',
   'qoder.com.cn',
   'api.deepseek.com',
+  'codewhisperer.us-east-1.amazonaws.com',
 ]);
 
 export async function requestBytes(url, {

@@ -33,6 +33,7 @@ const PROVIDER_ALIASES = {
   antigravity: 'antigravity',
   agy: 'antigravity',
   deepseek: 'deepseek',
+  kiro: 'kiro',
   opencode: 'opencode',
   qoder: 'qoder',
   warp: 'warp',

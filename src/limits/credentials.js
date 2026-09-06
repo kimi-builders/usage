@@ -20,7 +20,15 @@ function text(value) {
 }
 
 function databaseText(value) {
-  if (Buffer.isBuffer(value)) return text(value.toString('utf8'));
+  if (Buffer.isBuffer(value)) {
+    // Cursor has shipped ASCII JWTs stored as UTF-16LE SQLite BLOBs. Those
+    // bytes are technically valid UTF-8 containing NULs, so UTF-8 cannot be
+    // used as the first/final discriminator.
+    const asciiUtf16Le = value.length > 0
+      && value.length % 2 === 0
+      && value.every((byte, index) => (index % 2 === 0 ? byte > 0 && byte < 0x80 : byte === 0));
+    return text(value.toString(asciiUtf16Le ? 'utf16le' : 'utf8'));
+  }
   return text(value);
 }
 
@@ -66,11 +74,20 @@ export function loadCodexCredentials(environment = process.env) {
   if (!accessToken) return { found: false, path };
   const idToken = text(tokens.id_token || tokens.idToken);
   const claims = decodeJwtPayload(idToken);
+  const accessClaims = decodeJwtPayload(accessToken);
+  const rawExpiry = accessClaims.exp;
+  const expiresAt = typeof rawExpiry === 'number' && Number.isFinite(rawExpiry) && rawExpiry > 0
+    ? rawExpiry
+    : null;
+  // Opaque access tokens remain usable; when a JWT expiry is present it is
+  // authoritative. Leave a small margin so a token cannot expire mid-request.
+  const fresh = expiresAt == null || expiresAt > Date.now() / 1_000 + 60;
   return {
-    found: true,
+    found: true, fresh, expiresAt,
     path,
     accessToken,
-    accountId: text(tokens.account_id || tokens.accountId || claims.chatgpt_account_id),
+    accountId: text(tokens.account_id || tokens.accountId
+      || claims.chatgpt_account_id || accessClaims.chatgpt_account_id),
     email: text(claims.email),
     plan: text(claims.chatgpt_plan_type || claims.plan_type),
   };

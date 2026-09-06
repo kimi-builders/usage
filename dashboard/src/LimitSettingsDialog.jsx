@@ -42,10 +42,10 @@ function authLabel(mode, zh) {
 
 function SetupSteps({ provider, zh }) {
   if (!provider || !['opencode', 'qoder', 'cursor'].includes(provider.id)) return null;
-  if (provider.id === 'opencode') return <div className="provider-setup-steps"><b>{zh ? '不会配？照着 3 步做' : 'Three-step setup'}</b><ol>
-    <li>{zh ? <><a href={provider.dashboardUrl} target="_blank" rel="noreferrer">打开并登录 {provider.label}<ExternalLink size={11}/></a>，进入对应账户的 Go 用量页。</> : <><a href={provider.dashboardUrl} target="_blank" rel="noreferrer">Open and sign in to {provider.label}<ExternalLink size={11}/></a>, then open that account&apos;s Go usage page.</>}</li>
-    <li>{zh ? '从地址栏复制 wrk_… Workspace ID；它只属于当前这一条账户配置。' : 'Copy the wrk_… Workspace ID from the address bar; it belongs only to this account entry.'}</li>
-    <li>{zh ? '打开开发者工具 → 网络（Network），刷新页面，复制任意 opencode.ai 请求的 Cookie 请求头或 cURL。' : 'Open DevTools → Network, refresh the page, then copy a Cookie header or cURL from an opencode.ai request.'}</li>
+  if (provider.id === 'opencode') return <div className="provider-setup-steps"><b>{zh ? '两种连接方式，按账户任选一种' : 'Choose one connection method per account'}</b><ol>
+    <li>{zh ? 'API Key：粘贴 OpenCode Go API Key，不需要 Workspace ID。' : 'API Key: paste an OpenCode Go API key; no Workspace ID is needed.'}</li>
+    <li>{zh ? <><a href={provider.dashboardUrl} target="_blank" rel="noreferrer">网页登录方式<ExternalLink size={11}/></a>：进入 Go 用量页，从地址栏复制 wrk_… Workspace ID。</> : <><a href={provider.dashboardUrl} target="_blank" rel="noreferrer">Web session method<ExternalLink size={11}/></a>: open Go usage and copy the wrk_… Workspace ID from the address bar.</>}</li>
+    <li>{zh ? '网页登录方式还需从开发者工具 → 网络复制同一账户的 Cookie 请求头或 cURL。' : 'The web-session method also needs a Cookie header or cURL copied from DevTools → Network for the same account.'}</li>
   </ol></div>;
   return <div className="provider-setup-steps"><b>{zh ? '不会配？照着 3 步做' : 'Three-step setup'}</b><ol>
     <li>{zh ? <><a href={provider.dashboardUrl} target="_blank" rel="noreferrer">打开并登录 {provider.label}<ExternalLink size={11}/></a></> : <>Open and sign in to {provider.label}</>}</li>
@@ -122,8 +122,8 @@ function OpenCodeGoConnectionPanel({
   clearAccountSecrets, setClearAccountSecrets, enableMaster, zh,
 }) {
   const active = item.accounts.find((account) => account.id === item.activeAccountId) || item.accounts[0] || null;
-  /* OpenCode Go 的名称、Cookie、Workspace 是不可拆分的账户配置；
-     每项都在所属账户卡内编辑，并在失焦时前置校验。 */
+  /* OpenCode Go 每个账户只拥有一套完整连接元组：名称 + API Key，
+     或名称 + Cookie + Workspace；每项都在所属账户卡内编辑。 */
   const [touched, setTouched] = useState({});
   const fieldError = (accountId, kind) => {
     const account = item.accounts.find((entry) => entry.id === accountId);
@@ -131,10 +131,12 @@ function OpenCodeGoConnectionPanel({
     if (kind === 'label' && !account.label.trim()) {
       return zh ? '请填写便于区分的账户名称。' : 'Enter a name that identifies this account.';
     }
-    if (kind === 'cookie' && !(accountSecrets.opencode?.[accountId] || '').trim() && !account.hasSecret) {
-      return zh ? '需要粘贴该账户的 Cookie。' : 'Paste this account’s Cookie.';
+    if (kind === 'credential' && !(accountSecrets.opencode?.[accountId] || '').trim() && !account.hasSecret) {
+      return account.connectionType === 'api-key'
+        ? (zh ? '需要粘贴该账户的 API Key。' : 'Paste this account’s API key.')
+        : (zh ? '需要粘贴该账户的 Cookie。' : 'Paste this account’s Cookie.');
     }
-    if (kind === 'workspace' && !isValidOpenCodeWorkspaceId(account.workspaceId)) {
+    if (kind === 'workspace' && account.connectionType !== 'api-key' && !isValidOpenCodeWorkspaceId(account.workspaceId)) {
       return zh ? '需要填写该账户对应的 wrk_… Workspace ID。' : 'Enter the wrk_… Workspace ID for this account.';
     }
     return '';
@@ -142,6 +144,15 @@ function OpenCodeGoConnectionPanel({
   const updateAccount = (accountId, patch) => updateProvider('opencode', {
     accounts: item.accounts.map((account) => account.id === accountId ? { ...account, ...patch } : account),
   });
+  const setConnectionType = (account, connectionType) => {
+    if (account.connectionType === connectionType) return;
+    const credentialKey = `opencode:${account.id}`;
+    updateAccount(account.id, { connectionType, hasSecret: false });
+    setAccountSecrets((current) => ({ ...current, opencode: { ...current.opencode, [account.id]: '' } }));
+    if (account.hasSecret) setClearAccountSecrets((current) => current.includes(credentialKey)
+      ? current : [...current, credentialKey]);
+    setTouched((current) => ({ ...current, [`credential:${account.id}`]: false, [`workspace:${account.id}`]: false }));
+  };
   const addOpenCodeAccount = () => {
     const id = accountIdentifier();
     enableMaster();
@@ -149,7 +160,7 @@ function OpenCodeGoConnectionPanel({
       enabled: true,
       accounts: [...item.accounts, {
         id, label: '',
-        workspaceId: '', externalIdentifier: '', hasSecret: false,
+        connectionType: 'workspace', workspaceId: '', externalIdentifier: '', hasSecret: false,
         entitlementType: 'unknown', subscriptionPrice: null,
         subscriptionCurrency: 'usd', billingCycle: 'monthly', renewsAt: '',
       }],
@@ -157,23 +168,24 @@ function OpenCodeGoConnectionPanel({
     });
   };
   return <div className="account-provider-config">
-    <div className="account-config-heading"><div><b>{zh ? 'OpenCode Go 账户' : 'OpenCode Go accounts'}</b><span>{zh ? '名称、Cookie 与 Workspace ID 按账户独立保存；三项齐全后才查询。' : 'Name, Cookie, and Workspace ID are stored per account; all three are required.'}</span></div><button className="provider-connect-button" type="button" onClick={addOpenCodeAccount}><span aria-hidden="true">＋</span>{zh ? '添加账户' : 'Add account'}</button></div>
+    <div className="account-config-heading"><div><b>{zh ? 'OpenCode Go 账户' : 'OpenCode Go accounts'}</b><span>{zh ? '每个账户独立选择 API Key 或 Cookie + Workspace；额度和订阅信息不会共享。' : 'Each account independently uses an API key or Cookie + Workspace; quotas and subscription details are never shared.'}</span></div><button className="provider-connect-button" type="button" onClick={addOpenCodeAccount}><span aria-hidden="true">＋</span>{zh ? '添加账户' : 'Add account'}</button></div>
     <SetupSteps provider={provider} zh={zh}/>
     <div className="opencode-account-list" role="radiogroup" aria-label={zh ? 'OpenCode Go 账户' : 'OpenCode Go accounts'}>{item.accounts.map((account, index) => {
         const credentialKey = `opencode:${account.id}`;
         const labelError = touched[`label:${account.id}`] ? fieldError(account.id, 'label') : '';
-        const cookieError = touched[`cookie:${account.id}`] ? fieldError(account.id, 'cookie') : '';
+        const credentialError = touched[`credential:${account.id}`] ? fieldError(account.id, 'credential') : '';
         const workspaceError = touched[`workspace:${account.id}`] ? fieldError(account.id, 'workspace') : '';
         return <fieldset className={active?.id === account.id ? 'selected' : ''} key={account.id}>
           <legend>{zh ? `账户 ${index + 1}` : `Account ${index + 1}`}</legend>
           <label className="opencode-session-select"><input type="radio" name="opencode-active-account" checked={active?.id === account.id} onChange={() => updateProvider('opencode', { activeAccountId: account.id })}/><span className="sr-only">{zh ? `选择账户 ${index + 1}` : `Select account ${index + 1}`}</span></label>
           <label className="opencode-account-label"><span>{zh ? '账户名称' : 'Account name'}</span><input aria-invalid={labelError ? 'true' : undefined} value={account.label} onChange={(event) => updateAccount(account.id, { label: event.target.value })} onBlur={() => setTouched((current) => ({ ...current, [`label:${account.id}`]: true }))} placeholder={zh ? '个人 / 工作' : 'Personal / work'}/>{labelError ? <small className="field-error">{labelError}</small> : null}</label>
-          <label className="opencode-cookie-field"><span>Cookie</span><input type="password" autoComplete="off" spellCheck="false" aria-invalid={cookieError ? 'true' : undefined} value={accountSecrets.opencode?.[account.id] || ''} onChange={(event) => setAccountSecrets((current) => ({ ...current, opencode: { ...current.opencode, [account.id]: event.target.value } }))} onBlur={() => setTouched((current) => ({ ...current, [`cookie:${account.id}`]: true }))} placeholder={account.hasSecret ? (zh ? '已安全保存 · 留空保持' : 'Saved securely · leave blank to keep') : 'auth=…'}/><small className={cookieError ? 'field-error' : undefined}>{cookieError || (zh ? '支持 Cookie 请求头或复制的 cURL。' : 'Accepts a Cookie header or copied cURL.')}</small>{clearAccountSecrets.includes(credentialKey) ? <small className="account-secret-warning">{zh ? '保存后会清除该账户凭据' : 'This account credential will be removed on save'}</small> : null}</label>
-          <label className="opencode-workspace-field"><span>Workspace ID</span><input aria-invalid={workspaceError ? 'true' : undefined} value={account.workspaceId || ''} onChange={(event) => updateAccount(account.id, { workspaceId: event.target.value })} onBlur={() => setTouched((current) => ({ ...current, [`workspace:${account.id}`]: true }))} placeholder="wrk_…"/><small className={workspaceError ? 'field-error' : undefined}>{workspaceError || (zh ? '与上面的 Cookie 属于同一个 OpenCode Go 账户。' : 'Must belong to the same OpenCode Go account as the Cookie above.')}</small></label>
+          <label className="opencode-connection-type"><span>{zh ? '连接方式' : 'Connection method'}</span><select value={account.connectionType || 'workspace'} onChange={(event) => setConnectionType(account, event.target.value)}><option value="workspace">Cookie + Workspace</option><option value="api-key">API Key</option></select><small>{zh ? '切换方式需重新填写凭据，避免误用旧凭据。' : 'Switching methods requires a fresh credential to prevent reuse of the wrong secret.'}</small></label>
+          <label className="opencode-cookie-field"><span>{account.connectionType === 'api-key' ? 'API Key' : 'Cookie'}</span><input type="password" autoComplete="off" spellCheck="false" aria-invalid={credentialError ? 'true' : undefined} value={accountSecrets.opencode?.[account.id] || ''} onChange={(event) => setAccountSecrets((current) => ({ ...current, opencode: { ...current.opencode, [account.id]: event.target.value } }))} onBlur={() => setTouched((current) => ({ ...current, [`credential:${account.id}`]: true }))} placeholder={account.hasSecret ? (zh ? '已安全保存 · 留空保持' : 'Saved securely · leave blank to keep') : account.connectionType === 'api-key' ? 'opencode_…' : 'auth=…'}/><small className={credentialError ? 'field-error' : undefined}>{credentialError || (account.connectionType === 'api-key' ? (zh ? '只发送给 OpenCode Go 官方用量接口。' : 'Sent only to the official OpenCode Go usage API.') : (zh ? '支持 Cookie 请求头或复制的 cURL。' : 'Accepts a Cookie header or copied cURL.'))}</small>{clearAccountSecrets.includes(credentialKey) ? <small className="account-secret-warning">{zh ? '保存后会替换或清除原凭据' : 'The previous credential will be replaced or removed on save'}</small> : null}</label>
+          {account.connectionType !== 'api-key' ? <label className="opencode-workspace-field"><span>Workspace ID</span><input aria-invalid={workspaceError ? 'true' : undefined} value={account.workspaceId || ''} onChange={(event) => updateAccount(account.id, { workspaceId: event.target.value })} onBlur={() => setTouched((current) => ({ ...current, [`workspace:${account.id}`]: true }))} placeholder="wrk_…"/><small className={workspaceError ? 'field-error' : undefined}>{workspaceError || (zh ? '与上面的 Cookie 属于同一个 OpenCode Go 账户。' : 'Must belong to the same OpenCode Go account as the Cookie above.')}</small></label> : null}
           <button className="remove-account-btn" type="button" onClick={() => removeConnectedAccount('opencode', account, item, updateProvider, setClearAccountSecrets)}><X size={12}/>{zh ? '移除' : 'Remove'}</button>
           <EntitlementFields className="account-entitlement" item={account} onChange={(patch) => updateAccount(account.id, patch)} zh={zh}/>
         </fieldset>;
-      })}{!item.accounts.length ? <p>{zh ? '添加账户后，为该账户分别填写名称、Cookie 与 Workspace ID。' : 'Add an account, then enter its name, Cookie, and Workspace ID.'}</p> : null}</div>
+      })}{!item.accounts.length ? <p>{zh ? '添加账户后，为该账户选择一种连接方式并完整填写。' : 'Add an account, choose one connection method, and complete its fields.'}</p> : null}</div>
   </div>;
 }
 
@@ -305,12 +317,12 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
         : 'OpenCode Go is enabled. Add at least one account.');
       const incompleteOpenCode = openCode.accounts.filter((account) => (
         !account.label.trim()
-        || !isValidOpenCodeWorkspaceId(account.workspaceId)
+        || (account.connectionType !== 'api-key' && !isValidOpenCodeWorkspaceId(account.workspaceId))
         || (!account.hasSecret && !(accountSecrets.opencode?.[account.id] || '').trim())
       ));
       if (incompleteOpenCode.length) throw new Error(zh
-        ? 'OpenCode Go 每个账户都必须填写名称、Cookie 与有效的 wrk_… Workspace ID。'
-        : 'Every OpenCode Go account requires a name, Cookie, and valid wrk_… Workspace ID.');
+        ? 'OpenCode Go 每个账户都需要名称，并完整配置 API Key 或 Cookie + 有效的 wrk_… Workspace ID。'
+        : 'Every OpenCode Go account needs a name and either an API key or Cookie + a valid wrk_… Workspace ID.');
       const result = await onSave({
         settings: draft, secrets, clearSecrets, accountSecrets, clearAccountSecrets,
       });
@@ -379,7 +391,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
             const id = accountIdentifier();
             patch.accounts = [{
               id, label: '',
-              workspaceId: '', externalIdentifier: '', hasSecret: false,
+              connectionType: 'workspace', workspaceId: '', externalIdentifier: '', hasSecret: false,
               entitlementType: 'unknown', subscriptionPrice: null,
               subscriptionCurrency: 'usd', billingCycle: 'monthly', renewsAt: '',
             }];

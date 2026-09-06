@@ -349,6 +349,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .tool-glyph--codex { --tool-ink: #10a37f; }
 .tool-glyph--gemini { --tool-ink: #7c8cff; }
 .tool-glyph--antigravity { --tool-ink: #ff4e8b; }
+.tool-glyph--kiro { --tool-ink: #8b5cf6; }
 .tool-glyph--copilot { --tool-ink: #9b87f5; }
 .tool-glyph--opencode { --tool-ink: #fbbf24; }
 .tool-glyph--cursor { --tool-ink: var(--paper-strong); }
@@ -639,15 +640,16 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .opencode-account-list legend { padding: 0 5px; color: var(--grey); font-size: 10px; }
 .opencode-account-list label { display: grid; gap: 5px; min-width: 0; }
 .opencode-account-list label > span { color: var(--grey); font-size: 11px; }
-.opencode-account-list input { width: 100%; min-width: 0; height: 36px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--bg); color: var(--paper); font: 500 11px/1 'JetBrains Mono', monospace; }
+.opencode-account-list input, .opencode-account-list select { width: 100%; min-width: 0; height: 36px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--bg); color: var(--paper); font: 500 11px/1 'JetBrains Mono', monospace; }
 .opencode-account-list .opencode-session-select { grid-column: 1; grid-row: 1; align-self: center; }
 .opencode-account-list .opencode-account-label { grid-column: 2; grid-row: 1; }
-.opencode-account-list .opencode-cookie-field { grid-column: 2 / -1; grid-row: 2; }
-.opencode-account-list .opencode-workspace-field { grid-column: 2 / -1; grid-row: 3; }
+.opencode-account-list .opencode-connection-type { grid-column: 2 / -1; grid-row: 2; }
+.opencode-account-list .opencode-cookie-field { grid-column: 2 / -1; grid-row: 3; }
+.opencode-account-list .opencode-workspace-field { grid-column: 2 / -1; grid-row: 4; }
 .opencode-account-list .opencode-session-select input { width: 15px; height: 15px; margin: 0; padding: 0; accent-color: var(--blue); }
 .opencode-account-list label > small, .account-secret-warning { min-width: 0; overflow-wrap: anywhere; color: var(--grey-soft); font-size: 11px; line-height: 1.4; }
 .opencode-account-list .remove-account-btn { grid-column: 3; grid-row: 1; min-height: 36px; border: 1px solid var(--line); border-radius: var(--radius-btn); white-space: nowrap; }
-.opencode-account-list .account-entitlement { grid-column: 2 / -1; grid-row: 4; margin-top: 2px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: color-mix(in srgb, var(--paper) 2%, transparent); }
+.opencode-account-list .account-entitlement { grid-column: 2 / -1; grid-row: 5; margin-top: 2px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: color-mix(in srgb, var(--paper) 2%, transparent); }
 .opencode-account-list .account-entitlement::before { content: 'SUBSCRIPTION'; color: var(--blue); font: 600 10px/1 'JetBrains Mono', monospace; letter-spacing: .13em; }
 .benefit-account-picker { display: grid; grid-template-columns: auto minmax(120px,auto); align-items: center; gap: 3px 8px; margin-left: auto; }
 .benefit-account-picker > span, .benefit-account-picker > small { color: var(--grey); font-size: 11px; }
@@ -756,9 +758,9 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
   .copilot-device-state { grid-template-columns: 1fr; }
   .copilot-device-state > strong { grid-row: auto; grid-column: auto; }
   .opencode-account-list fieldset { grid-template-columns: 1fr; }
-  .opencode-account-list .opencode-session-select, .opencode-account-list .opencode-account-label, .opencode-account-list .opencode-cookie-field, .opencode-account-list .opencode-workspace-field, .opencode-account-list .account-secret-warning, .opencode-account-list .remove-account-btn, .opencode-account-list .account-entitlement { grid-column: auto; grid-row: auto; }
+  .opencode-account-list .opencode-session-select, .opencode-account-list .opencode-account-label, .opencode-account-list .opencode-connection-type, .opencode-account-list .opencode-cookie-field, .opencode-account-list .opencode-workspace-field, .opencode-account-list .account-secret-warning, .opencode-account-list .remove-account-btn, .opencode-account-list .account-entitlement { grid-column: auto; grid-row: auto; }
   .opencode-account-list .opencode-session-select { justify-self: start; }.opencode-account-list .remove-account-btn { min-height: 42px; justify-content: center; }
-  .opencode-account-list input { height: 42px; }
+  .opencode-account-list input, .opencode-account-list select { height: 42px; }
   .provider-tabs { flex-wrap: wrap; gap: 8px; }
   .benefit-account-picker { width: 100%; grid-template-columns: auto 1fr; margin: 0; }
   .benefit-account-picker select { width: 100%; height: 40px; }
