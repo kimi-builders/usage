@@ -28,6 +28,9 @@ and source-health reporting. Upgrading never expands community-sync scope.
 
 ## Release engineering
 
+- The CLI, background sync, diagnostics, sources, and shell completions now share
+  the language saved by the Dashboard. An explicit `--lang` still takes precedence,
+  and English mode no longer leaks Chinese startup or status messages.
 - Updated the standard API price catalog to `2026-09-06`, using first-party OpenAI,
   Anthropic, Google, xAI, and DeepSeek documentation as pricing authority.
   OpenCode-only offers now match only OpenCode observations instead of leaking across

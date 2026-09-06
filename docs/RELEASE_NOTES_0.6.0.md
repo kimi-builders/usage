@@ -21,6 +21,8 @@
 
 ## 发布工程
 
+- CLI、后台同步、诊断、数据源与补全命令现在统一跟随 Dashboard 保存的语言；显式
+  `--lang` 仍具有最高优先级，英文模式不再混入中文启动或状态信息。
 - 标准 API 价格目录更新至 `2026-09-06`，以 OpenAI、Anthropic、Google、xAI 与 DeepSeek
   的一方文档作为价格依据；OpenCode 独有报价只匹配 OpenCode 来源，不再跨 Agent 套用。
   AI Pricing Guru 仅作为维护者 CI 的差异提示源，不会自动改价或进入用户运行时。价格仍是
