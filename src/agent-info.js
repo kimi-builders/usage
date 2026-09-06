@@ -10,6 +10,9 @@ const AGENT_COMMANDS = [
   { source: 'pi-coding-agent', commands: [['pi', '--version']] },
   { source: 'zcode', commands: [['zcode', '--version']] },
   { source: 'workbuddy', commands: [['workbuddy', '--version']] },
+  { source: 'grok', commands: [['grok', '--version']] },
+  { source: 'trae-cli', commands: [['trae', '--version'], ['trae-cli', '--version']] },
+  { source: 'mcode', commands: [['mcode', '--version']] },
 ];
 
 export function versionFromOutput(output) {

@@ -27,8 +27,8 @@ export function Onboarding({ control, zh, onLocale, onControlAction, onScan, onS
   const summary = useMemo(() => totals(snapshot), [snapshot]);
   const scanCount = Object.values(policies).filter((mode) => mode !== 'off').length;
   const syncCount = Object.values(policies).filter((mode) => mode === 'private').length;
-  const configureSource = (sourceId, csvPath) => onControlAction({
-    action: 'configure-source', sourceId, csvPath,
+  const configureSource = (sourceId, configuration) => onControlAction({
+    action: 'configure-source', sourceId, ...configuration,
   });
 
   const scan = async () => {

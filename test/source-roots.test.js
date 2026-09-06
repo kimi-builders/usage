@@ -20,6 +20,9 @@ process.env.KBU_USAGE_ROO_DIRS = join(root, 'roo-absent');
 process.env.KBU_USAGE_PI_SESSION_DIRS = join(root, 'pi-absent');
 process.env.KBU_USAGE_ZCODE_DB = join(root, 'zcode-absent.sqlite');
 process.env.KBU_USAGE_WORKBUDDY_DIRS = join(root, 'workbuddy-absent');
+process.env.KBU_USAGE_GROK_SESSIONS = join(root, 'grok-absent');
+process.env.KBU_USAGE_TRAE_CLI_SESSIONS = join(root, 'trae-absent');
+process.env.KBU_USAGE_MCODE_DB = join(root, 'mcode-absent.sqlite');
 process.env.KBU_USAGE_CURSOR_CSV = join(root, 'cursor-absent.csv');
 
 const { sourceRegistry, enabledSources, parsers } = await import('../src/parsers/index.js');
@@ -38,6 +41,9 @@ const EXPECTED = [
   { id: 'pi-coding-agent', tier: 'beta' },
   { id: 'zcode', tier: 'beta' },
   { id: 'workbuddy', tier: 'beta' },
+  { id: 'grok', tier: 'beta' },
+  { id: 'trae-cli', tier: 'beta' },
+  { id: 'mcode', tier: 'beta' },
   { id: 'cursor', tier: 'explicit-opt-in' },
 ];
 

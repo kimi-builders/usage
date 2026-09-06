@@ -21,7 +21,9 @@ GitHub Release configuration were completed; releases now use npm Trusted Publis
 
 ### Collector and Usage Center
 
-- [x] Eleven automatic local sources plus explicit Cursor CSV, with isolated failures.
+- [x] Fourteen automatic local sources plus explicit Cursor CSV, with isolated failures.
+- [x] Streaming huge Claude logs, current Pi accounting/discovery, and multi-directory management for Codex, Antigravity, Pi, Grok, and Trae.
+- [x] Local usage parsing for Grok CLI, Trae CLI, and MiniMax Code; new sources default to Local only.
 - [x] 30-minute buckets and mutually exclusive input, cache-write, cache-read,
   output, and reasoning Tokens.
 - [x] Raw/canonical model, provider, reasoning effort, Agent version, context tier,

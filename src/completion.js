@@ -54,7 +54,7 @@ _kbu_usage_completion() {
           _arguments \\
             '--period[统计时间周期]:period:(today 24h 7d 30d 90d all)' \\
             '--days[指定天数]:days:(1 7 14 30 60 90)' \\
-            '--source[指定 Agent 来源]:source:(kimi-code claude-code codex opencode gemini-cli antigravity copilot-cli roo-code pi-coding-agent zcode workbuddy cursor)' \\
+            '--source[指定 Agent 来源]:source:(kimi-code claude-code codex opencode gemini-cli antigravity copilot-cli roo-code pi-coding-agent zcode workbuddy grok trae-cli mcode cursor)' \\
             '--model[按模型名模糊过滤]:model:' \\
             '--project[按项目名精确过滤]:project:' \\
             '--json[以 JSON 输出]' \\
@@ -74,7 +74,7 @@ _kbu_usage_completion() {
             '--output[保存文件路径]:output:_files' \\
             '-o[保存文件路径]:output:_files' \\
             '--period[时间范围]:period:(today 24h 7d 30d 90d all)' \\
-            '--source[指定 Agent 来源]:source:(kimi-code claude-code codex opencode antigravity cursor)'
+            '--source[指定 Agent 来源]:source:(kimi-code claude-code codex opencode gemini-cli antigravity copilot-cli roo-code pi-coding-agent zcode workbuddy grok trae-cli mcode cursor)'
           ;;
         sources)
           local -a subcommands
@@ -83,6 +83,8 @@ _kbu_usage_completion() {
             'set:设置数据源模式 (off/local/private)'
             'enable:启用显式数据源 (如 cursor)'
             'disable:停用数据源'
+            'add-root:添加额外本机数据目录'
+            'remove-root:移除额外本机数据目录'
           )
           _describe -t subcommands 'sources 操作' subcommands
           ;;
@@ -151,7 +153,7 @@ _kbu_usage_bash_completion() {
       ;;
     sources)
       if [[ $cword -eq 2 ]]; then
-        COMPREPLY=( $(compgen -W "list set enable disable" -- "$cur") )
+        COMPREPLY=( $(compgen -W "list set enable disable add-root remove-root" -- "$cur") )
       fi
       ;;
     daemon)
@@ -211,6 +213,7 @@ complete -c kbu-usage -n "__fish_seen_subcommand_from pricing" -l json -d "以 J
 complete -c kbu-usage -n "__fish_seen_subcommand_from init" -l api-url -d "社区地址" -r
 complete -c kbu-usage -n "__fish_seen_subcommand_from init" -l sync -d "连接成功后立即同步"
 complete -c kbu-usage -n "__fish_seen_subcommand_from init" -l skip-pricing-update -d "跳过公开价格目录更新"
+complete -c kbu-usage -n "__fish_seen_subcommand_from sources" -a "list set enable disable add-root remove-root"
 `;
 }
 

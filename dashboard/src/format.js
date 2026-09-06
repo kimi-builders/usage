@@ -10,6 +10,9 @@ export const SOURCE_LABELS = {
   'pi-coding-agent': 'Pi',
   zcode: 'ZCode',
   workbuddy: 'WorkBuddy',
+  grok: 'Grok CLI',
+  'trae-cli': 'Trae CLI',
+  mcode: 'MiniMax Code',
   cursor: 'Cursor',
 };
 

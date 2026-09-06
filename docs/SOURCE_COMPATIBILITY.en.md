@@ -2,7 +2,7 @@
 
 > [中文](./SOURCE_COMPATIBILITY.md)
 >
-> Last reviewed: 2026-08-15 · Collector `0.5.1`
+> Last reviewed: 2026-09-05 · Collector `0.5.x`
 
 This matrix describes the compatibility evidence available for each parser; it
 is not an official support claim by any Agent vendor. Every source reads local
@@ -29,16 +29,19 @@ default to Local only and never silently join an existing user's sync set.
 | Source | Level | Auto-discovered | Main evidence | Known boundary |
 | --- | --- | --- | --- | --- |
 | Kimi Code | Core | Yes | Current/legacy stores, deltas, cache, sub-agents, second timestamps, malformed records | New upstream fields are used only when their meaning can be proven |
-| Claude Code | Stable | Yes | Projects/transcripts, cache TTL, duplicate UUID, sidechain, malformed JSONL | Claude Desktop/Cowork paths are compatibility reads whose format remains upstream-controlled |
-| Codex | Stable | Yes | Current/archived sessions, streaming huge JSONL, replay deduplication, reasoning effort, context/processing tier, sub-agents | Events without usage never produce guessed Tokens |
+| Claude Code | Stable | Yes | Projects/transcripts, cache TTL, duplicate UUID, sidechain, malformed and huge streaming JSONL | Claude Desktop/Cowork paths are compatibility reads whose format remains upstream-controlled |
+| Codex | Stable | Yes | Current/archived sessions, streaming huge JSONL, cross-directory copy deduplication, reasoning effort, context/processing tier, sub-agents | Events without usage never produce guessed Tokens |
 | OpenCode | Stable | Yes | SQLite, legacy JSON, Token mapping, malformed records | SQLite schema drift is isolated as a source failure |
 | Gemini CLI | Stable | Yes | JSONL, legacy JSON, nested sub-agents, malformed records | Reads only existing usage metadata; never estimates from text |
 | Antigravity | Stable | Yes | App/CLI offline databases, model and Token mapping | Locked or changed databases may be partially readable |
 | GitHub Copilot CLI | Stable | Yes | Session discovery, mutually exclusive cache/input classification | Some versions retain sessions without usable Token counts |
 | Roo Code | Stable | Yes | VS Code task history, cache fields, time events | Covers only task data still retained locally |
-| Pi Coding Agent | Beta | Yes | JSONL sessions, Token classification, empty/malformed records | Version matrix and cross-directory copy deduplication evidence are still expanding |
+| Pi Coding Agent | Beta | Yes | JSONL sessions, current/legacy reasoning fields, custom sessionDir, empty/malformed records | Version matrix and cross-directory copy deduplication evidence are still expanding |
 | ZCode | Beta | Yes | Valid/empty/malformed SQLite, project and provider mapping | Node 20 needs system `sqlite3` without `node:sqlite`; real Windows evidence is limited |
 | WorkBuddy / CodeBuddy | Beta | Yes | JSONL project store, routed models, exclusive Tokens, session deduplication | Product-version and historical-format samples are limited; the UI uses CodeBuddy branding |
+| Grok CLI | Beta | Yes | `turn_completed`, per-model usage, exclusive cache/reasoning fields, cross-directory copy deduplication | Real-version and cross-platform samples remain limited |
+| Trae CLI | Beta | Yes | Streaming large JSONL, authoritative span/failover selection, session events | Upstream trace categories and cache semantics are not guaranteed stable |
+| MiniMax Code | Beta | Yes | SQLite schema allowlist, Token ledger, separate cache/reasoning fields | Reads only Token/workspace metadata, never message payloads; Node 20 may need `sqlite3` |
 | Cursor | Dashboard-validated CSV or explicit CLI opt-in | No | Official Usage CSV references, Token categories, quoted fields | Supports user-exported CSV only; does not read editor conversations or private databases |
 
 ## Platforms and Node.js

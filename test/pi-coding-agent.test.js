@@ -59,3 +59,72 @@ test('Pi preserves exclusive cache and reasoning fields, deduplicates copied rec
   assert.equal(serialized.includes('PRIVATE_'), false);
   assert.equal(serialized.includes('/private/work'), false);
 });
+
+test('Pi accepts the current usage.reasoning field', async () => {
+  const dir = join(root, 'reasoning-current');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'session.jsonl'), `${[
+    { type: 'session', id: 'reasoning-current', timestamp: '2026-08-10T10:00:00.000Z', cwd: '/work/current' },
+    { type: 'message', id: 'a1', timestamp: '2026-08-10T10:00:01.000Z', message: {
+      role: 'assistant', model: 'pi-current', usage: { input: 5, output: 11, reasoning: 4 },
+    } },
+  ].map(JSON.stringify).join('\n')}\n`);
+  process.env.KBU_USAGE_PI_SESSION_DIRS = dir;
+  const result = await parse({ sessionSalt: SALT });
+  assert.equal(result.buckets[0].outputTokens, 7);
+  assert.equal(result.buckets[0].reasoningOutputTokens, 4);
+});
+
+test('Pi discovers PI_CODING_AGENT_SESSION_DIR and settings.json sessionDir', () => {
+  const previousOverride = process.env.KBU_USAGE_PI_SESSION_DIRS;
+  const previousDirect = process.env.PI_CODING_AGENT_SESSION_DIR;
+  const previousAgent = process.env.PI_CODING_AGENT_DIR;
+  const direct = join(root, 'direct-sessions');
+  const agent = join(root, 'custom-agent');
+  const configured = join(root, 'configured-sessions');
+  mkdirSync(direct, { recursive: true });
+  mkdirSync(agent, { recursive: true });
+  mkdirSync(configured, { recursive: true });
+  writeFileSync(join(agent, 'settings.json'), '{}');
+  try {
+    delete process.env.KBU_USAGE_PI_SESSION_DIRS;
+    process.env.PI_CODING_AGENT_SESSION_DIR = direct;
+    assert.deepEqual(roots(), [direct]);
+    delete process.env.PI_CODING_AGENT_SESSION_DIR;
+    process.env.PI_CODING_AGENT_DIR = agent;
+    writeFileSync(join(agent, 'settings.json'), JSON.stringify({ sessionDir: configured }));
+    assert.deepEqual(roots(), [configured]);
+  } finally {
+    if (previousOverride === undefined) delete process.env.KBU_USAGE_PI_SESSION_DIRS;
+    else process.env.KBU_USAGE_PI_SESSION_DIRS = previousOverride;
+    if (previousDirect === undefined) delete process.env.PI_CODING_AGENT_SESSION_DIR;
+    else process.env.PI_CODING_AGENT_SESSION_DIR = previousDirect;
+    if (previousAgent === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgent;
+  }
+});
+
+test('Pi keeps explicit extra roots when PI_CODING_AGENT_DIR belongs to Oh My Pi', () => {
+  const previousOverride = process.env.KBU_USAGE_PI_SESSION_DIRS;
+  const previousDirect = process.env.PI_CODING_AGENT_SESSION_DIR;
+  const previousAgent = process.env.PI_CODING_AGENT_DIR;
+  const omp = join(root, '.omp', 'agent');
+  const explicitPi = join(root, 'explicit-pi-sessions');
+  mkdirSync(omp, { recursive: true });
+  mkdirSync(explicitPi, { recursive: true });
+  try {
+    delete process.env.KBU_USAGE_PI_SESSION_DIRS;
+    delete process.env.PI_CODING_AGENT_SESSION_DIR;
+    process.env.PI_CODING_AGENT_DIR = omp;
+    assert.deepEqual(roots({ sourceOptions: {
+      'pi-coding-agent': { extraRoots: [explicitPi] },
+    } }), [explicitPi]);
+  } finally {
+    if (previousOverride === undefined) delete process.env.KBU_USAGE_PI_SESSION_DIRS;
+    else process.env.KBU_USAGE_PI_SESSION_DIRS = previousOverride;
+    if (previousDirect === undefined) delete process.env.PI_CODING_AGENT_SESSION_DIR;
+    else process.env.PI_CODING_AGENT_SESSION_DIR = previousDirect;
+    if (previousAgent === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgent;
+  }
+});

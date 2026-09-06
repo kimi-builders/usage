@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { aggregateToBuckets, extractSessions } from './index.js';
+import { configuredExtraRoots, discoverCodexHomes } from '../extra-roots.js';
 
 /**
  * Codex CLI parser (openai/codex).
@@ -36,17 +37,19 @@ function expandHome(value) {
 
 // Resolved lazily (not at import time) so importing the registry never
 // touches the filesystem — tests point the override at fixtures before use.
-function resolveHome() {
+function resolveHomes(sourceOptions = {}) {
   const override = process.env.KBU_USAGE_CODEX_HOME?.trim();
-  if (override) return override;
+  const extras = configuredExtraRoots(sourceOptions, 'codex').flatMap(discoverCodexHomes);
+  if (override) return [...new Set([expandHome(override), ...extras])];
   const codexHome = process.env.CODEX_HOME?.trim();
-  if (codexHome) return expandHome(codexHome);
-  return join(homedir(), '.codex');
+  return [...new Set([
+    codexHome ? expandHome(codexHome) : join(homedir(), '.codex'),
+    ...extras,
+  ])];
 }
 
-export function roots() {
-  const home = resolveHome();
-  return existsSync(home) ? [home] : [];
+export function roots({ sourceOptions } = {}) {
+  return resolveHomes(sourceOptions).filter((home) => existsSync(home));
 }
 
 function tokenCount(value) {
@@ -209,17 +212,19 @@ function projectFrom(payload) {
   return 'unknown';
 }
 
-export async function parse({ sessionSalt } = {}) {
-  const home = resolveHome();
-  if (!existsSync(home)) return null;
+export async function parse({ sessionSalt, sourceOptions } = {}) {
+  const homes = roots({ sourceOptions });
+  if (homes.length === 0) return null;
 
   // Physical copy dedup: same session id in several files (live + archive
   // overlap) → keep the file with the most parseable records, parse losers
   // not at all. Ties go to the lexicographically smallest path.
   const rollouts = [];
-  for (const file of findRolloutFiles(home)) {
-    const rollout = await readRollout(file);
-    if (rollout) rollouts.push(rollout);
+  for (const home of homes) {
+    for (const file of findRolloutFiles(home)) {
+      const rollout = await readRollout(file);
+      if (rollout) rollouts.push(rollout);
+    }
   }
   const winners = new Map();
   for (const rollout of rollouts) {

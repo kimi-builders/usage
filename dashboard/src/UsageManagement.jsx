@@ -34,8 +34,8 @@ export function UsageManagement({ data, control, onControlAction, onControlRefre
     } catch (reason) { setSaveError(reason?.message || String(reason)); }
     finally { setSaving(false); }
   };
-  const configureSource = async (sourceId, csvPath) => {
-    const next = await onControlAction({ action: 'configure-source', sourceId, csvPath });
+  const configureSource = async (sourceId, configuration) => {
+    const next = await onControlAction({ action: 'configure-source', sourceId, ...configuration });
     setPolicies((current) => ({ ...policiesFromSources(next.sources), ...current }));
     await onControlRefresh();
     return next;

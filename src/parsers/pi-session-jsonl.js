@@ -92,7 +92,7 @@ export async function parsePiSessions({ source, roots, sessionSalt }) {
         const inputTokens = count(usage.input);
         const cacheWriteInputTokens = count(usage.cacheWrite);
         const cacheReadInputTokens = count(usage.cacheRead);
-        const reasoningOutputTokens = count(usage.reasoningTokens);
+        const reasoningOutputTokens = count(usage.reasoning ?? usage.reasoningTokens);
         // Pi-compatible stores include reasoning in usage.output.
         const outputTokens = Math.max(0, count(usage.output) - reasoningOutputTokens);
         const score = inputTokens + cacheWriteInputTokens + cacheReadInputTokens

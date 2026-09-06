@@ -218,8 +218,8 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
     finally { setBusy(''); }
   };
 
-  const configureSource = async (sourceId, csvPath) => {
-    const next = await onControlAction({ action: 'configure-source', sourceId, csvPath });
+  const configureSource = async (sourceId, configuration) => {
+    const next = await onControlAction({ action: 'configure-source', sourceId, ...configuration });
     setLocalControl(next);
     setPolicies((current) => ({ ...policiesFromSources(next.sources), ...current }));
     return next;

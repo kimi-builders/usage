@@ -1,6 +1,14 @@
 import { basename, join, sep } from 'node:path';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { aggregateToBuckets, extractSessions } from './index.js';
+import { createReadStream, readdirSync, statSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+import {
+  accumulateSessionEvent,
+  aggregateToBuckets,
+  createSessionAccumulator,
+  extractSessions,
+  finalizeSessionAccumulator,
+  sessionAccumulatorIsOrdered,
+} from './index.js';
 import { getClaudeRoots } from '../claude-roots.js';
 
 const MAX_WARNINGS = 20;
@@ -101,15 +109,26 @@ function collectCandidates(scanRoots, directoryName, ctx) {
   return groups;
 }
 
-function readJsonl(candidate, onObject) {
-  const content = readFileSync(candidate.filePath).subarray(0, candidate.size).toString('utf8');
-  for (const line of content.split('\n')) {
-    if (!line.trim()) continue;
-    try {
-      onObject(JSON.parse(line));
-    } catch {
-      // Isolate malformed/appending records. The next sync sees completed data.
+async function readJsonl(candidate, onObject) {
+  if (candidate.size <= 0) return;
+  const input = createReadStream(candidate.filePath, {
+    encoding: 'utf8',
+    end: candidate.size - 1,
+    highWaterMark: 256 * 1024,
+  });
+  const lines = createInterface({ input, crlfDelay: Infinity });
+  try {
+    for await (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        onObject(JSON.parse(line));
+      } catch {
+        // Isolate malformed/appending records. The next sync sees completed data.
+      }
     }
+  } finally {
+    lines.close();
+    input.destroy();
   }
 }
 
@@ -129,19 +148,50 @@ function timingEvent(record, sessionId, project) {
   };
 }
 
-function scanProjectCandidate(candidate) {
-  const entries = [];
+async function collectTimingEvents(candidate, projectForRecord) {
   const events = [];
+  await readJsonl(candidate, (record) => {
+    const event = timingEvent(record, candidate.sessionId, projectForRecord(record));
+    if (event) events.push(event);
+  });
+  return events;
+}
+
+async function finalizeCandidateSession(
+  candidate,
+  accumulator,
+  sessionSalt,
+  projectForRecord,
+  projectOverride,
+) {
+  if (sessionAccumulatorIsOrdered(accumulator)) {
+    return finalizeSessionAccumulator(
+      accumulator,
+      candidate.sessionId,
+      sessionSalt,
+      projectOverride,
+    );
+  }
+  // JSONL normally appends in timestamp order. Preserve the shared extractor's
+  // sort semantics for copied/rewritten files by re-reading only that file.
+  const events = await collectTimingEvents(candidate, projectForRecord);
+  const session = extractSessions(events, sessionSalt)[0] || null;
+  return session && projectOverride ? { ...session, project: projectOverride } : session;
+}
+
+async function scanProjectCandidate(candidate, sessionSalt) {
+  const usageEntries = { entriesByUuid: new Map(), anonymousEntries: [] };
+  const sessionAccumulator = createSessionAccumulator();
   let lastModel = null;
   let sessionProject = candidate.fallbackProject;
   let foundSessionCwd = false;
-  readJsonl(candidate, (record) => {
+  await readJsonl(candidate, (record) => {
     if (!foundSessionCwd && typeof record.cwd === 'string' && record.cwd.trim()) {
       sessionProject = projectFromCwd(record.cwd, candidate.fallbackProject);
       foundSessionCwd = true;
     }
     const event = timingEvent(record, candidate.sessionId, sessionProject);
-    if (event) events.push(event);
+    if (event) accumulateSessionEvent(sessionAccumulator, event);
     const usage = record.message?.usage;
     if (record.type !== 'assistant' || !usage || typeof usage !== 'object') return;
     const timestamp = new Date(record.timestamp);
@@ -155,7 +205,7 @@ function scanProjectCandidate(candidate) {
     const outputTokens = tokenCount(usage.output_tokens);
     const usageScore = inputTokens + cacheWriteInputTokens + cacheReadInputTokens + outputTokens;
     if (usageScore === 0) return;
-    entries.push({
+    mergeUsageEntry(usageEntries, {
       uuid: typeof record.uuid === 'string' && record.uuid ? record.uuid : null,
       usageScore,
       source: 'claude-code',
@@ -175,33 +225,57 @@ function scanProjectCandidate(candidate) {
       requestCount: 1,
     });
   });
-  for (const entry of entries) entry.project = sessionProject;
-  for (const event of events) event.project = sessionProject;
-  return { entries, events };
+  for (const entry of usageEntries.anonymousEntries) entry.project = sessionProject;
+  for (const entry of usageEntries.entriesByUuid.values()) entry.project = sessionProject;
+  const session = await finalizeCandidateSession(
+    candidate,
+    sessionAccumulator,
+    sessionSalt,
+    () => sessionProject,
+    sessionProject,
+  );
+  return { usageEntries, session };
 }
 
-function scanTranscriptCandidate(candidate) {
-  const events = [];
-  readJsonl(candidate, (record) => {
+async function scanTranscriptCandidate(candidate, sessionSalt) {
+  const sessionAccumulator = createSessionAccumulator();
+  const projectForRecord = (record) => projectFromCwd(record.cwd, 'unknown');
+  await readJsonl(candidate, (record) => {
     const event = timingEvent(
       record,
       candidate.sessionId,
-      projectFromCwd(record.cwd, 'unknown'),
+      projectForRecord(record),
     );
-    if (event) events.push(event);
+    if (event) accumulateSessionEvent(sessionAccumulator, event);
   });
-  return { entries: [], events };
+  const session = await finalizeCandidateSession(
+    candidate,
+    sessionAccumulator,
+    sessionSalt,
+    projectForRecord,
+  );
+  return { session };
 }
 
-function scanBestCandidate(candidates, scanner, ctx) {
+async function scanBestCandidate(candidates, scanner, ctx, sessionSalt) {
   for (const candidate of candidates) {
     try {
-      return scanner(candidate);
+      return await scanner(candidate, sessionSalt);
     } catch (error) {
       addWarning(ctx, `Claude Code: cannot read ${candidate.filePath}: ${error.message}`);
     }
   }
   return null;
+}
+
+function mergeUsageEntries(target, source) {
+  for (const entry of source.anonymousEntries) mergeUsageEntry(target, entry);
+  for (const entry of source.entriesByUuid.values()) mergeUsageEntry(target, entry);
+}
+
+function* iterateUsageEntries(context) {
+  for (const entry of context.anonymousEntries) yield entry;
+  for (const entry of context.entriesByUuid.values()) yield entry;
 }
 
 function mergeUsageEntry(ctx, entry) {
@@ -217,7 +291,7 @@ export async function parse({ sessionSalt } = {}) {
   const ctx = {
     entriesByUuid: new Map(),
     anonymousEntries: [],
-    sessionEvents: [],
+    sessions: [],
     warnings: [],
     incomplete: false,
   };
@@ -227,25 +301,36 @@ export async function parse({ sessionSalt } = {}) {
   const projectGroups = collectCandidates(scanRoots, 'projects', ctx);
   const projectSessionIds = new Set();
   for (const [sessionId, candidates] of projectGroups) {
-    const parsed = scanBestCandidate(candidates, scanProjectCandidate, ctx);
+    const parsed = await scanBestCandidate(
+      candidates,
+      scanProjectCandidate,
+      ctx,
+      sessionSalt,
+    );
     if (!parsed) continue;
     projectSessionIds.add(sessionId);
-    ctx.sessionEvents.push(...parsed.events);
-    for (const entry of parsed.entries) mergeUsageEntry(ctx, entry);
+    if (parsed.session) ctx.sessions.push(parsed.session);
+    mergeUsageEntries(ctx, parsed.usageEntries);
   }
 
   const transcriptGroups = collectCandidates(scanRoots, 'transcripts', ctx);
   for (const [sessionId, candidates] of transcriptGroups) {
     if (projectSessionIds.has(sessionId)) continue;
-    const parsed = scanBestCandidate(candidates, scanTranscriptCandidate, ctx);
-    if (parsed) ctx.sessionEvents.push(...parsed.events);
+    const parsed = await scanBestCandidate(
+      candidates,
+      scanTranscriptCandidate,
+      ctx,
+      sessionSalt,
+    );
+    if (parsed?.session) ctx.sessions.push(parsed.session);
   }
 
-  const entries = [...ctx.anonymousEntries, ...ctx.entriesByUuid.values()]
-    .map(({ uuid: _uuid, usageScore: _usageScore, ...entry }) => entry);
+  const entries = Array.from(iterateUsageEntries(ctx), (
+    { uuid: _uuid, usageScore: _usageScore, ...entry }
+  ) => entry);
   return {
     buckets: aggregateToBuckets(entries),
-    sessions: extractSessions(ctx.sessionEvents, sessionSalt),
+    sessions: ctx.sessions,
     ...(ctx.incomplete ? { skipped: true } : {}),
     ...(ctx.warnings.length > 0 ? { warnings: ctx.warnings } : {}),
   };

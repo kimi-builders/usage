@@ -64,6 +64,8 @@ ${c.bold('▸ 来源检测与诊断')}
   npx @kimi.builders/usage sources set <agent> off|local|private
   npx @kimi.builders/usage sources enable cursor --csv PATH
   npx @kimi.builders/usage sources disable cursor
+  npx @kimi.builders/usage sources add-root <agent> /绝对/目录
+  npx @kimi.builders/usage sources remove-root <agent> /绝对/目录
   npx @kimi.builders/usage reset --local
 
 ${c.bold('▸ 辅助与自动补全')}

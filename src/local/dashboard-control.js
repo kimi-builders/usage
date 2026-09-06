@@ -14,6 +14,9 @@ import {
   applySourcePolicies, effectiveSourcePolicies, sourcePolicyIsExplicit,
 } from '../source-policy.js';
 import { clearState } from '../state.js';
+import {
+  configuredExtraRoots, extraRootId, normalizeExtraRoot, publicExtraRoots, supportsExtraRoots,
+} from '../extra-roots.js';
 
 function connected(config) {
   return Boolean(config?.apiKey && config?.sessionSalt);
@@ -56,11 +59,16 @@ export async function detectSourceCatalog({ config = loadConfig(), registry = so
       detected: rootCount > 0,
       rootCount,
       detection,
-      configurable: source.id === 'cursor',
+      configurable: source.id === 'cursor' || supportsExtraRoots(source.id),
       ...(source.id === 'cursor' ? {
         configuration: {
           kind: 'file',
           configured: cursorConfigured,
+        },
+      } : supportsExtraRoots(source.id) ? {
+        configuration: {
+          kind: 'directories',
+          locations: publicExtraRoots(config?.sourceOptions || {}, source.id),
         },
       } : {}),
     };
@@ -160,27 +168,46 @@ export function createDashboardControl({
       return { ...(await state()), action };
     }
     if (action === 'configure-source') {
-      if (payload.sourceId !== 'cursor') throw invalidAction('This source has no Dashboard configuration.');
-      const csvPath = String(payload.csvPath || '').trim();
-      if (!csvPath) {
-        throw Object.assign(new Error('Choose the Cursor usage CSV file first.'), {
-          statusCode: 400, code: 'invalid_control_input',
-        });
-      }
-      const absolutePath = resolve(csvPath);
-      if (!existsSync(absolutePath) || !statSync(absolutePath).isFile()) {
-        throw Object.assign(new Error('Cursor CSV does not exist or is not a regular file.'), {
-          statusCode: 400, code: 'invalid_control_input',
-        });
-      }
+      const sourceId = String(payload.sourceId || '');
+      let sourceOptions = { ...(config.sourceOptions || {}) };
+      if (sourceId === 'cursor') {
+        const csvPath = String(payload.csvPath || '').trim();
+        if (!csvPath) {
+          throw Object.assign(new Error('Choose the Cursor usage CSV file first.'), {
+            statusCode: 400, code: 'invalid_control_input',
+          });
+        }
+        const absolutePath = resolve(csvPath);
+        if (!existsSync(absolutePath) || !statSync(absolutePath).isFile()) {
+          throw Object.assign(new Error('Cursor CSV does not exist or is not a regular file.'), {
+            statusCode: 400, code: 'invalid_control_input',
+          });
+        }
+        sourceOptions.cursor = { ...(sourceOptions.cursor || {}), csvPath: absolutePath };
+      } else if (supportsExtraRoots(sourceId)) {
+        const operation = String(payload.operation || 'add-root');
+        const current = configuredExtraRoots(sourceOptions, sourceId);
+        let nextRoots;
+        if (operation === 'remove-root') {
+          const rootId = String(payload.rootId || '');
+          nextRoots = current.filter((path) => extraRootId(path) !== rootId);
+          if (nextRoots.length === current.length) throw invalidAction('Configured data location was not found.');
+        } else if (operation === 'add-root') {
+          const root = normalizeExtraRoot(payload.path);
+          if (!root || !existsSync(root) || !statSync(root).isDirectory()) {
+            throw Object.assign(new Error('The data location must be an existing absolute directory.'), {
+              statusCode: 400, code: 'invalid_control_input',
+            });
+          }
+          nextRoots = [...new Set([...current, root])];
+        } else throw invalidAction('Unsupported source configuration operation.');
+        sourceOptions[sourceId] = { ...(sourceOptions[sourceId] || {}), extraRoots: nextRoots };
+      } else throw invalidAction('This source has no Dashboard configuration.');
       configSaver({
         ...config,
         sessionSalt: config.sessionSalt || createSessionSalt(),
         ...(!loadedConfig ? { onboardingPending: true } : {}),
-        sourceOptions: {
-          ...(config.sourceOptions || {}),
-          cursor: { ...(config.sourceOptions?.cursor || {}), csvPath: absolutePath },
-        },
+        sourceOptions,
       });
       return { ...(await state()), action };
     }

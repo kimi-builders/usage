@@ -243,3 +243,36 @@ test('Claude Desktop discovery finds Cowork private .claude roots', () => {
 
   assert.deepEqual(findClaudeDesktopRoots([desktop]), [coworkRoot]);
 });
+
+test('large ordered Claude JSONL is streamed without materializing one giant string', async () => {
+  const dir = useDir('large-stream');
+  const records = [];
+  for (let index = 0; index < 20_000; index += 1) {
+    records.push(assistant(
+      new Date(Date.UTC(2026, 7, 1, 10, 0, index % 60, index % 1000)).toISOString(),
+      usage({ input_tokens: 1, output_tokens: 1 }),
+      { uuid: `large-${index}` },
+    ));
+  }
+  records.sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+  writeSession(dir, '-Users-x-large-project', 'large', records);
+  const result = await parse({ sessionSalt: SALT });
+  assert.deepEqual(sumTokens(result), {
+    input: 20_000, cacheWrite: 0, cacheRead: 0, output: 20_000, requests: 20_000,
+  });
+  assert.equal(result.sessions.length, 1);
+  assert.equal(result.sessions[0].messageCount, 20_000);
+});
+
+test('out-of-order Claude events fall back to sorted session semantics', async () => {
+  const dir = useDir('out-of-order');
+  writeSession(dir, '-Users-x-demo-app', 'out-of-order', [
+    assistant('2026-08-01T10:02:00.000Z', usage({ input_tokens: 1, output_tokens: 1 }), { uuid: 'later' }),
+    { type: 'user', timestamp: '2026-08-01T10:01:00.000Z', cwd: '/Users/x/demo-app' },
+  ]);
+  const result = await parse({ sessionSalt: SALT });
+  assert.equal(result.sessions.length, 1);
+  assert.equal(result.sessions[0].firstMessageAt, '2026-08-01T10:01:00.000Z');
+  assert.equal(result.sessions[0].lastMessageAt, '2026-08-01T10:02:00.000Z');
+  assert.equal(result.sessions[0].durationSeconds, 60);
+});

@@ -1,5 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 
 const require = createRequire(import.meta.url);
 
@@ -12,8 +15,10 @@ const require = createRequire(import.meta.url);
  * is available, throws an Error whose message contains "ENOENT" so callers
  * can treat the SQLite path as unusable without crashing the whole sync.
  */
-export function queryDbJson(dbPath, sql, { timeout = 30000, maxBuffer = 100 * 1024 * 1024 } = {}) {
-  const db = openNodeSqlite(dbPath);
+export function queryDbJson(dbPath, sql, {
+  timeout = 30000, maxBuffer = 100 * 1024 * 1024, readOnly = true,
+} = {}) {
+  const db = openNodeSqlite(dbPath, readOnly);
   if (db) {
     try {
       return db.prepare(sql).all();
@@ -22,6 +27,33 @@ export function queryDbJson(dbPath, sql, { timeout = 30000, maxBuffer = 100 * 10
     }
   }
   return queryViaCli(dbPath, sql, { timeout, maxBuffer });
+}
+
+function isLockError(error) {
+  return /database is locked/i.test(error?.message || '');
+}
+
+function querySnapshot(dbPath, sql, options = {}) {
+  const directory = mkdtempSync(join(tmpdir(), `${options.tempPrefix || 'kbu-sqlite'}-`));
+  const snapshot = join(directory, basename(dbPath));
+  try {
+    copyFileSync(dbPath, snapshot);
+    for (const suffix of ['-shm', '-wal']) {
+      if (existsSync(`${dbPath}${suffix}`)) copyFileSync(`${dbPath}${suffix}`, `${snapshot}${suffix}`);
+    }
+    return queryDbJson(snapshot, sql, { ...options, readOnly: false });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+export function queryDbJsonSnapshotOnLock(dbPath, sql, options = {}) {
+  try {
+    return queryDbJson(dbPath, sql, options);
+  } catch (error) {
+    if (!isLockError(error)) throw error;
+    return querySnapshot(dbPath, sql, options);
+  }
 }
 
 let nodeSqlite; // undefined = not tried, null = unavailable
@@ -50,11 +82,13 @@ function getNodeSqlite() {
   return nodeSqlite;
 }
 
-function openNodeSqlite(dbPath) {
+function openNodeSqlite(dbPath, readOnly = true) {
   const mod = getNodeSqlite();
   if (!mod || !mod.DatabaseSync) return null;
   try {
-    return new mod.DatabaseSync(dbPath, { readOnly: true });
+    const db = new mod.DatabaseSync(dbPath, { readOnly });
+    if (!readOnly) db.exec('PRAGMA query_only = ON');
+    return db;
   } catch {
     return null;
   }

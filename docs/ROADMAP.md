@@ -18,7 +18,9 @@ GitHub Release 配置均已确认；首发完成后立即迁移到 npm Trusted P
 
 ### Collector 与用量中心
 
-- [x] 11 个自动本地来源和一个显式 Cursor CSV 来源；来源独立失败。
+- [x] 14 个自动本地来源和一个显式 Cursor CSV 来源；来源独立失败。
+- [x] Claude 超大日志流式解析、Pi 新版计数/目录发现，以及 Codex、Antigravity、Pi、Grok、Trae 多目录管理。
+- [x] Grok CLI、Trae CLI 与 MiniMax Code 本机用量解析；新增来源默认仅本机。
 - [x] 30 分钟 bucket，以及输入、缓存写、缓存读、输出、推理五类互斥 Token。
 - [x] 原始/规范模型、供应方、推理强度、Agent 版本、上下文与处理档位。
 - [x] 安装级 HMAC session ID、小时 activity slice、5 分钟活跃与 30 分钟投入上限。

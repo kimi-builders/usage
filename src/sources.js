@@ -4,6 +4,9 @@ import { createSessionSalt, loadConfig, saveConfig } from './config.js';
 import { sourceRegistry } from './parsers/index.js';
 import { applySourcePolicies, effectiveSourcePolicies, isSourceMode } from './source-policy.js';
 import { c, getLocale, renderTable, t } from './cli-ui.js';
+import {
+  configuredExtraRoots, extraRootId, normalizeExtraRoot, supportsExtraRoots,
+} from './extra-roots.js';
 
 function option(args, name) {
   const index = args.indexOf(`--${name}`);
@@ -70,6 +73,51 @@ export function runSources(args = []) {
     }, { [sourceId]: mode });
     saveConfig(next);
     console.log(`${sourceId} 已设为 ${{ off: '关闭', local: '仅本机扫描', private: '本机扫描并同步' }[mode]}；远端历史数据未删除。`);
+    return;
+  }
+  if (['add-root', 'remove-root'].includes(action)) {
+    if (!sourceRegistry.some((item) => item.id === sourceId) || !supportsExtraRoots(sourceId)) {
+      throw new Error(isZh
+        ? `该数据源不支持额外目录: ${sourceId || '(missing)'}`
+        : `This source does not support extra directories: ${sourceId || '(missing)'}`);
+    }
+    const sourceOptions = { ...(config.sourceOptions || {}) };
+    const current = configuredExtraRoots(sourceOptions, sourceId);
+    if (action === 'add-root') {
+      const path = normalizeExtraRoot(args[2]);
+      if (!path || !existsSync(path) || !statSync(path).isDirectory()) {
+        throw new Error(isZh
+          ? '请提供一个存在的绝对目录路径。'
+          : 'Provide an existing absolute directory path.');
+      }
+      sourceOptions[sourceId] = {
+        ...(sourceOptions[sourceId] || {}),
+        extraRoots: [...new Set([...current, path])],
+      };
+      saveConfig({
+        ...config,
+        sessionSalt: config.sessionSalt || createSessionSalt(),
+        ...(!loadedConfig ? { onboardingPending: true } : {}),
+        sourceOptions,
+      });
+      console.log(isZh
+        ? `已为 ${sourceId} 添加额外数据目录。完整路径只保存在本机。`
+        : `Added an extra data directory for ${sourceId}. The full path stays on this device.`);
+      return;
+    }
+    const target = String(args[2] || '').trim();
+    const normalized = normalizeExtraRoot(target);
+    const nextRoots = current.filter((path) => path !== normalized && extraRootId(path) !== target);
+    if (nextRoots.length === current.length) {
+      throw new Error(isZh
+        ? '没有找到要移除的额外数据目录。'
+        : 'No matching extra data directory was found.');
+    }
+    sourceOptions[sourceId] = { ...(sourceOptions[sourceId] || {}), extraRoots: nextRoots };
+    saveConfig({ ...config, sourceOptions });
+    console.log(isZh
+      ? `已移除 ${sourceId} 的额外数据目录。`
+      : `Removed the extra data directory for ${sourceId}.`);
     return;
   }
   const source = optional.find((item) => item.id === sourceId);

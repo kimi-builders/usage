@@ -220,3 +220,36 @@ test('Dashboard validates and stores the Cursor CSV before enabling scan modes',
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('Dashboard manages extra roots without returning full local paths to the browser', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kbu-extra-root-control-'));
+  let config = {
+    sessionSalt: 'x'.repeat(32), sourcePolicies: { codex: 'local' }, sourcePolicyVersion: 1,
+  };
+  const extraRegistry = [{
+    id: 'codex', tier: 'stable',
+    roots: async ({ sourceOptions }) => sourceOptions?.codex?.extraRoots || [],
+  }];
+  const control = createDashboardControl({
+    configLoader: () => config,
+    configSaver: (next) => { config = next; },
+    registry: extraRegistry,
+    daemonStatus: () => ({ installed: false, supported: true }),
+  });
+  try {
+    const added = await control.act({
+      action: 'configure-source', sourceId: 'codex', operation: 'add-root', path: directory,
+    });
+    assert.deepEqual(config.sourceOptions.codex.extraRoots, [directory]);
+    assert.equal(added.sources[0].configuration.locations[0].label, directory.split('/').at(-1));
+    assert.equal(JSON.stringify(added).includes(directory), false);
+    const rootId = added.sources[0].configuration.locations[0].id;
+    const removed = await control.act({
+      action: 'configure-source', sourceId: 'codex', operation: 'remove-root', rootId,
+    });
+    assert.deepEqual(config.sourceOptions.codex.extraRoots, []);
+    assert.deepEqual(removed.sources[0].configuration.locations, []);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

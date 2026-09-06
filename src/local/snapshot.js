@@ -4,6 +4,7 @@ import { enabledSources } from '../parsers/index.js';
 import { sourceIdsFor } from '../source-policy.js';
 import { validateUploadBucket, validateUploadSession } from '../protocol.js';
 import { summarizeBySource, summarizeUsage } from './metrics.js';
+import { configuredExtraRoots } from '../extra-roots.js';
 
 export const LOCAL_SNAPSHOT_SCHEMA_VERSION = 1;
 
@@ -42,13 +43,17 @@ export async function collectAll({
     try {
       roots = (await source.roots({ sourceOptions })) || [];
       if (roots.length === 0) {
+        const configuredRoots = configuredExtraRoots(sourceOptions, source.id);
         results.push({
           source: source.id,
           tier: source.tier,
-          status: 'skipped',
+          status: configuredRoots.length ? 'partial' : 'skipped',
           roots: [],
           buckets: [],
           sessions: [],
+          ...(configuredRoots.length ? {
+            warnings: [`${source.id}: configured data locations are unavailable.`],
+          } : {}),
         });
         continue;
       }

@@ -2,7 +2,7 @@
 
 > [English](./SOURCE_COMPATIBILITY.en.md)
 
-> 最后核对：2026-08-15 · Collector `0.5.1`
+> 最后核对：2026-09-05 · Collector `0.5.x`
 
 这份矩阵描述“当前解析器有多少兼容性证据”，不是 Agent 官方支持声明。所有来源都只读
 本机日志；一个来源失败不会阻塞其他来源。`doctor --json` 可生成不含路径、项目名、模型名、
@@ -26,16 +26,19 @@
 | 来源 | 级别 | 自动发现 | 主要验证证据 | 已知边界 |
 | --- | --- | --- | --- | --- |
 | Kimi Code | Core | 是 | 当前/旧版存储、delta、cache、sub-agent、秒级时间戳、损坏记录 | 上游新字段只在能够证实时加入 |
-| Claude Code | Stable | 是 | project/transcript、cache TTL、重复 UUID、sidechain、损坏 JSONL | Claude Desktop/Cowork 路径属于兼容读取，格式仍由上游控制 |
-| Codex | Stable | 是 | 当前/归档会话、流式超大 JSONL、重放去重、推理强度、上下文/处理档位、sub-agent | 无 usage 的事件不会猜测 Token |
+| Claude Code | Stable | 是 | project/transcript、cache TTL、重复 UUID、sidechain、损坏与超大流式 JSONL | Claude Desktop/Cowork 路径属于兼容读取，格式仍由上游控制 |
+| Codex | Stable | 是 | 当前/归档会话、流式超大 JSONL、多目录复制去重、推理强度、上下文/处理档位、sub-agent | 无 usage 的事件不会猜测 Token |
 | OpenCode | Stable | 是 | SQLite、旧版 JSON、Token 映射与异常记录 | SQLite schema 漂移会按来源失败隔离 |
 | Gemini CLI | Stable | 是 | JSONL、旧 JSON、嵌套 sub-agent、损坏记录 | 只读取已有 usage metadata，不从正文推算 |
 | Antigravity | Stable | 是 | App/CLI 离线数据库、模型与 Token 映射 | 数据库被锁或格式改变时可能部分读取 |
 | GitHub Copilot CLI | Stable | 是 | 会话发现、互斥 cache/input 分类 | 部分版本只保留会话而没有可用 Token |
 | Roo Code | Stable | 是 | VS Code task history、cache 字段、时间事件 | 仅覆盖本机仍保留的任务数据 |
-| Pi Coding Agent | Beta | 是 | JSONL 会话、Token 分类、空/损坏记录 | 版本矩阵与跨目录复制去重证据仍在扩充 |
+| Pi Coding Agent | Beta | 是 | JSONL 会话、新旧 reasoning 字段、自定义 sessionDir、空/损坏记录 | 版本矩阵与跨目录复制去重证据仍在扩充 |
 | ZCode | Beta | 是 | SQLite 正常/空/损坏数据、项目与供应方映射 | Node 20 无 `node:sqlite` 时依赖系统 `sqlite3`；Windows 真实样本有限 |
 | WorkBuddy / CodeBuddy | Beta | 是 | JSONL 项目存储、路由模型、互斥 Token、会话去重 | 产品版本与历史格式样本仍有限；UI 使用 CodeBuddy 品牌图标 |
+| Grok CLI | Beta | 是 | `turn_completed`、按模型 usage、cache/reasoning 互斥化、多目录复制去重 | 真实版本与跨平台样本仍有限 |
+| Trae CLI | Beta | 是 | 大 JSONL 流式读取、权威 span 层与 failover 去重、会话事件 | 上游 trace category 与缓存语义未承诺稳定 |
+| MiniMax Code | Beta | 是 | SQLite schema 白名单、Token ledger、cache/reasoning 独立字段 | 只读 Token 与 workspace 元数据，不读取消息 payload；Node 20 可能需要 `sqlite3` |
 | Cursor | 看板验证 CSV 或 CLI 显式启用 | 否 | 官方 Usage CSV 的引用、Token 分类与引号字段 | 只支持用户主动导出的 CSV，不读取编辑器对话或私有数据库 |
 
 ## 平台与 Node.js

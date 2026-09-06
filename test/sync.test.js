@@ -25,6 +25,9 @@ process.env.KBU_USAGE_ROO_DIRS = join(root, 'roo-absent');
 process.env.KBU_USAGE_PI_SESSION_DIRS = join(root, 'pi-absent');
 process.env.KBU_USAGE_ZCODE_DB = join(root, 'zcode-absent.sqlite');
 process.env.KBU_USAGE_WORKBUDDY_DIRS = join(root, 'workbuddy-absent');
+process.env.KBU_USAGE_GROK_SESSIONS = join(root, 'grok-absent');
+process.env.KBU_USAGE_TRAE_CLI_SESSIONS = join(root, 'trae-absent');
+process.env.KBU_USAGE_MCODE_DB = join(root, 'mcode-absent.sqlite');
 
 const wireDir = join(currentRoot, 'sessions', 'wd_private-project_abcd', 'session_1', 'agents', 'main');
 mkdirSync(wireDir, { recursive: true });
@@ -101,6 +104,9 @@ test('repeat sync sends no duplicate batch and hidden projects never enter paylo
       { source: 'pi-coding-agent', status: 'skipped' },
       { source: 'zcode', status: 'skipped' },
       { source: 'workbuddy', status: 'skipped' },
+      { source: 'grok', status: 'skipped' },
+      { source: 'trae-cli', status: 'skipped' },
+      { source: 'mcode', status: 'skipped' },
     ],
   );
   assert.equal(second.buckets, 0);

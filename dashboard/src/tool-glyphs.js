@@ -13,6 +13,8 @@ import traeIcon from '@lobehub/icons-static-svg/icons/trae-color.svg';
 import rooCodeMono from '@lobehub/icons-static-svg/icons/roocode.svg?raw';
 import piMono from '@lobehub/icons-static-svg/icons/pi.svg?raw';
 import zaiMono from '@lobehub/icons-static-svg/icons/zai.svg?raw';
+import grokMono from '@lobehub/icons-static-svg/icons/grok.svg?raw';
+import minimaxIcon from '@lobehub/icons-static-svg/icons/minimax-color.svg';
 import { createElement } from 'react';
 
 /* Agent glyph registry — mirrors the site's components/AgentIcon.tsx split:
@@ -31,6 +33,9 @@ const TOOL_ICONS = {
   cursor: { svg: cursorMono, tone: 'cursor', label: 'Cursor' },
   qoder: { src: qoderIcon, tone: 'qoder', label: 'Qoder' },
   trae: { src: traeIcon, tone: 'trae', label: 'Trae' },
+  'trae-cli': { src: traeIcon, tone: 'trae', label: 'Trae CLI' },
+  grok: { svg: grokMono, tone: 'grok', label: 'Grok CLI' },
+  mcode: { src: minimaxIcon, tone: 'mcode', label: 'MiniMax Code' },
   'roo-code': { svg: rooCodeMono, tone: 'roo', label: 'Roo Code' },
   'pi-coding-agent': { svg: piMono, tone: 'pi', label: 'Pi' },
   zcode: { svg: zaiMono, tone: 'zcode', label: 'ZCode' },

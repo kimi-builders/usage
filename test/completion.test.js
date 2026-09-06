@@ -14,16 +14,20 @@ test('generateZshCompletion produces valid zsh completion syntax', () => {
   assert.match(script, /stats:多维用量统计与趋势分析/);
   assert.match(script, /quota:查询 AI 平台订阅额度/);
   assert.match(script, /export:导出本地用量数据/);
+  assert.match(script, /mcode cursor/);
+  assert.match(script, /add-root:添加额外本机数据目录/);
 });
 
 test('generateBashCompletion produces valid bash completion syntax', () => {
   const script = generateBashCompletion();
   assert.match(script, /_kbu_usage_bash_completion/);
   assert.match(script, /complete -F _kbu_usage_bash_completion/);
+  assert.match(script, /add-root remove-root/);
 });
 
 test('generateFishCompletion produces valid fish completion syntax', () => {
   const script = generateFishCompletion();
   assert.match(script, /# Fish completion for @kimi.builders\/usage/);
   assert.match(script, /complete -c kbu-usage/);
+  assert.match(script, /add-root remove-root/);
 });

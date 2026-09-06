@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Check, CloudUpload, FileSpreadsheet, HardDrive, LoaderCircle, Save, X } from 'lucide-react';
+import {
+  AlertTriangle, Check, CloudUpload, FileSpreadsheet, FolderPlus, HardDrive,
+  LoaderCircle, Save, Trash2, X,
+} from 'lucide-react';
 import { sourceLabel } from './format.js';
 import { ToolGlyph } from './tool-glyphs.js';
 
@@ -20,20 +23,28 @@ function SourceConfiguration({ source, onConfigure, zh }) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  useEffect(() => { setValue(''); setError(''); }, [source.configuration?.configured]);
+  useEffect(() => { setValue(''); setError(''); }, [source.configuration?.configured, source.configuration?.locations?.length]);
   if (!source.configurable || !onConfigure) return null;
-  const save = async () => {
+  const save = async (configuration) => {
     setBusy(true); setError('');
-    try { await onConfigure(source.id, value); setValue(''); }
+    try { await onConfigure(source.id, configuration); setValue(''); }
     catch {
-      setError(zh
-        ? '未找到有效的 CSV 文件，请粘贴完整路径后重试。'
-        : 'No valid CSV file was found. Paste its full path and try again.');
+      setError(source.configuration?.kind === 'directories'
+        ? (zh ? '未找到有效目录，请粘贴完整的绝对路径后重试。' : 'No valid directory was found. Paste its full absolute path and try again.')
+        : (zh ? '未找到有效的 CSV 文件，请粘贴完整路径后重试。' : 'No valid CSV file was found. Paste its full path and try again.'));
     }
     finally { setBusy(false); }
   };
+  if (source.configuration?.kind === 'directories') {
+    const locations = source.configuration.locations || [];
+    return <div className="source-policy-config source-policy-config--directories">
+      <FolderPlus size={14}/><label><span>{zh ? '额外数据目录' : 'Additional data directory'}</span><input value={value} onChange={(event) => setValue(event.target.value)} placeholder={zh ? '/完整/目录/路径' : '/full/directory/path'} aria-label={zh ? '额外数据目录路径' : 'Additional data directory path'}/></label><button type="button" className="ghost-btn" onClick={() => save({ operation: 'add-root', path: value })} disabled={busy || !value.trim()}>{busy ? <LoaderCircle className="spin" size={13}/> : <FolderPlus size={13}/>} {zh ? '添加目录' : 'Add directory'}</button>
+      {locations.length ? <div className="source-root-list">{locations.map((location) => <span key={location.id}><b>{location.label}</b><button type="button" aria-label={zh ? `移除 ${location.label}` : `Remove ${location.label}`} disabled={busy} onClick={() => save({ operation: 'remove-root', rootId: location.id })}><Trash2 size={12}/></button></span>)}</div> : null}
+      {error ? <small role="alert">{error}</small> : <p>{zh ? '适用于自定义数据位置或多个独立安装。完整路径只保存在本机，页面只显示目录名。' : 'Use this for custom data locations or multiple installations. Full paths stay local; the page only shows directory names.'}</p>}
+    </div>;
+  }
   return <div className="source-policy-config">
-    <FileSpreadsheet size={14}/><label><span>{zh ? 'Cursor 用量 CSV' : 'Cursor usage CSV'}</span><input value={value} onChange={(event) => setValue(event.target.value)} placeholder={zh ? '/路径/to/cursor-usage.csv' : '/path/to/cursor-usage.csv'} aria-label={zh ? 'Cursor 用量 CSV 路径' : 'Cursor usage CSV path'}/></label><button type="button" className="ghost-btn" onClick={save} disabled={busy || !value.trim()}>{busy ? <LoaderCircle className="spin" size={13}/> : <Check size={13}/>} {source.configuration?.configured ? (zh ? '更换文件' : 'Change file') : (zh ? '验证文件' : 'Verify file')}</button>{error ? <small role="alert">{error}</small> : <p>{source.configuration?.configured ? (zh ? '文件已验证，路径只保存在本机配置中，不会回传到页面或社区。' : 'File verified. Its path stays in local configuration and is not returned to the page or community.') : (zh ? '从 Cursor Dashboard 导出 usage CSV 后，在这里粘贴完整路径。' : 'Export a usage CSV from Cursor Dashboard, then paste its full path here.')}</p>}
+    <FileSpreadsheet size={14}/><label><span>{zh ? 'Cursor 用量 CSV' : 'Cursor usage CSV'}</span><input value={value} onChange={(event) => setValue(event.target.value)} placeholder={zh ? '/路径/to/cursor-usage.csv' : '/path/to/cursor-usage.csv'} aria-label={zh ? 'Cursor 用量 CSV 路径' : 'Cursor usage CSV path'}/></label><button type="button" className="ghost-btn" onClick={() => save({ csvPath: value })} disabled={busy || !value.trim()}>{busy ? <LoaderCircle className="spin" size={13}/> : <Check size={13}/>} {source.configuration?.configured ? (zh ? '更换文件' : 'Change file') : (zh ? '验证文件' : 'Verify file')}</button>{error ? <small role="alert">{error}</small> : <p>{source.configuration?.configured ? (zh ? '文件已验证，路径只保存在本机配置中，不会回传到页面或社区。' : 'File verified. Its path stays in local configuration and is not returned to the page or community.') : (zh ? '从 Cursor Dashboard 导出 usage CSV 后，在这里粘贴完整路径。' : 'Export a usage CSV from Cursor Dashboard, then paste its full path here.')}</p>}
   </div>;
 }
 
@@ -43,7 +54,7 @@ export function SourceModeRows({ sources = [], policies, onChange, onConfigure, 
       <ToolGlyph id={source.id} size={19}/>
       <div className="source-policy-name"><b>{sourceLabel(source.id)}</b><span>{source.detected ? (zh ? `已检测到 · ${source.rootCount} 个数据位置` : `Detected · ${source.rootCount} data location${source.rootCount === 1 ? '' : 's'}`) : (zh ? '当前未检测到数据' : 'No data detected')}</span></div>
       <div className="source-mode-segment" role="radiogroup" aria-label={`${sourceLabel(source.id)} ${zh ? '数据模式' : 'data mode'}`}>
-        {SOURCE_MODE_OPTIONS.map(({ id, icon: Icon, zh: cn, en }) => { const unavailable = id !== 'off' && source.configurable && !source.configuration?.configured; return <button type="button" role="radio" aria-checked={policies[source.id] === id} aria-disabled={unavailable} disabled={unavailable} className={policies[source.id] === id ? 'active' : ''} key={id} onClick={() => onChange({ ...policies, [source.id]: id })}><Icon size={12}/><span>{zh ? cn : en}</span></button>; })}
+        {SOURCE_MODE_OPTIONS.map(({ id, icon: Icon, zh: cn, en }) => { const unavailable = id !== 'off' && source.configuration?.kind === 'file' && !source.configuration?.configured; return <button type="button" role="radio" aria-checked={policies[source.id] === id} aria-disabled={unavailable} disabled={unavailable} className={policies[source.id] === id ? 'active' : ''} key={id} onClick={() => onChange({ ...policies, [source.id]: id })}><Icon size={12}/><span>{zh ? cn : en}</span></button>; })}
       </div>
       {policies[source.id] === 'private' && !connected ? <small className="source-policy-note"><AlertTriangle size={11}/>{zh ? '连接社区后才会同步' : 'Sync starts after connecting'}</small> : null}
       <SourceConfiguration source={source} onConfigure={onConfigure} zh={zh}/>

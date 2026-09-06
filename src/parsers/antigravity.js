@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { aggregateToBuckets, extractSessions } from './index.js';
+import { antigravityConversationDirs, configuredExtraRoots } from '../extra-roots.js';
 import {
   listDbCascades,
   readDbSessionEvents,
@@ -93,21 +94,23 @@ function tokenCount(value) {
 
 // Resolved lazily (not at import time) so importing the registry never
 // touches the filesystem — tests point the override at fixtures before use.
-function resolveConversationsDirs() {
+function resolveConversationsDirs(sourceOptions = {}) {
   const override = process.env.KBU_USAGE_ANTIGRAVITY_DIR?.trim();
-  if (override) return [override];
-  return [
-    join(homedir(), '.gemini', 'antigravity', 'conversations'),
-    join(homedir(), '.gemini', 'antigravity-cli', 'conversations'),
-  ];
+  return [...new Set([
+    ...(override ? [override] : [
+      join(homedir(), '.gemini', 'antigravity', 'conversations'),
+      join(homedir(), '.gemini', 'antigravity-cli', 'conversations'),
+    ]),
+    ...configuredExtraRoots(sourceOptions, 'antigravity').flatMap(antigravityConversationDirs),
+  ])];
 }
 
-export function roots() {
-  return resolveConversationsDirs().filter((dir) => existsSync(dir));
+export function roots({ sourceOptions } = {}) {
+  return resolveConversationsDirs(sourceOptions).filter((dir) => existsSync(dir));
 }
 
-export async function parse({ sessionSalt } = {}) {
-  const dirs = roots();
+export async function parse({ sessionSalt, sourceOptions } = {}) {
+  const dirs = roots({ sourceOptions });
   if (dirs.length === 0) return null;
 
   const entries = [];

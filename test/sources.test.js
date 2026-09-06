@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { after } from 'node:test';
@@ -39,7 +39,21 @@ test('source listing labels compatibility-beta parsers without disabling them', 
   } finally {
     console.log = original;
   }
-  for (const source of ['pi-coding-agent', 'zcode', 'workbuddy']) {
+  for (const source of ['pi-coding-agent', 'zcode', 'workbuddy', 'grok', 'trae-cli', 'mcode']) {
     assert.ok(lines.some((line) => line.includes(source) && line.includes('Beta')));
   }
+});
+
+test('extra roots are added and removed without changing source policy', () => {
+  const directory = join(root, 'extra-codex');
+  mkdirSync(directory, { recursive: true });
+  runSources(['add-root', 'codex', directory]);
+  const configPath = join(configDir, 'config.json');
+  let config = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.deepEqual(config.sourceOptions.codex.extraRoots, [directory]);
+  const mode = config.sourcePolicies.codex;
+  runSources(['remove-root', 'codex', directory]);
+  config = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.deepEqual(config.sourceOptions.codex.extraRoots, []);
+  assert.equal(config.sourcePolicies.codex, mode);
 });

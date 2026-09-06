@@ -25,6 +25,9 @@ process.env.KBU_USAGE_ROO_DIRS = join(root, 'roo-absent');
 process.env.KBU_USAGE_PI_SESSION_DIRS = join(root, 'pi-absent');
 process.env.KBU_USAGE_ZCODE_DB = join(root, 'zcode-absent.sqlite');
 process.env.KBU_USAGE_WORKBUDDY_DIRS = join(root, 'workbuddy-absent');
+process.env.KBU_USAGE_GROK_SESSIONS = join(root, 'grok-absent');
+process.env.KBU_USAGE_TRAE_CLI_SESSIONS = join(root, 'trae-absent');
+process.env.KBU_USAGE_MCODE_DB = join(root, 'mcode-absent.sqlite');
 process.env.KBU_USAGE_CONFIG_DIR = join(root, 'config');
 process.env.KBU_USAGE_STATE_DIR = stateDir;
 process.env.KBU_USAGE_LANG = 'zh';
@@ -142,6 +145,9 @@ test('a failing source never blocks the others, and its old state survives', asy
       { source: 'pi-coding-agent', status: 'skipped' },
       { source: 'zcode', status: 'skipped' },
       { source: 'workbuddy', status: 'skipped' },
+      { source: 'grok', status: 'skipped' },
+      { source: 'trae-cli', status: 'skipped' },
+      { source: 'mcode', status: 'skipped' },
     ],
   );
   assert.equal(typeof result.sources[2].error, 'string');
@@ -201,6 +207,9 @@ test("a skipped source's state survives too", async () => {
       { source: 'pi-coding-agent', status: 'skipped' },
       { source: 'zcode', status: 'skipped' },
       { source: 'workbuddy', status: 'skipped' },
+      { source: 'grok', status: 'skipped' },
+      { source: 'trae-cli', status: 'skipped' },
+      { source: 'mcode', status: 'skipped' },
     ],
   );
   assert.ok(lines.some((line) => line.includes('- claude-code') && line.includes('未检测到')));

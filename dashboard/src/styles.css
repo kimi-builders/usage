@@ -1050,6 +1050,10 @@ body.drawer-open { overflow: hidden; }
 .source-policy-config button { min-height: 34px; white-space: nowrap; }
 .source-policy-config p, .source-policy-config small { grid-column: 2 / -1; margin: 0; color: var(--grey); font-size: 11px; line-height: 1.45; }
 .source-policy-config small { color: var(--red); }
+.source-policy-config--directories .source-root-list { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.source-root-list > span { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 5px 0 9px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--card); color: var(--paper); font: 500 11px/1 var(--font-mono); }
+.source-root-list > span button { display: grid; place-items: center; min-height: 22px; width: 22px; padding: 0; border: 0; background: transparent; color: var(--grey); }
+.source-root-list > span button:hover { color: var(--red); }
 .source-control-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 18px; border-top: 1px solid var(--line); background: var(--hover); }
 .source-control-footer p { max-width: 680px; color: var(--grey); font-size: 11px; line-height: 1.45; }
 .source-control-footer button { flex: none; }
@@ -1123,6 +1127,7 @@ body.drawer-open { overflow: hidden; }
   .source-policy-config { grid-column: 1 / -1; grid-template-columns: 18px minmax(0,1fr); align-items: center; }
   .source-policy-config button { grid-column: 1 / -1; width: 100%; min-height: 42px; }
   .source-policy-config p, .source-policy-config small { grid-column: 1 / -1; }
+  .source-policy-config--directories .source-root-list { grid-column: 1 / -1; }
   .source-control-footer { align-items: stretch; flex-direction: column; }.source-control-footer button { width: 100%; }
   .onboarding-topbar { padding: 0 14px; }.onboarding-shell { width: min(100% - 20px,680px); padding: 18px 0 40px; }.onboarding-progress span { min-height: 44px; font-size: 0; }.onboarding-progress span i { font-size: 11px; }
   .onboarding-hero { min-height: 520px; padding: 28px 18px; }.onboarding-hero h1 { font-size: 32px; }.onboarding-principles { grid-template-columns: 1fr; }.onboarding-principles div { border-right: 0; border-bottom: 1px solid var(--line); }.onboarding-principles div:last-child { border-bottom: 0; }

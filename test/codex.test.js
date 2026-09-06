@@ -196,6 +196,33 @@ test('physical copies of one session keep the file with the most records', async
   });
 });
 
+test('configured Codex homes are additive and deduplicate copied sessions globally', async () => {
+  const primary = useHome('multi-primary');
+  const extra = join(root, 'multi-extra');
+  mkdirSync(join(extra, 'sessions'), { recursive: true });
+  writeRollout(primary, 'sessions', 'rollout-shared.jsonl', [
+    meta('shared-multi', '2026-08-01T10:01:00.000Z'),
+    tokenEvent('2026-08-01T10:02:00.000Z', { last_token_usage: usage(1, 0, 1, 0) }),
+  ]);
+  writeRollout(extra, 'sessions', 'rollout-shared-copy.jsonl', [
+    meta('shared-multi', '2026-08-01T10:01:00.000Z'),
+    tokenEvent('2026-08-01T10:02:00.000Z', { last_token_usage: usage(10, 0, 2, 0) }),
+    tokenEvent('2026-08-01T10:03:00.000Z', { last_token_usage: usage(20, 0, 3, 0) }),
+  ]);
+  writeRollout(extra, 'sessions', 'rollout-extra.jsonl', [
+    meta('extra-only', '2026-08-01T10:04:00.000Z'),
+    tokenEvent('2026-08-01T10:05:00.000Z', { last_token_usage: usage(5, 0, 1, 0) }),
+  ]);
+  const result = await parse({
+    sessionSalt: SALT,
+    sourceOptions: { codex: { extraRoots: [extra] } },
+  });
+  assert.deepEqual(sumTokens(result), {
+    input: 35, cacheWrite: 0, cacheRead: 0, output: 6, reasoning: 0, requests: 3,
+  });
+  assert.equal(result.sessions.length, 2);
+});
+
 test('forked child replays the parent prefix with fresh timestamps: only new usage counts', async () => {
   const home = useHome('fork');
   const e1 = { model: 'gpt-5-codex', total_token_usage: usage(100, 0, 10, 0), last_token_usage: usage(100, 0, 10, 0) };

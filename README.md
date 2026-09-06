@@ -91,7 +91,7 @@ npx @kimi.builders/usage@latest inspect --dry-run
 | --- | --- |
 | 会上传对话或代码吗？ | 不会。Token 看板默认纯本地，也不会读取 prompt、response 或文件内容。 |
 | 必须注册社区账号吗？ | 不需要。本地看板和本地订阅分析可独立使用。 |
-| 支持哪些 Agent？ | 内置 11 个自动扫描来源，Cursor CSV 可显式启用；详见下方兼容表。 |
+| 支持哪些 Agent？ | 内置 14 个自动扫描来源，Cursor CSV 可显式启用；详见下方兼容表。 |
 | 费用是真实账单吗？ | 不是。费用按标准 API 价格估算，并明确显示定价覆盖率和未定价 Token。 |
 | 支持哪些系统？ | macOS、Linux、Windows；需要 Node.js 20 或更高版本。 |
 
@@ -209,6 +209,9 @@ npx @kimi.builders/usage dashboard
 | Pi Coding Agent | Beta | `~/.pi/agent/sessions` 等 JSONL 会话；格式覆盖仍在扩充 |
 | ZCode | Beta | 本机 SQLite 会话库；Node 20 可能需要系统 `sqlite3` |
 | WorkBuddy / CodeBuddy | Beta | WorkBuddy/CodeBuddy 本机项目会话存储 |
+| Grok CLI | Beta | `$GROK_HOME` 或 `~/.grok` 下的会话与精确 turn usage |
+| Trae CLI | Beta | 本机 CLI session、trace 与 event 日志 |
+| MiniMax Code | Beta | `~/.minimax/v2/sqlite/runtime-state.sqlite` 的 Token ledger |
 | Cursor | 显式启用 | Cursor Dashboard 主动导出的 Usage CSV |
 
 每个来源独立解析。一个来源损坏、未安装或格式变化，不会阻塞其他来源，也不会清理它
@@ -234,6 +237,10 @@ npx @kimi.builders/usage sources disable cursor
 Cursor 的本地来源配置不依赖社区账号或 `init`。看板验证和启用命令都只保存本机 CSV 路径，不会联网，
 也不会自动执行社区同步。各来源的成熟度、限制和验证证据见
 [来源兼容矩阵](./docs/SOURCE_COMPATIBILITY.md)。
+
+Codex、Antigravity、Pi、Grok 与 Trae CLI 支持在“本机与数据源”中添加多个数据目录，
+适合自定义位置或多个独立安装。完整路径只保存在本机配置，浏览器只看到目录名；CLI 等价方式为
+`sources add-root <agent> /绝对/目录` 与 `sources remove-root <agent> /绝对/目录`。
 
 ## 订阅额度（可选）
 

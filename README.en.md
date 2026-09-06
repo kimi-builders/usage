@@ -109,7 +109,7 @@ or remove the background daemon unless I explicitly approve that separate step.
 | --- | --- |
 | Does it upload conversations or code? | No. The Token dashboard is local by default and does not read prompts, responses, or file contents. |
 | Is a community account required? | No. Local usage and subscription analysis work independently. |
-| Which agents are supported? | Eleven sources are auto-scanned; Cursor CSV is an explicit opt-in. See the matrix below. |
+| Which agents are supported? | Fourteen sources are auto-scanned; Cursor CSV is an explicit opt-in. See the matrix below. |
 | Are the costs real bills? | No. They are standard-API estimates with visible pricing coverage and unpriced Tokens. |
 | Which systems are supported? | macOS, Linux, and Windows with Node.js 20 or newer. |
 
@@ -244,6 +244,9 @@ See [Local Snapshot v1](./docs/LOCAL_SNAPSHOT_V1.en.md) for fields and formulas.
 | Pi Coding Agent | Beta | JSONL sessions such as `~/.pi/agent/sessions`; format coverage is still growing |
 | ZCode | Beta | Local SQLite session store; Node 20 may require a system `sqlite3` |
 | WorkBuddy / CodeBuddy | Beta | Local WorkBuddy/CodeBuddy project session store |
+| Grok CLI | Beta | Sessions and exact turn usage under `$GROK_HOME` or `~/.grok` |
+| Trae CLI | Beta | Local CLI session, trace, and event logs |
+| MiniMax Code | Beta | Token ledger in `~/.minimax/v2/sqlite/runtime-state.sqlite` |
 | Cursor | Explicit opt-in | Usage CSV exported by Cursor Dashboard |
 
 Sources are parsed independently. A missing, damaged, or changed source never
@@ -274,6 +277,12 @@ verification and the CLI command only store the local CSV path; they neither acc
 the network nor start community sync. See the
 [source compatibility matrix](./docs/SOURCE_COMPATIBILITY.en.md) for maturity,
 limitations, and verification evidence.
+
+Codex, Antigravity, Pi, Grok, and Trae CLI accept multiple data directories
+under **Local & sources**, for custom locations and independent installations.
+Full paths stay in local configuration; the browser receives directory names
+only. The CLI equivalents are `sources add-root <agent> /absolute/directory`
+and `sources remove-root <agent> /absolute/directory`.
 
 ## Subscription limits (optional)
 
