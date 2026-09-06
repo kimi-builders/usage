@@ -525,6 +525,27 @@ test('maps Kiro plan and overage credits without treating them as Token quota', 
   assert.equal(result.windows[0].unit, 'credits');
 });
 
+test('Kiro rejects invalid overage components instead of turning them into zero or hiding them', () => {
+  const payload = (overrides) => ({
+    usageBreakdownList: [{
+      resourceType: 'CREDIT', currentUsageWithPrecision: 48, usageLimitWithPrecision: 100,
+      currentOveragesWithPrecision: 8, overageCapWithPrecision: 20,
+      nextDateReset: 1_788_220_800, bonuses: [], ...overrides,
+    }],
+    overageConfiguration: { overageStatus: 'ENABLED' },
+  });
+  for (const input of [
+    payload({ currentOveragesWithPrecision: -5 }),
+    payload({ overageCapWithPrecision: -1 }),
+    payload({ currentOveragesWithPrecision: 21 }),
+  ]) {
+    assert.throws(
+      () => parseKiroUsage(input, {}, { now: NOW }),
+      (error) => error?.code === 'invalid_response',
+    );
+  }
+});
+
 test('Kiro bonus credits suppress an unverifiable plan split', () => {
   const result = parseKiroUsage({
     usageBreakdownList: [{

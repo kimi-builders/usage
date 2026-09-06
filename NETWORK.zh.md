@@ -26,6 +26,7 @@
 | `dashboard` | 默认否 | Loopback 本地看板；只有明确操作社区连接/同步或 Provider 额度查询时才联网 |
 | `npm run setup` | 是 | 明确从 npm 安装看板开发依赖 |
 | `npm run dev` | 默认否 | Loopback Vite + 本地 API；可选额度查询规则与 `dashboard` 相同 |
+| `npm run check:pricing-drift` | 是 | 仅供维护者将少量明确映射的供应商/模型与 AI Pricing Guru 比对；不读取本机用量，也不写入价格目录 |
 
 默认社区地址 `https://kimi.builders` 当前使用以下端点：
 
@@ -40,6 +41,11 @@
 价格目录是公开、版本化 JSON，只包含模型匹配规则、标准 API 美元单价、生效窗口与来源；缓存于
 `~/.kimi-builders/usage/pricing-catalog-v1.json`。下载失败、校验失败或离线时保留上次可用版本，
 没有缓存时回退 npm 包内置快照，扫描和看板启动不会因此失败。
+
+独立的维护者 CI 价格变化检查仅在定时或手动触发的工作流中读取
+`https://www.aipricing.guru/api/pricing.json`。它只比较五个明确映射的模型/供应商身份，
+不保存响应产物，只能以失败状态提示人工复核；不会在发布后的 CLI 中运行、不会改写价格目录，
+也不会发送本机用量。任何变化都必须由维护者回到目录中已有的供应商官方链接核实。
 
 `init --api-url` 可在开发或自托管场景指定其他地址。Collector 只把设备 API Key 发送给配置的
 社区 Origin。上传正文是 gzip 压缩 JSON；压缩只改变传输大小，不改变字段。

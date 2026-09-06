@@ -74,5 +74,7 @@ jobs:
         run: npm run dashboard:test
       - name: Check Markdown links
         run: npm run check:markdown
+      - name: Audit production dependency chains
+        run: npm run audit:dependencies
       - name: Audit npm package contents
         run: npm run audit:package

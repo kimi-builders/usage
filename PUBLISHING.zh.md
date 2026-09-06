@@ -37,13 +37,20 @@ access token 作为引导凭据：
    该命令会运行 Collector 测试、构建并测试看板，以及执行 `npm pack --dry-run`，从而显示
    精确的公开文件列表。
 
-4. 在不安装服务的前提下验证三个后台服务 descriptor：
+4. 运行仅供维护者使用的价格变化检查。任何差异都只是复核提示，必须回到供应商一方页面
+   核实，禁止自动抄入目录：
+
+   ```bash
+   npm run check:pricing-drift
+   ```
+
+5. 在不安装服务的前提下验证三个后台服务 descriptor：
 
    ```bash
    node --test test/daemon.test.js
    ```
 
-5. 从临时目录烟测安装包。测试连接或上传流程时，不要复用真实 Collector 配置。
+6. 从临时目录烟测安装包。测试连接或上传流程时，不要复用真实 Collector 配置。
 
 ## 干净 checkout 验证
 

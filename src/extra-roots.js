@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, opendirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 
@@ -56,24 +56,50 @@ function isCodexHome(path) {
     && ['sessions', 'archived_sessions'].some((name) => isDirectory(join(path, name)));
 }
 
-export function discoverCodexHomes(value, maxDepth = 3) {
+function discoveryLimitError(limitName, limit) {
+  const error = new Error(
+    `Codex extra-root discovery exceeded the ${limitName} safety limit (${limit}); choose a narrower directory.`,
+  );
+  error.code = 'extra_root_scan_limit';
+  return error;
+}
+
+export function discoverCodexHomes(value, maxDepth = 3, {
+  maxDirectories = 2_048,
+  maxEntries = 20_000,
+} = {}) {
   const root = normalizeExtraRoot(value);
   if (!root || !isDirectory(root)) return [];
   if (isCodexHome(root)) return [root];
   const homes = [];
   const queue = [{ path: root, depth: 0 }];
-  while (queue.length) {
-    const current = queue.shift();
-    let children;
-    try { children = readdirSync(current.path, { withFileTypes: true }); } catch { continue; }
-    for (const child of children) {
-      // Dirent#isDirectory excludes symlinks, keeping discovery inside the
-      // explicitly chosen bounded hierarchy.
-      if (!child.isDirectory()) continue;
-      const path = join(current.path, child.name);
-      const depth = current.depth + 1;
-      if (child.name === 'codex-home' && isCodexHome(path)) homes.push(path);
-      else if (depth < maxDepth) queue.push({ path, depth });
+  let cursor = 0;
+  let visitedDirectories = 0;
+  let seenEntries = 0;
+  while (cursor < queue.length) {
+    if (visitedDirectories >= maxDirectories) {
+      throw discoveryLimitError('directory', maxDirectories);
+    }
+    const current = queue[cursor];
+    cursor += 1;
+    visitedDirectories += 1;
+    let directory;
+    try { directory = opendirSync(current.path); } catch { continue; }
+    try {
+      let child;
+      while ((child = directory.readSync()) !== null) {
+        seenEntries += 1;
+        if (seenEntries > maxEntries) throw discoveryLimitError('entry', maxEntries);
+        // Dirent#isDirectory excludes symlinks, keeping discovery inside the
+        // explicitly chosen bounded hierarchy.
+        if (!child.isDirectory()) continue;
+        const path = join(current.path, child.name);
+        const depth = current.depth + 1;
+        if (child.name === 'codex-home' && isCodexHome(path)) homes.push(path);
+        else if (depth < maxDepth) queue.push({ path, depth });
+      }
+    } finally {
+      directory.closeSync();
     }
   }
   return [...new Set(homes)];

@@ -72,7 +72,9 @@ export async function parsePiSessions({ source, roots, sessionSalt }) {
         if (record.type !== 'message' || !record.message) continue;
 
         const message = record.message;
-        const timestamp = new Date(record.timestamp || message.timestamp || 0);
+        const timestampValue = record.timestamp || message.timestamp;
+        if (timestampValue == null || timestampValue === '') continue;
+        const timestamp = new Date(timestampValue);
         if (Number.isNaN(timestamp.getTime())) continue;
         const recordId = record.id ? `${sessionId}:${record.id}` : null;
         if (['user', 'assistant', 'toolResult'].includes(message.role)) {

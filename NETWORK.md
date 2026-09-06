@@ -29,6 +29,7 @@ removed with the CLI at any time.
 | `dashboard` | No by default | Loopback dashboard; community connection/sync and provider quota checks require explicit browser actions |
 | `npm run setup` | Yes | Explicitly install the dashboard's development dependencies from npm |
 | `npm run dev` | No by default | Loopback Vite + local API; the same optional quota rules as `dashboard` apply |
+| `npm run check:pricing-drift` | Yes | Maintainer-only comparison of a small provider/model allowlist against AI Pricing Guru; reads no local usage and writes no catalog |
 
 For the default origin `https://kimi.builders`, the current endpoints are:
 
@@ -45,6 +46,13 @@ API USD rates, effective windows, and provenance. It is cached at
 `~/.kimi-builders/usage/pricing-catalog-v1.json`. Network or validation failures
 retain the last-known-good catalog; without one, the bundled npm snapshot remains
 available, so scanning and Dashboard startup never depend on the community API.
+
+The separate maintainer CI drift check reads `https://www.aipricing.guru/api/pricing.json`
+only on its scheduled or manually dispatched workflow. It compares five explicitly
+mapped model/provider identities, stores no response artifact, and can only fail with
+a review prompt. It never runs in the published CLI, changes the catalog, or sends
+local usage. Maintainers must verify every flagged change against the first-party URL
+already recorded in the catalog.
 
 `init --api-url` can point to another origin for development or self-hosting.
 The Collector sends the device API key only to the configured origin. Ingest

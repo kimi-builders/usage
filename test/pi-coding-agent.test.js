@@ -75,6 +75,20 @@ test('Pi accepts the current usage.reasoning field', async () => {
   assert.equal(result.buckets[0].reasoningOutputTokens, 4);
 });
 
+test('Pi drops messages without a trustworthy timestamp instead of creating epoch usage', async () => {
+  const dir = join(root, 'missing-timestamp');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'session.jsonl'), `${JSON.stringify({
+    type: 'message', id: 'missing-time', message: {
+      role: 'assistant', model: 'pi-current', usage: { input: 5, output: 2 },
+    },
+  })}\n`);
+  process.env.KBU_USAGE_PI_SESSION_DIRS = dir;
+  const result = await parse({ sessionSalt: SALT });
+  assert.deepEqual(result.buckets, []);
+  assert.deepEqual(result.sessions, []);
+});
+
 test('Pi discovers PI_CODING_AGENT_SESSION_DIR and settings.json sessionDir', () => {
   const previousOverride = process.env.KBU_USAGE_PI_SESSION_DIRS;
   const previousDirect = process.env.PI_CODING_AGENT_SESSION_DIR;

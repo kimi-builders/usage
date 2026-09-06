@@ -44,3 +44,21 @@ test('Trae span selection retains failovers and drops duplicate layers', () => {
   ]);
   assert.deepEqual(selected.map((span) => span.category), ['model.stream.eino', 'model.generate']);
 });
+
+test('Trae CLI drops events without a trustworthy timestamp instead of creating epoch sessions', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kbu-trae-missing-time-'));
+  const session = join(directory, 'session-1');
+  mkdirSync(session, { recursive: true });
+  writeFileSync(join(session, 'events.jsonl'), `${JSON.stringify({ agent_start: {} })}\n`);
+  const previous = process.env.KBU_USAGE_TRAE_CLI_SESSIONS;
+  process.env.KBU_USAGE_TRAE_CLI_SESSIONS = directory;
+  try {
+    const result = await parse({ sessionSalt: SALT });
+    assert.deepEqual(result.buckets, []);
+    assert.deepEqual(result.sessions, []);
+  } finally {
+    if (previous === undefined) delete process.env.KBU_USAGE_TRAE_CLI_SESSIONS;
+    else process.env.KBU_USAGE_TRAE_CLI_SESSIONS = previous;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

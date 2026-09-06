@@ -149,7 +149,7 @@ test('OpenAI overlapping fields are normalized to exclusive ones', async () => {
   );
 });
 
-test('GPT-5.6 request context and processing tiers remain separate facts', async () => {
+test('official OpenAI long-context thresholds remain separate from processing tiers', async () => {
   const home = useHome('pricing-tiers');
   writeRollout(home, 'sessions', 'rollout-a.jsonl', [
     meta('s1', '2026-08-01T10:00:00.000Z'),
@@ -164,16 +164,22 @@ test('GPT-5.6 request context and processing tiers remain separate facts', async
       service_tier: 'standard',
       last_token_usage: usage(200_000, 150_000, 10, 0),
     }),
+    tokenEvent('2026-08-01T10:03:00.000Z', {
+      model: 'openai/gpt-6-astra',
+      service_tier: 'standard',
+      last_token_usage: usage(272_001, 200_000, 10, 0),
+    }),
   ]);
   const result = await parse({ sessionSalt: SALT });
-  assert.equal(result.buckets.length, 2);
+  assert.equal(result.buckets.length, 3);
   assert.deepEqual(
     result.buckets
-      .map((bucket) => [bucket.contextTier, bucket.processingTier, bucket.inputTokens])
+      .map((bucket) => [bucket.model, bucket.contextTier, bucket.processingTier, bucket.inputTokens])
       .sort(),
     [
-      ['long', 'priority', 50_001],
-      ['short', 'standard', 50_000],
+      ['gpt-5.6-sol', 'long', 'priority', 50_001],
+      ['gpt-5.6-sol', 'short', 'standard', 50_000],
+      ['openai/gpt-6-astra', 'long', 'standard', 72_001],
     ],
   );
 });

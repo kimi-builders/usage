@@ -149,6 +149,77 @@ test('2026-08-19 catalog matches the supplied current model price matrix', () =>
   }
 });
 
+test('2026-09-06 provider prices cover official models and scope channel-only aliases', () => {
+  const current = (model, overrides = {}) => matchLocalPrice(bucket({
+    source: 'opencode',
+    modelProvider: 'opencode-go',
+    model,
+    bucketStart: '2026-09-05T12:00:00.000Z',
+    ...overrides,
+  }));
+  const cases = [
+    ['gpt-6-astra', { source: 'codex', modelProvider: 'openai', contextTier: null }, 10, 1, 12.5, 50,
+      'https://developers.openai.com/api/docs/models/gpt-6-astra'],
+    ['gpt-6-astra', { contextTier: 'long' }, 20, 2, 25, 75,
+      'https://developers.openai.com/api/docs/models/gpt-6-astra'],
+    ['gpt-5.6-sol', { contextTier: 'short' }, 4, 0.4, 5, 20,
+      'https://developers.openai.com/api/docs/models/gpt-5.6-sol'],
+    ['gpt-5.6-sol', { contextTier: 'long' }, 8, 0.8, 10, 30,
+      'https://developers.openai.com/api/docs/models/gpt-5.6-sol'],
+    ['claude-fable-5-1', {}, 10, 0.25, 12.5, 50,
+      'https://platform.claude.com/docs/en/models/fable-5-1/overview'],
+    ['gemini-3.8-flash', {
+      source: 'antigravity', modelProvider: null, bucketStart: '2026-09-03T13:00:00.000Z',
+    }, 0.75, 0.075, null, 3.75, 'https://ai.google.dev/gemini-api/docs/pricing'],
+    ['grok-4.5', { contextTier: 'long' }, 4, 0.6, null, 12,
+      'https://docs.x.ai/developers/pricing'],
+    ['muse-spark-1.3', {}, 1.25, 0.15, null, 4.25,
+      'https://opencode.ai/docs/zen/#pricing'],
+    ['deepseek-v4-pro', {}, 1.32, 0.044, null, 3.96,
+      'https://api-docs.deepseek.com/quick_start/pricing'],
+    ['deepseek-v4-flash', {}, 0.44, 0.014, null, 1.32,
+      'https://api-docs.deepseek.com/quick_start/pricing'],
+    ['deepseek-v4-flash-vision-exp', {}, 0.14, 0.028, null, 0.28,
+      'https://opencode.ai/docs/zen/#pricing'],
+    ['glm-5.3-flash', {
+      source: 'opencode', modelProvider: 'opencode-go', bucketStart: '2026-08-27T05:30:00.000Z',
+    }, 0.15, 0.03, null, 0.5, 'https://opencode.ai/docs/zen/#pricing'],
+  ];
+  for (const [model, overrides, input, cacheRead, cacheWrite, output, sourceUrl] of cases) {
+    const price = current(model, overrides);
+    assert.ok(price, `${model} should have a current standard API price`);
+    assert.equal(price.pattern, model, `${model} should not rely on a broader prefix fallback`);
+    assert.deepEqual(
+      [price.input, price.cacheRead, price.cacheWrite, price.output],
+      [input, cacheRead, cacheWrite, output],
+      model,
+    );
+    assert.equal(price.sourceUrl, sourceUrl);
+  }
+
+  const postPromotion = current('gemini-3.8-flash', {
+    source: 'antigravity', bucketStart: '2027-01-01T00:00:00.000Z',
+  });
+  assert.deepEqual(
+    [postPromotion.input, postPromotion.cacheRead, postPromotion.output],
+    [1.5, 0.15, 7.5],
+  );
+
+  assert.equal(current('glm-5.3-flash', { source: 'codex' }), null,
+    'an OpenCode-only offer must block the broader GLM fallback on other sources');
+  assert.equal(current('deepseek-v4-flash-vision-exp', { source: 'codex' }), null,
+    'a channel-only vision offer must not fall back to the first-party text model');
+
+  assert.equal(matchLocalPrice(bucket({
+    source: 'codex', model: 'gpt-6-astra', modelProvider: 'openai',
+    bucketStart: '2026-09-02T23:59:59.999Z',
+  })), null);
+  assert.equal(matchLocalPrice(bucket({
+    source: 'codex', model: 'deepseek-v4-pro',
+    bucketStart: '2026-09-04T23:59:59.999Z',
+  })).input, 1.32);
+});
+
 test('free-looking labels never become zero-cost pricing facts', () => {
   for (const model of ['big-pickle', 'nemotron-3-ultra-free', 'nemotron-3.5-lightning-free']) {
     assert.equal(matchLocalPrice(bucket({

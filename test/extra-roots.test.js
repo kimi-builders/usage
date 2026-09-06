@@ -25,3 +25,17 @@ test('extra-root discovery is bounded and browser metadata omits full paths', ()
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('Codex extra-root discovery stops at a fixed entry budget', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kbu-extra-roots-limit-'));
+  mkdirSync(join(directory, 'one'), { recursive: true });
+  mkdirSync(join(directory, 'two'), { recursive: true });
+  try {
+    assert.throws(
+      () => discoverCodexHomes(directory, 3, { maxDirectories: 10, maxEntries: 1 }),
+      (error) => error?.code === 'extra_root_scan_limit' && /narrower directory/.test(error.message),
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

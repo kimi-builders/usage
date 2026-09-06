@@ -130,7 +130,8 @@ export async function parse({ sessionSalt, sourceOptions } = {}) {
         });
       }
       await forEachJsonl(join(sessionPath, 'events.jsonl'), (line) => {
-        const timestamp = new Date(line.created_at || 0);
+        if (line.created_at == null || line.created_at === '') return;
+        const timestamp = new Date(line.created_at);
         if (Number.isNaN(timestamp.getTime())) return;
         if (line.agent_start) events.push({ sessionId, source: 'trae-cli', project, timestamp, role: 'user' });
         else if (line.agent_end || line.tool_call || line.message?.message?.role === 'assistant') {

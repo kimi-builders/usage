@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { sourceLabel } from './format.js';
+import { sourceHasIssue, summarizeSourceHealth } from './source-health.js';
 import { ToolGlyph } from './tool-glyphs.js';
 import { DataSourceControls, policiesFromSources } from './DataSourceControls.jsx';
 
@@ -49,7 +50,7 @@ export function UsageManagement({ data, control, onControlAction, onControlRefre
   const bucketCount = sources.reduce((sum, item) => sum + (item.bucketCount || 0), 0);
   const sessionCount = sources.reduce((sum, item) => sum + (item.sessionCount || 0), 0);
   const warningCount = sources.reduce((sum, item) => sum + (item.warningCount || 0), 0);
-  const issueSources = sources.filter((item) => item.status !== 'ok');
+  const { healthyCount, skippedCount, issueSources } = summarizeSourceHealth(sources);
   const rejected = diagnostics.rejected?.length || 0;
   const parsedFacts = (diagnostics.parsedBuckets || bucketCount) + (diagnostics.parsedSessions || sessionCount);
   const acceptedFacts = (diagnostics.acceptedBuckets ?? bucketCount) + (diagnostics.acceptedSessions ?? sessionCount);
@@ -74,7 +75,7 @@ export function UsageManagement({ data, control, onControlAction, onControlRefre
     {saveError ? <p className="sync-error" role="alert"><AlertTriangle size={15}/>{saveError}</p> : null}
     <section className="source-summary-grid" aria-label={zh ? '本机数据健康摘要' : 'Local data health summary'}>
       <article><span><Database size={15}/>{zh ? '已接受事实' : 'Accepted facts'}</span><strong>{acceptedFacts.toLocaleString()}</strong><small>{bucketCount.toLocaleString()} buckets · {sessionCount.toLocaleString()} sessions</small></article>
-      <article><span><CheckCircle2 size={15}/>{zh ? '数据源健康' : 'Source health'}</span><strong className={needsAttention ? 'warning' : 'positive'}>{healthLabel}</strong><small>{sources.length - issueSources.length} / {sources.length} {zh ? '来源正常' : 'sources healthy'}</small></article>
+      <article><span><CheckCircle2 size={15}/>{zh ? '数据源健康' : 'Source health'}</span><strong className={needsAttention ? 'warning' : 'positive'}>{healthLabel}</strong><small>{healthyCount} {zh ? '个正常' : 'healthy'}{skippedCount ? ` · ${skippedCount} ${zh ? '个无本地数据' : 'without local data'}` : ''}</small></article>
       <article><span><FileWarning size={15}/>{zh ? '解析证据' : 'Parse evidence'}</span><strong className={warningCount || rejected ? 'warning' : ''}>{warningCount + rejected}</strong><small>{warningCount} {zh ? '条警告' : 'warnings'} · {rejected} {zh ? '条拒绝' : 'rejected'}</small></article>
       <article><span><Clock3 size={15}/>{zh ? '最近扫描' : 'Last scan'}</span><strong>{scanTime(data.generatedAt, zh)}</strong><small>{parsedFacts.toLocaleString()} {zh ? '条已解析事实' : 'parsed facts'}</small></article>
     </section>
@@ -83,7 +84,11 @@ export function UsageManagement({ data, control, onControlAction, onControlRefre
       <article className="panel device-card">
         <header className="panel-header"><div><h2>{zh ? '本机环境与 Collector' : 'Local environment & Collector'}</h2><p>{zh ? '终端、操作系统、Collector 与 Agent 版本均来自本机事实' : 'Terminal, OS, Collector, and agent versions are local facts'}</p></div><span className="panel-meta">LOCAL ONLY</span></header>
         <div className="device-primary"><Monitor size={19}/><div><b>{terminal}</b><span>{os} · Collector v{String(collector).replace(/^v/i, '')}</span><small>{zh ? '浏览器只收到脱敏诊断；完整用户目录和数据根路径不会进入页面。' : 'The browser receives redacted diagnostics; full home and data-root paths never enter the page.'}</small></div></div>
-        <div className="source-list">{sources.map((item) => <article className={item.status === 'ok' && !item.warningCount ? '' : 'source-has-issue'} key={sourceId(item)}><ToolGlyph id={sourceId(item)} size={18}/><div><b>{item.label || sourceLabel(sourceId(item))}</b><span>{item.bucketCount || 0} buckets · {item.sessionCount || 0} sessions{item.warningCount ? ` · ${item.warningCount} ${zh ? '条警告' : 'warnings'}` : ''}</span>{item.error ? <small className="source-error">{item.error}</small> : null}</div><small>{data.agentVersions?.[sourceId(item)] ? `v${String(data.agentVersions[sourceId(item)]).replace(/^v/i, '')}` : '—'}</small><em className={item.status === 'ok' ? 'ok' : item.status}>{item.status === 'ok' ? <CheckCircle2 size={13}/> : <AlertTriangle size={13}/>}<span>{item.status === 'ok' ? 'ok' : item.status}</span></em></article>)}</div>
+        <div className="source-list">{sources.map((item) => {
+          const issue = sourceHasIssue(item);
+          const skipped = item.status === 'skipped';
+          return <article className={issue ? 'source-has-issue' : ''} key={sourceId(item)}><ToolGlyph id={sourceId(item)} size={18}/><div><b>{item.label || sourceLabel(sourceId(item))}</b><span>{item.bucketCount || 0} buckets · {item.sessionCount || 0} sessions{item.warningCount ? ` · ${item.warningCount} ${zh ? '条警告' : 'warnings'}` : ''}</span>{item.error ? <small className="source-error">{item.error}</small> : null}</div><small>{data.agentVersions?.[sourceId(item)] ? `v${String(data.agentVersions[sourceId(item)]).replace(/^v/i, '')}` : '—'}</small><em className={item.status === 'ok' ? 'ok' : item.status}>{item.status === 'ok' ? <CheckCircle2 size={13}/> : skipped ? <Database size={13}/> : <AlertTriangle size={13}/>}<span>{item.status === 'ok' ? 'ok' : skipped ? (zh ? '未检测' : 'not detected') : item.status}</span></em></article>;
+        })}</div>
       </article>
 
       <article className="panel privacy-card">

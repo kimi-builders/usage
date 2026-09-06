@@ -20,6 +20,7 @@ test.before(async () => {
   server = await createServer({
     root: fileURLToPath(new URL('../', import.meta.url)),
     logLevel: 'silent',
+    optimizeDeps: { noDiscovery: true },
     server: { middlewareMode: true },
   });
   module = await server.ssrLoadModule('/src/SubscriptionLimits.jsx');

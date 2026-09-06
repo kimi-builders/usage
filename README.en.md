@@ -181,7 +181,7 @@ browser and is never uploaded to the community or a third party.
 **Project status:** public Beta. Stable sources are covered by cross-platform
 fixtures and contract tests; sources with limited log-format evidence remain
 explicitly labelled Beta. [Roadmap](./docs/ROADMAP.en.md) ·
-[Release notes](./docs/RELEASE_NOTES_0.5.3.en.md) · [All docs](./docs/README.en.md)
+[Release notes](./docs/RELEASE_NOTES_0.6.0.en.md) · [All docs](./docs/README.en.md)
 
 ## Run from source
 
@@ -213,8 +213,11 @@ Every launch creates a new browser capability token. The server rejects
 non-loopback peers, unexpected Host/Origin values, and unauthorized requests.
 “Rescan” refreshes local data only; “Sync data” is a separate explicit action.
 
-The versioned catalog matches models by effective date, context tier, and
-processing tier against standard API prices. `init` makes a best-effort download
+The versioned catalog treats first-party provider documentation as authoritative,
+then matches models by effective date, context tier, and processing tier against
+standard API prices. AI Pricing Guru is used only by maintainer CI to flag changes
+for explicitly mapped provider/model pairs; it never overwrites prices and is not a
+scan or Dashboard runtime dependency. `init` makes a best-effort download
 of the public community catalog; you can also update explicitly in the Dashboard
 or with `pricing update`. This downloads public prices and uploads no local usage.
 Strict validation, last-known-good caching, and a bundled offline snapshot keep

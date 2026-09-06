@@ -46,6 +46,7 @@ test('catalog validation rejects tampering and unsupported matcher versions', ()
   const { integrity: _integrity, ...unsigned } = invalidWindow;
   invalidWindow.integrity.digest = createHash('sha256').update(JSON.stringify(unsigned)).digest('hex');
   assert.throws(() => validatePriceCatalog(invalidWindow), /生效窗口无效/);
+
 });
 
 test('catalog update keeps a verified last-known-good cache, supports ETag, and resets offline', async () => {
@@ -107,8 +108,8 @@ test('matcher contract covers aliases, context tiers, and processing tiers', () 
 
 test('embedded catalog carries the open-ended Codex auto-review correction', () => {
   resetPriceCatalog();
-  assert.equal(EMBEDDED_PRICE_CATALOG.revision, 2);
-  assert.equal(EMBEDDED_PRICE_CATALOG.catalogVersion, '2026-08-20');
+  assert.equal(EMBEDDED_PRICE_CATALOG.revision, 4);
+  assert.equal(EMBEDDED_PRICE_CATALOG.catalogVersion, '2026-09-06');
   const entry = EMBEDDED_PRICE_CATALOG.entries.find((item) => item.pattern === 'codex-auto-review');
   assert.equal(entry?.effectiveTo, null);
   assert.equal(entry?.version, '2026-08-20');

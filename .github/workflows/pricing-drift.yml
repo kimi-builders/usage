@@ -1,0 +1,29 @@
+name: Pricing drift
+
+on:
+  schedule:
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pricing-drift
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    name: Compare curated prices
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Node.js 24 LTS
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Detect possible pricing drift
+        run: npm run check:pricing-drift

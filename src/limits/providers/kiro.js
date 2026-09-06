@@ -100,9 +100,17 @@ export function parseKiroUsage(payload, identity = {}, { now = new Date() } = {}
   }
   const totalUsed = finite(credit.currentUsageWithPrecision ?? credit.currentUsage);
   const planLimit = finite(credit.usageLimitWithPrecision ?? credit.usageLimit);
-  const overageUsed = finite(credit.currentOveragesWithPrecision ?? credit.currentOverages) ?? 0;
-  const overageCap = finite(credit.overageCapWithPrecision ?? credit.overageCap);
-  if (totalUsed == null || planLimit == null || totalUsed < overageUsed) {
+  const rawOverageUsed = credit.currentOveragesWithPrecision ?? credit.currentOverages;
+  const overageUsed = rawOverageUsed == null || rawOverageUsed === '' ? 0 : finite(rawOverageUsed);
+  const overageEnabled = String(payload?.overageConfiguration?.overageStatus || '').toUpperCase() === 'ENABLED';
+  const rawOverageCap = credit.overageCapWithPrecision ?? credit.overageCap;
+  const overageCap = !overageEnabled || rawOverageCap == null || rawOverageCap === ''
+    ? null
+    : finite(rawOverageCap);
+  if (totalUsed == null || planLimit == null || overageUsed == null
+      || (overageEnabled && rawOverageCap != null && rawOverageCap !== '' && overageCap == null)
+      || totalUsed < overageUsed
+      || (overageEnabled && overageCap != null && overageUsed > overageCap)) {
     const error = new Error('Kiro CREDIT 额度包含无效数值。');
     error.code = 'invalid_response';
     throw error;
@@ -121,7 +129,6 @@ export function parseKiroUsage(payload, identity = {}, { now = new Date() } = {}
     error.code = 'invalid_response';
     throw error;
   }
-  const overageEnabled = String(payload?.overageConfiguration?.overageStatus || '').toUpperCase() === 'ENABLED';
   const overage = overageEnabled ? creditWindow('overage', '超额 Credits', overageUsed, overageCap, resetsAt) : null;
   const windows = [plan, overage].filter(Boolean);
   return {

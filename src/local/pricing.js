@@ -18,7 +18,7 @@ function contextRank(price, contextTier) {
 }
 
 function matchCandidate(catalog, name, bucket, at) {
-  return catalog
+  const candidates = catalog
     .filter((price) => {
       const patternMatches = price.match === 'exact'
         ? name === price.pattern
@@ -26,7 +26,6 @@ function matchCandidate(catalog, name, bucket, at) {
       return patternMatches
         && Date.parse(price.effectiveFrom) <= at
         && (!price.effectiveTo || at < Date.parse(price.effectiveTo))
-        && (price.source === null || price.source === bucket.source)
         && price.processingTier === (bucket.processingTier || 'standard')
         && contextRank(price, bucket.contextTier) >= 0;
     })
@@ -34,9 +33,18 @@ function matchCandidate(catalog, name, bucket, at) {
       if (left.match !== right.match) return left.match === 'exact' ? -1 : 1;
       return right.pattern.length - left.pattern.length
         || contextRank(right, bucket.contextTier) - contextRank(left, bucket.contextTier)
-        || Number(right.source === bucket.source) - Number(left.source === bucket.source)
         || Date.parse(right.effectiveFrom) - Date.parse(left.effectiveFrom);
-    })[0] || null;
+    });
+  const mostSpecific = candidates[0];
+  if (!mostSpecific) return null;
+  return candidates
+    .filter((price) => price.match === mostSpecific.match && price.pattern === mostSpecific.pattern)
+    .filter((price) => price.source === null || price.source === bucket.source)
+    .sort((left, right) => (
+      contextRank(right, bucket.contextTier) - contextRank(left, bucket.contextTier)
+      || Number(right.source === bucket.source) - Number(left.source === bucket.source)
+      || Date.parse(right.effectiveFrom) - Date.parse(left.effectiveFrom)
+    ))[0] || null;
 }
 
 export function matchLocalPrice(bucket) {

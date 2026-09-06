@@ -43,13 +43,20 @@ access token as a bootstrap credential:
    This runs Collector tests, builds and tests the dashboard, and executes
    `npm pack --dry-run` so the exact public file list is visible.
 
-4. Verify the three background-service descriptors without installing them:
+4. Run the maintainer-only pricing drift monitor. Treat any difference as a review
+   prompt and verify it on the first-party provider page; never copy it automatically:
+
+   ```bash
+   npm run check:pricing-drift
+   ```
+
+5. Verify the three background-service descriptors without installing them:
 
    ```bash
    node --test test/daemon.test.js
    ```
 
-5. Smoke-test the package from a temporary directory. Do not reuse a real
+6. Smoke-test the package from a temporary directory. Do not reuse a real
    Collector config when testing connection or upload flows.
 
 ## Clean-checkout verification

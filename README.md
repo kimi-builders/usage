@@ -151,7 +151,7 @@ npx @kimi.builders/usage@latest sync
 
 **项目状态：** 当前是公开 Beta。稳定来源经过跨平台 fixture 与 contract test；日志格式
 覆盖有限的来源会明确标为 Beta。[Roadmap](./docs/ROADMAP.md) ·
-[发布说明](./docs/RELEASE_NOTES_0.5.3.md) · [全部文档](./docs/README.md)
+[发布说明](./docs/RELEASE_NOTES_0.6.0.md) · [全部文档](./docs/README.md)
 
 ## 从源码运行
 
@@ -181,7 +181,9 @@ npx @kimi.builders/usage dashboard
 看板每次启动都会生成新的浏览器访问令牌，并拒绝非本机 Host、Origin 和未授权请求。
 “重新扫描”只刷新本机数据；“同步数据”才会执行社区增量同步。
 
-价格目录按模型、生效时间、上下文档位和处理档位匹配标准 API 单价。`init` 会 best-effort
+价格目录以供应商官方文档为最终依据，按模型、生效时间、上下文档位和处理档位匹配标准 API
+单价。AI Pricing Guru 只在维护者 CI 中对明确映射的供应商/模型做变化提示，不会自动覆盖价格，
+也不是扫描或看板的运行时依赖。`init` 会 best-effort
 下载社区公开的版本化目录，也可在看板或通过 `pricing update` 主动更新；下载内容只含公开
 价格，不会上传本机用量。目录经过严格校验并保留 last-known-good，离线时始终可回退随包
 内置快照。看板会明确展示定价覆盖率、假设定价与未定价 Token，避免把不完整估算伪装成账单。

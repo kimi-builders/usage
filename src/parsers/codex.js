@@ -384,7 +384,10 @@ export async function parse({ sessionSalt, sourceOptions } = {}) {
 
       const model = info?.model || record.payload?.model || stickyModel || 'unknown';
       const modelName = String(model).toLowerCase();
-      const contextTier = modelName.startsWith('gpt-5.6')
+      const pricedModelName = modelName.split('/').at(-1);
+      const contextTier = (
+        pricedModelName.startsWith('gpt-5.6') || pricedModelName.startsWith('gpt-6-astra')
+      )
         ? (promptInputTokens > 272_000 ? 'long' : 'short')
         : '';
       const rawProcessingTier = String(
