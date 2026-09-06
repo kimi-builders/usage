@@ -4,7 +4,8 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { publicSyncResult, startLocalDashboardServer } from '../src/local/dashboard-server.js';
+import { publicSyncResult, runDashboard, startLocalDashboardServer } from '../src/local/dashboard-server.js';
+import { setLocale } from '../src/cli-ui.js';
 
 function http(port, path, headers = {}, { method = 'GET', body = '' } = {}) {
   return new Promise((resolve, reject) => {
@@ -21,6 +22,25 @@ function http(port, path, headers = {}, { method = 'GET', body = '' } = {}) {
     outgoing.end(body);
   });
 }
+
+test('Dashboard startup follows the selected CLI language', async () => {
+  const lines = [];
+  const originalLog = console.log;
+  let local;
+  try {
+    setLocale('en');
+    console.log = (...values) => lines.push(values.join(' '));
+    local = await runDashboard({ launchBrowser: false, serveStatic: false, dataLoader: async () => ({}) });
+  } finally {
+    console.log = originalLog;
+    if (local) await local.close();
+    setLocale(null);
+  }
+  const output = lines.join('\n');
+  assert.match(output, /Starting the local usage center/);
+  assert.match(output, /Local dashboard:/);
+  assert.doesNotMatch(output, /正在启动|本地看板|仅监听/);
+});
 
 test('Dashboard sync results keep source status but redact parser errors', () => {
   const result = publicSyncResult({

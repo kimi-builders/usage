@@ -12,7 +12,9 @@ function option(args, name) {
   const index = args.indexOf(`--${name}`);
   if (index < 0) return undefined;
   const value = args[index + 1];
-  if (!value || value.startsWith('--')) throw new Error(`--${name} 需要一个值。`);
+  if (!value || value.startsWith('--')) {
+    throw new Error(getLocale() === 'zh' ? `--${name} 需要一个值。` : `--${name} requires a value.`);
+  }
   return value;
 }
 
@@ -61,10 +63,16 @@ export function runSources(args = []) {
   if (action === 'set') {
     const source = sourceRegistry.find((item) => item.id === sourceId);
     const mode = args[2];
-    if (!source) throw new Error(`数据源不存在: ${sourceId || '(missing)'}`);
-    if (!isSourceMode(mode)) throw new Error('模式必须是 off、local 或 private。');
+    if (!source) throw new Error(isZh
+      ? `数据源不存在: ${sourceId || '(missing)'}`
+      : `Data source does not exist: ${sourceId || '(missing)'}`);
+    if (!isSourceMode(mode)) throw new Error(isZh
+      ? '模式必须是 off、local 或 private。'
+      : 'Mode must be off, local, or private.');
     if (sourceId === 'cursor' && mode !== 'off' && !config.sourceOptions?.cursor?.csvPath) {
-      throw new Error('Cursor 需要先运行 `sources enable cursor --csv PATH` 配置导出的 usage CSV。');
+      throw new Error(isZh
+        ? 'Cursor 需要先运行 `sources enable cursor --csv PATH` 配置导出的 usage CSV。'
+        : 'Configure an exported Cursor usage CSV with `sources enable cursor --csv PATH` first.');
     }
     const next = applySourcePolicies({
       ...config,
@@ -72,7 +80,12 @@ export function runSources(args = []) {
       ...(!loadedConfig ? { onboardingPending: true } : {}),
     }, { [sourceId]: mode });
     saveConfig(next);
-    console.log(`${sourceId} 已设为 ${{ off: '关闭', local: '仅本机扫描', private: '本机扫描并同步' }[mode]}；远端历史数据未删除。`);
+    const modeLabel = isZh
+      ? { off: '关闭', local: '仅本机扫描', private: '本机扫描并同步' }[mode]
+      : { off: 'off', local: 'local scanning only', private: 'local scanning and sync' }[mode];
+    console.log(isZh
+      ? `${sourceId} 已设为 ${modeLabel}；远端历史数据未删除。`
+      : `${sourceId} set to ${modeLabel}; remote history was not deleted.`);
     return;
   }
   if (['add-root', 'remove-root'].includes(action)) {
@@ -121,16 +134,22 @@ export function runSources(args = []) {
     return;
   }
   const source = optional.find((item) => item.id === sourceId);
-  if (!source) throw new Error(`可显式配置的数据源不存在: ${sourceId || '(missing)'}`);
+  if (!source) throw new Error(isZh
+    ? `可显式配置的数据源不存在: ${sourceId || '(missing)'}`
+    : `Explicitly configurable data source does not exist: ${sourceId || '(missing)'}`);
 
   const sourceOptions = { ...(config.sourceOptions || {}) };
   if (action === 'enable') {
     if (sourceId === 'cursor') {
       const csv = option(args, 'csv');
-      if (!csv) throw new Error('启用 Cursor 需要 --csv PATH（Cursor Dashboard 主动导出的 usage CSV）。');
+      if (!csv) throw new Error(isZh
+        ? '启用 Cursor 需要 --csv PATH（Cursor Dashboard 主动导出的 usage CSV）。'
+        : 'Enabling Cursor requires --csv PATH (a usage CSV exported from Cursor Dashboard).');
       const csvPath = resolve(csv);
       if (!existsSync(csvPath) || !statSync(csvPath).isFile()) {
-        throw new Error(`Cursor CSV 不存在或不是文件: ${csvPath}`);
+        throw new Error(isZh
+          ? `Cursor CSV 不存在或不是文件: ${csvPath}`
+          : `Cursor CSV does not exist or is not a file: ${csvPath}`);
       }
       sourceOptions.cursor = { csvPath };
     }
@@ -142,7 +161,7 @@ export function runSources(args = []) {
       enabledSources: [...enabled].sort(),
       sourceOptions,
     }, { [sourceId]: config?.apiKey ? 'private' : 'local' }));
-    console.log(`已启用 ${sourceId}。`);
+    console.log(isZh ? `已启用 ${sourceId}。` : `Enabled ${sourceId}.`);
     return;
   }
   if (action === 'disable') {
@@ -155,8 +174,10 @@ export function runSources(args = []) {
       enabledSources: [...enabled].sort(),
       sourceOptions,
     }, { [sourceId]: 'off' }));
-    console.log(`已停用 ${sourceId}；远端历史数据未删除。`);
+    console.log(isZh
+      ? `已停用 ${sourceId}；远端历史数据未删除。`
+      : `Disabled ${sourceId}; remote history was not deleted.`);
     return;
   }
-  throw new Error(`未知 sources 操作: ${action}`);
+  throw new Error(isZh ? `未知 sources 操作: ${action}` : `Unknown sources action: ${action}`);
 }

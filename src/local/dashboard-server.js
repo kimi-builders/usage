@@ -5,6 +5,7 @@ import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { spawn } from 'node:child_process';
+import { getLocale } from '../cli-ui.js';
 import { loadConfig } from '../config.js';
 import {
   getDaemonStatus, installDaemon, restartDaemon, uninstallDaemon,
@@ -478,9 +479,14 @@ export async function startLocalDashboardServer({
 }
 
 export async function runDashboard(options = {}) {
-  console.log('正在启动本机用量中心；首次使用可在浏览器选择要扫描和同步的 Agent…');
+  const isZh = getLocale() === 'zh';
+  console.log(isZh
+    ? '正在启动本机用量中心；首次使用可在浏览器选择要扫描和同步的 Agent…'
+    : 'Starting the local usage center; first-time setup lets you choose which Agents to scan and sync…');
   const local = await startLocalDashboardServer(options);
-  console.log(`本地看板: ${local.url}`);
-  console.log('仅监听 127.0.0.1；关闭此终端或按 Ctrl+C 即停止。');
+  console.log(`${isZh ? '本地看板' : 'Local dashboard'}: ${local.url}`);
+  console.log(isZh
+    ? '仅监听 127.0.0.1；关闭此终端或按 Ctrl+C 即停止。'
+    : 'Listening on 127.0.0.1 only; close this terminal or press Ctrl+C to stop.');
   return local;
 }

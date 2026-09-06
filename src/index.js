@@ -1,5 +1,11 @@
-import { c, setColorEnabled } from './cli-ui.js';
+import {
+  c, getLocale, setColorEnabled, setLocale, t,
+} from './cli-ui.js';
 import { getConfigPath, loadConfig } from './config.js';
+
+function localized(zh, en) {
+  return getLocale() === 'zh' ? zh : en;
+}
 
 function parseInvocation(inputArgs = []) {
   const args = [];
@@ -31,15 +37,18 @@ function option(args, name) {
   const index = args.indexOf(`--${name}`);
   if (index < 0) return undefined;
   const value = args[index + 1];
-  if (!value || value.startsWith('--')) throw new Error(`--${name} 需要一个值。`);
+  if (!value || value.startsWith('--')) {
+    throw new Error(localized(`--${name} 需要一个值。`, `--${name} requires a value.`));
+  }
   return value;
 }
 
 function printHelp() {
+  const isZh = getLocale() === 'zh';
   console.log(`
-${c.bold(c.cyan('@kimi.builders/usage'))} ${c.dim('— 本地优先的 AI Coding Agent 用量分析与额度监控工具')}
+${c.bold(c.cyan('@kimi.builders/usage'))} ${c.dim(`— ${t('cli.description')}`)}
 
-${c.bold('▸ 用量分析与额度')}
+${c.bold(t('cli.category.analytics'))}
   npx @kimi.builders/usage stats [--period today|24h|7d|30d|all] [--source agent] [--json]
   npx @kimi.builders/usage quota [--provider claude|codex|kimi|cursor] [--all] [--json]
   npx @kimi.builders/usage export [--format csv|json|jsonl] [--output PATH]
@@ -49,7 +58,7 @@ ${c.bold('▸ 用量分析与额度')}
   npx @kimi.builders/usage status
   npx @kimi.builders/usage pricing status|update|reset [--json]
 
-${c.bold('▸ 社区同步与后台服务')}
+${c.bold(t('cli.category.sync'))}
   npx @kimi.builders/usage init [--api-url URL] [--sync] [--skip-pricing-update]
   npx @kimi.builders/usage sync [--full]
   npx @kimi.builders/usage daemon install [--interval 15]
@@ -57,18 +66,18 @@ ${c.bold('▸ 社区同步与后台服务')}
   npx @kimi.builders/usage daemon restart [--interval 15]
   npx @kimi.builders/usage daemon uninstall
 
-${c.bold('▸ 来源检测与诊断')}
+${c.bold(t('cli.category.diagnostics'))}
   npx @kimi.builders/usage inspect --dry-run
   npx @kimi.builders/usage doctor [--json]
   npx @kimi.builders/usage sources list
   npx @kimi.builders/usage sources set <agent> off|local|private
   npx @kimi.builders/usage sources enable cursor --csv PATH
   npx @kimi.builders/usage sources disable cursor
-  npx @kimi.builders/usage sources add-root <agent> /绝对/目录
-  npx @kimi.builders/usage sources remove-root <agent> /绝对/目录
+  npx @kimi.builders/usage sources add-root <agent> ${isZh ? '/绝对/目录' : '/absolute/directory'}
+  npx @kimi.builders/usage sources remove-root <agent> ${isZh ? '/绝对/目录' : '/absolute/directory'}
   npx @kimi.builders/usage reset --local
 
-${c.bold('▸ 辅助与自动补全')}
+${c.bold(isZh ? '▸ 辅助与自动补全' : '▸ Help & Completions')}
   npx @kimi.builders/usage completion [zsh|bash|fish]
   npx @kimi.builders/usage --help / -h
   npx @kimi.builders/usage --version / -v
@@ -81,9 +90,9 @@ export async function run(inputArgs) {
   const args = invocation.args;
   if (invocation.color !== undefined) setColorEnabled(invocation.color);
 
-  if (invocation.lang) {
-    const { setLocale } = await import('./cli-ui.js');
-    setLocale(invocation.lang);
+  if (invocation.lang) setLocale(invocation.lang);
+  else if (!process.env.KBU_USAGE_LANG && ['zh', 'en'].includes(loadConfig()?.locale)) {
+    setLocale(loadConfig().locale);
   }
 
   const command = args[0];
@@ -116,8 +125,14 @@ export async function run(inputArgs) {
     } = await import('./daemon.js');
     if (action === 'install') {
       const result = installDaemon({ intervalMinutes: Number(option(args, 'interval') || 15) });
-      console.log(`后台同步已启用：每 ${result.intervalMinutes} 分钟同步一次。`);
-      console.log('设备需要保持唤醒并联网；云端不会主动读取你的本地文件。');
+      console.log(localized(
+        `后台同步已启用：每 ${result.intervalMinutes} 分钟同步一次。`,
+        `Background sync enabled: every ${result.intervalMinutes} minutes.`,
+      ));
+      console.log(localized(
+        '设备需要保持唤醒并联网；云端不会主动读取你的本地文件。',
+        'The device must remain awake and online; the cloud never reads local files on its own.',
+      ));
       return result;
     }
     if (action === 'status') return printDaemonStatus(getDaemonStatus(), { json: args.includes('--json') });
@@ -125,16 +140,22 @@ export async function run(inputArgs) {
       const result = restartDaemon({
         ...(option(args, 'interval') ? { intervalMinutes: Number(option(args, 'interval')) } : {}),
       });
-      console.log(`后台同步已重新加载：每 ${result.intervalMinutes} 分钟一次。`);
+      console.log(localized(
+        `后台同步已重新加载：每 ${result.intervalMinutes} 分钟一次。`,
+        `Background sync reloaded: every ${result.intervalMinutes} minutes.`,
+      ));
       return result;
     }
     if (action === 'uninstall') {
       uninstallDaemon();
-      console.log('后台同步已停用；本地历史、云端数据和连接配置均未删除。');
+      console.log(localized(
+        '后台同步已停用；本地历史、云端数据和连接配置均未删除。',
+        'Background sync disabled; local history, community data, and connection settings were kept.',
+      ));
       return;
     }
     if (action === 'run') return runDaemonSync();
-    throw new Error(`未知 daemon 命令: ${action}`);
+    throw new Error(localized(`未知 daemon 命令: ${action}`, `Unknown daemon command: ${action}`));
   }
   if (command === 'inspect' && (args.includes('--dry-run') || args.length === 1)) {
     const { runInspect } = await import('./inspect.js');
@@ -148,7 +169,7 @@ export async function run(inputArgs) {
     const rawPort = option(args, 'port');
     const port = rawPort === undefined ? 0 : Number(rawPort);
     if (!Number.isInteger(port) || port < 0 || port > 65_535) {
-      throw new Error('--port 必须是 0–65535 的整数。');
+      throw new Error(localized('--port 必须是 0–65535 的整数。', '--port must be an integer from 0 to 65535.'));
     }
     const { runDashboard } = await import('./local/dashboard-server.js');
     return runDashboard({ port, launchBrowser: !args.includes('--no-open') });
@@ -186,7 +207,9 @@ export async function run(inputArgs) {
   if (command === 'summary') {
     const daysOpt = option(args, 'days');
     const raw = daysOpt ? Number(daysOpt) : 7;
-    if (!Number.isInteger(raw) || raw < 1 || raw > 90) throw new Error('--days 必须是 1–90。');
+    if (!Number.isInteger(raw) || raw < 1 || raw > 90) {
+      throw new Error(localized('--days 必须是 1–90。', '--days must be an integer from 1 to 90.'));
+    }
     const { runSummary } = await import('./summary.js');
     return runSummary(raw, { remote: args.includes('--remote'), json: args.includes('--json') });
   }
@@ -210,11 +233,13 @@ export async function run(inputArgs) {
   if (command === 'reset' && args.includes('--local')) {
     const { clearState } = await import('./state.js');
     clearState();
-    console.log('本地同步 checkpoint 已清除；远端数据未修改。下次 sync 会安全重放。');
+    console.log(localized(
+      '本地同步 checkpoint 已清除；远端数据未修改。下次 sync 会安全重放。',
+      'The local sync checkpoint was cleared; remote data was not changed. The next sync will replay safely.',
+    ));
     return;
   }
   if (command === 'status') {
-    const { getLocale } = await import('./cli-ui.js');
     const isZh = getLocale() === 'zh';
     const config = loadConfig();
     console.log(`\n${c.bold(c.cyan(isZh ? '◆ Kimi Builders Usage 运行状态' : '◆ Kimi Builders Usage Status'))}`);
@@ -253,5 +278,5 @@ export async function run(inputArgs) {
     console.log(COLLECTOR_VERSION);
     return COLLECTOR_VERSION;
   }
-  throw new Error(`未知命令: ${command}`);
+  throw new Error(localized(`未知命令: ${command}`, `Unknown command: ${command}`));
 }

@@ -89,6 +89,7 @@ export async function getDashboardControlState({
   return {
     onboardingRequired: !config || config.onboardingPending === true,
     policyExplicit: sourcePolicyIsExplicit(config),
+    locale: ['zh', 'en'].includes(config?.locale) ? config.locale : null,
     community: {
       connected: isConnected,
       status: authenticationFailed ? 'attention' : isConnected ? 'connected' : authorization?.status || 'disconnected',
@@ -154,6 +155,20 @@ export function createDashboardControl({
     const action = String(payload.action || '');
     const loadedConfig = configLoader();
     const config = loadedConfig || {};
+    if (action === 'save-locale') {
+      const locale = String(payload.locale || '').toLowerCase();
+      if (!['zh', 'en'].includes(locale)) {
+        throw Object.assign(new Error('Locale must be zh or en.'), {
+          statusCode: 400, code: 'invalid_control_input',
+        });
+      }
+      configSaver({
+        ...config,
+        locale,
+        ...(!loadedConfig ? { onboardingPending: true } : {}),
+      });
+      return { ...(await state()), action };
+    }
     if (['save-sources', 'prepare-onboarding', 'complete-onboarding'].includes(action)) {
       const next = applyPoliciesSafely({
         ...config,

@@ -36,7 +36,7 @@ const sourceIds = [
   'cursor',
 ];
 
-function isolatedCli(t, { cursor = false, extraEnv = {} } = {}) {
+function isolatedCli(t, { cursor = false, locale, extraEnv = {} } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'kbu-cli-e2e-'));
   const home = join(root, 'home');
   const configDir = join(root, 'config');
@@ -46,6 +46,7 @@ function isolatedCli(t, { cursor = false, extraEnv = {} } = {}) {
   if (cursor) sourcePolicies.cursor = 'local';
   writeFileSync(join(configDir, 'config.json'), `${JSON.stringify({
     sessionSalt: 'e'.repeat(64),
+    ...(locale ? { locale } : {}),
     sourcePolicyVersion: 1,
     sourcePolicies,
     enabledSources: cursor ? ['cursor'] : [],
@@ -101,6 +102,23 @@ test('global flags work before or after the command and select the requested lan
   const completionAfter = assertSucceeded(runCli(['completion', 'zsh', '--lang', 'en']));
   assert.equal(completionBefore, completionAfter);
   assert.match(completionBefore, /^#compdef kbu-usage/);
+
+  const help = assertSucceeded(runCli(['help', '--plain', '--lang', 'en']));
+  assert.match(help, /Local-first usage analytics/);
+  assert.match(help, /Sync & Background Service/);
+  assert.doesNotMatch(help, /本地优先|社区同步与后台服务|绝对\/目录/);
+});
+
+test('saved Dashboard locale becomes the default for CLI commands', (t) => {
+  const runCli = isolatedCli(t, {
+    locale: 'en',
+    extraEnv: { KBU_USAGE_LANG: '', LANG: 'zh_CN.UTF-8', LC_ALL: 'zh_CN.UTF-8' },
+  });
+  const help = assertSucceeded(runCli(['help', '--plain']));
+  const sources = assertSucceeded(runCli(['sources', 'list', '--plain']));
+  assert.match(help, /Local-first usage analytics/);
+  assert.match(sources, /Data Sources:/);
+  assert.doesNotMatch(`${help}\n${sources}`, /本地优先|数据源：|仅本机|关闭/);
 });
 
 test('environment locale and localized entry-point failures are preserved end to end', (t) => {

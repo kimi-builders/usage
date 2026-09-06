@@ -149,7 +149,9 @@ export function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('kbu.theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
   const [vibe, setVibe] = useState(() => normalizeVibe(localStorage.getItem('kbu.vibe')));
   useEffect(() => { document.documentElement.dataset.vibe = vibe; localStorage.setItem('kbu.vibe', vibe); }, [vibe]);
-  const [locale, setLocale] = useState(() => localStorage.getItem('kbu.locale') || 'zh');
+  const initialLocale = useRef(localStorage.getItem('kbu.locale'));
+  const [locale, setLocale] = useState(() => initialLocale.current || 'zh');
+  const [localeReady, setLocaleReady] = useState(false);
   const compactValue = (value) => compactNumber(value, locale);
   const [currency, setCurrency] = useState(() => localStorage.getItem('kbu.currency.v1') === 'cny' ? 'cny' : 'usd');
   useEffect(() => { localStorage.setItem('kbu.currency.v1', currency); }, [currency]);
@@ -296,6 +298,8 @@ export function App() {
       try {
         const next = await loadControl();
         if (cancelled) return;
+        if (!initialLocale.current && ['zh', 'en'].includes(next.locale)) setLocale(next.locale);
+        setLocaleReady(true);
         setOnboardingActive(next.onboardingRequired);
         if (!next.onboardingRequired) {
           await load();
@@ -308,7 +312,11 @@ export function App() {
     return () => { cancelled = true; };
   }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('kbu.theme', theme); }, [theme]);
-  useEffect(() => { document.documentElement.lang = zh ? 'zh-CN' : 'en'; localStorage.setItem('kbu.locale', locale); }, [locale, zh]);
+  useEffect(() => {
+    document.documentElement.lang = zh ? 'zh-CN' : 'en';
+    localStorage.setItem('kbu.locale', locale);
+    if (localeReady) controlAction({ action: 'save-locale', locale }).catch(() => {});
+  }, [controlAction, locale, localeReady, zh]);
   useEffect(() => {
     if (control?.community?.status !== 'pending') return undefined;
     const expiresAt = Date.parse(control.community.authorization?.expiresAt || '');

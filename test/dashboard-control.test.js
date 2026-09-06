@@ -10,6 +10,25 @@ const registry = [
   { id: 'codex', tier: 'stable', roots: async () => [] },
 ];
 
+test('saving the Dashboard locale keeps first-time onboarding pending', async () => {
+  let config = null;
+  const control = createDashboardControl({
+    configLoader: () => config,
+    configSaver: (next) => { config = next; },
+    registry,
+    daemonStatus: () => ({ installed: false, supported: true }),
+  });
+  const result = await control.act({ action: 'save-locale', locale: 'en' });
+  assert.equal(config.locale, 'en');
+  assert.equal(config.onboardingPending, true);
+  assert.equal(result.locale, 'en');
+  assert.equal(result.onboardingRequired, true);
+  await assert.rejects(
+    control.act({ action: 'save-locale', locale: 'fr' }),
+    (error) => error.code === 'invalid_control_input',
+  );
+});
+
 test('dashboard control supports onboarding, browser connection, deletion, and disconnect', async () => {
   let config = null;
   let cleared = 0;
@@ -37,6 +56,7 @@ test('dashboard control supports onboarding, browser connection, deletion, and d
 
   const initial = await control.state();
   assert.equal(initial.onboardingRequired, true);
+  assert.equal(initial.locale, null);
   assert.deepEqual(initial.sources.map(({ id, detected }) => ({ id, detected })), [
     { id: 'kimi-code', detected: true }, { id: 'codex', detected: false },
   ]);
@@ -47,6 +67,10 @@ test('dashboard control supports onboarding, browser connection, deletion, and d
   assert.equal(completed.onboardingRequired, false);
   assert.equal(config.sourcePolicies['kimi-code'], 'local');
   assert.equal(config.apiKey, undefined);
+
+  const localized = await control.act({ action: 'save-locale', locale: 'en' });
+  assert.equal(localized.locale, 'en');
+  assert.equal(config.locale, 'en');
 
   const pending = await control.act({ action: 'connect-start' });
   assert.equal(pending.status, 'pending');

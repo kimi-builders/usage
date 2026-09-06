@@ -41,6 +41,62 @@ const PROVIDER_ALIASES = {
   'jetbrains-ai': 'jetbrains-ai',
 };
 
+const QUOTA_WINDOW_LABELS = {
+  codex: {
+    primary: ['5 小时', '5 hours'], secondary: ['每周', 'Weekly'],
+    'spend-control': ['月度 Credits', 'Monthly credits'],
+  },
+  'claude-code': {
+    five_hour: ['5 小时', '5 hours'], seven_day: ['每周', 'Weekly'],
+    seven_day_opus: ['Opus · 每周', 'Opus · Weekly'],
+    seven_day_sonnet: ['Sonnet · 每周', 'Sonnet · Weekly'],
+    seven_day_oauth_apps: ['OAuth Apps · 每周', 'OAuth Apps · Weekly'],
+    seven_day_routines: ['Routines · 每周', 'Routines · Weekly'],
+    seven_day_claude_routines: ['Routines · 每周', 'Routines · Weekly'],
+    seven_day_cowork: ['Cowork · 每周', 'Cowork · Weekly'],
+  },
+  'kimi-code': {
+    session: ['5 小时滚动（5H 频限）', '5-hour rolling (5H rate limit)'],
+    weekly: ['每周', 'Weekly'], 'code-weekly': ['Code 每周', 'Code weekly'],
+    total: ['订阅总额度', 'Total subscription quota'],
+  },
+  opencode: {
+    rolling: ['5 小时滚动', '5-hour rolling'], weekly: ['每周', 'Weekly'], monthly: ['每月', 'Monthly'],
+  },
+  warp: { credits: ['月度 Credits', 'Monthly credits'], bonus: ['附加 Credits', 'Bonus credits'] },
+  'jetbrains-ai': { credits: ['当前 Credits', 'Current credits'] },
+};
+
+function quotaWindowLabel(providerId, window, isZh) {
+  const mapped = QUOTA_WINDOW_LABELS[providerId]?.[window.id];
+  if (mapped) return mapped[isZh ? 0 : 1];
+  if (Number(window.windowSeconds) === 7 * 24 * 60 * 60) return isZh ? '每周' : 'Weekly';
+  if (isZh) return window.label || '额度窗口';
+  return String(window.label || 'Quota window')
+    .replaceAll('5 小时滚动（5H 频限）', '5-hour rolling (5H rate limit)')
+    .replaceAll('5 小时滚动', '5-hour rolling')
+    .replaceAll('5 小时窗口', '5-hour window')
+    .replaceAll('订阅总额度', 'Total subscription quota')
+    .replaceAll('月度 Credits', 'Monthly credits')
+    .replaceAll('附加 Credits', 'Bonus credits')
+    .replaceAll('当前 Credits', 'Current credits')
+    .replaceAll('每周', 'Weekly');
+}
+
+function quotaErrorMessage(error, providerLabel, isZh) {
+  if (isZh && error?.message) return error.message;
+  return {
+    not_configured: `${providerLabel} is not configured or no usable login was detected.`,
+    unauthorized: `${providerLabel} login expired or cannot read quota data.`,
+    timeout: `${providerLabel} quota request timed out. Try again later.`,
+    network_error: `${providerLabel} is temporarily unreachable. Check the network and try again.`,
+    invalid_response: `${providerLabel} returned quota data that could not be validated.`,
+    blocked_endpoint: `${providerLabel} does not currently allow this quota request.`,
+    workspace_unavailable: `${providerLabel} has no readable Go Workspace or subscription window.`,
+    provider_error: `${providerLabel} quota request failed. Try again later.`,
+  }[error?.code] || `${providerLabel} quota request failed. Try again later.`;
+}
+
 export function normalizeProviderId(name) {
   if (!name) return null;
   const clean = String(name).toLowerCase().trim();
@@ -69,7 +125,9 @@ export async function fetchQuota(options = {}) {
 
   const providerFilter = normalizeProviderId(options.provider || options.agent);
   if (providerFilter && !LIMIT_PROVIDER_CATALOG.some((p) => p.id === providerFilter)) {
-    throw new Error(`未知的 Provider 或 Agent 标识: ${options.provider || options.agent}`);
+    throw new Error(getLocale() === 'zh'
+      ? `未知的 Provider 或 Agent 标识: ${options.provider || options.agent}`
+      : `Unknown provider or Agent identifier: ${options.provider || options.agent}`);
   }
 
   // Determine which providers to query
@@ -170,12 +228,6 @@ export function renderQuotaReport(quotaData) {
     const isOk = provider.status === 'ok';
     const planBadge = provider.plan ? ` ${c.bold(c.cyan(`[${provider.plan}]`))}` : '';
     const accountStr = provider.account ? ` ${c.dim(`(${provider.account})`)}` : '';
-    const statusBadge = isOk
-      ? c.green('✓ 正常')
-      : provider.status === 'empty'
-        ? c.gray('- 暂无额度数据')
-        : c.red('✗ 查询失败');
-
     lines.push(`  ${c.bold(provider.label)}${planBadge}${accountStr}`);
 
     if (isOk && Array.isArray(provider.windows) && provider.windows.length > 0) {
@@ -202,7 +254,7 @@ export function renderQuotaReport(quotaData) {
         const countdown = formatResetCountdown(window.resetsAt);
         const countdownStr = countdown ? ` · ⟳ ${countdown}` : '';
 
-        const windowName = pad(window.label || (isZh ? '额度窗口' : 'Quota Window'), 20);
+        const windowName = pad(quotaWindowLabel(provider.id, window, isZh), 20);
         lines.push(`    ${windowName} ${progressBar}  ${percentText}${c.dim(detailPart)}${c.dim(countdownStr)}`);
       }
 
@@ -213,7 +265,7 @@ export function renderQuotaReport(quotaData) {
         lines.push(`    ${c.cyan(resetStr)}`);
       }
     } else if (provider.status === 'error') {
-      const errMsg = provider.error?.message || (isZh ? '未检测到有效登录凭据' : 'No valid credentials detected');
+      const errMsg = quotaErrorMessage(provider.error, provider.label, isZh);
       lines.push(`    ${c.red('✗')} ${c.dim(errMsg)}`);
     } else if (isOk && (!provider.windows || provider.windows.length === 0)) {
       lines.push(`    ${c.dim(isZh ? '已连接，未返回多窗口额度数据' : 'Connected, no quota windows reported')}`);

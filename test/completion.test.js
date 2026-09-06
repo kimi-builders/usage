@@ -5,8 +5,10 @@ import {
   generateFishCompletion,
   generateZshCompletion,
 } from '../src/completion.js';
+import { setLocale } from '../src/cli-ui.js';
 
 test('generateZshCompletion produces valid zsh completion syntax', () => {
+  setLocale('zh');
   const script = generateZshCompletion();
   assert.match(script, /#compdef kbu-usage/);
   assert.match(script, /_kbu_usage_completion/);
@@ -16,6 +18,11 @@ test('generateZshCompletion produces valid zsh completion syntax', () => {
   assert.match(script, /export:导出本地用量数据/);
   assert.match(script, /mcode cursor/);
   assert.match(script, /add-root:添加额外本机数据目录/);
+  setLocale('en');
+  const english = generateZshCompletion();
+  assert.match(english, /sync:Scan and sync usage from each Agent/);
+  assert.doesNotMatch(english, /扫描|同步用量数据|显示帮助/);
+  setLocale(null);
 });
 
 test('generateBashCompletion produces valid bash completion syntax', () => {
@@ -26,8 +33,12 @@ test('generateBashCompletion produces valid bash completion syntax', () => {
 });
 
 test('generateFishCompletion produces valid fish completion syntax', () => {
+  setLocale('en');
   const script = generateFishCompletion();
   assert.match(script, /# Fish completion for @kimi.builders\/usage/);
   assert.match(script, /complete -c kbu-usage/);
   assert.match(script, /add-root remove-root/);
+  assert.match(script, /Scan and sync usage from each Agent/);
+  assert.doesNotMatch(script, /扫描并同步|显示帮助/);
+  setLocale(null);
 });

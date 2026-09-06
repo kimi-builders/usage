@@ -82,6 +82,9 @@ test('renderQuotaReport formats provider windows and progress bars', () => {
   const reportEn = renderQuotaReport(mockQuotaData);
   assert.match(reportEn, /AI Subscription Quota & Limits/);
   assert.match(reportEn, /Fast reset credits/);
+  assert.match(reportEn, /5-hour window/);
+  assert.match(reportEn, /DeepSeek is not configured/);
+  assert.doesNotMatch(reportEn, /5 小时|未检测到|查询失败|正常/);
 
   setLocale(null);
 });

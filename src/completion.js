@@ -1,7 +1,83 @@
 import { c, getLocale } from './cli-ui.js';
 
+const COMPLETION_TRANSLATIONS = {
+  '从各个 Agent 扫描并同步用量数据': 'Scan and sync usage from each Agent',
+  '多维用量统计与趋势分析': 'Multidimensional usage statistics and trends',
+  '查询 AI 平台订阅额度与重置倒计时': 'Query AI subscription quotas and reset countdowns',
+  '查询 AI 平台订阅额度 (quota 别名)': 'Query AI subscription quotas (alias of quota)',
+  '按消耗量查看排行': 'Rank by usage',
+  '用量汇总概览': 'Usage summary',
+  '启动本地可视化 Web 看板': 'Start the local web dashboard',
+  '查看当前配置、连接与服务状态': 'Show configuration, connection, and service status',
+  '查看当前配置与运行状态': 'Show configuration and runtime status',
+  '查看、更新或重置标准 API 价格目录': 'Show, update, or reset standard API pricing',
+  '查看、更新或重置价格目录': 'Show, update, or reset pricing',
+  '导出本地用量数据为 CSV/JSON/JSONL': 'Export local usage as CSV/JSON/JSONL',
+  '导出本地用量数据': 'Export local usage data',
+  '执行离线数据一致性与协议体检': 'Run offline data consistency and protocol checks',
+  '执行离线数据一致性体检': 'Run offline data consistency checks',
+  '离线调试与数据源目录探测': 'Inspect data source locations offline',
+  '查看与管理各个 Agent 数据源模式': 'Show and manage Agent data-source modes',
+  '管理各个 Agent 数据源模式': 'Manage Agent data-source modes',
+  '后台自动定时同步服务管理': 'Manage scheduled background synchronization',
+  '连接至社区云端': 'Connect to the community service',
+  '重置本地同步检查点': 'Reset the local sync checkpoint',
+  '生成 Shell 自动补全脚本': 'Generate a shell completion script',
+  '显示帮助信息': 'Show help',
+  '显示版本号': 'Show version',
+  '设置输出语言': 'Set output language',
+  '禁用彩色输出': 'Disable colored output',
+  '纯文本模式': 'Plain-text mode',
+  '强制启用彩色输出': 'Force colored output',
+  '以 JSON 格式输出': 'Output as JSON',
+  '以 JSON 输出': 'Output as JSON',
+  'kbu-usage 命令': 'kbu-usage commands',
+  '全局选项': 'Global options',
+  '统计时间周期': 'Statistics period',
+  '指定天数': 'Number of days',
+  '指定 Agent 来源': 'Agent source',
+  '按模型名模糊过滤': 'Filter by model name',
+  '按项目名精确过滤': 'Filter by exact project name',
+  '指定 AI 平台': 'AI provider',
+  '全量扫描所有平台': 'Scan all providers',
+  '强制刷新，绕过缓存': 'Force refresh and bypass cache',
+  '导出格式': 'Export format',
+  '导出数据类型': 'Export data type',
+  '保存文件路径': 'Output file path',
+  '时间范围': 'Time range',
+  '列出所有支持的数据源与状态': 'List supported data sources and status',
+  '设置数据源模式 (off/local/private)': 'Set data-source mode (off/local/private)',
+  '启用显式数据源 (如 cursor)': 'Enable an explicit data source (such as cursor)',
+  '停用数据源': 'Disable a data source',
+  '添加额外本机数据目录': 'Add an extra local data directory',
+  '移除额外本机数据目录': 'Remove an extra local data directory',
+  'sources 操作': 'sources actions',
+  '安装后台自动同步定时任务': 'Install scheduled background synchronization',
+  '查看后台服务运行状态': 'Show background service status',
+  '重启后台同步服务': 'Restart background synchronization',
+  '卸载后台同步服务': 'Uninstall background synchronization',
+  '立即执行一次后台同步': 'Run background synchronization now',
+  'daemon 操作': 'daemon actions',
+  '全量同步模式': 'Full synchronization mode',
+  '操作': 'Action',
+  '社区地址': 'Community URL',
+  '忽略 ETag 并重新下载': 'Ignore ETag and download again',
+  '连接成功后立即同步允许的数据源': 'Sync permitted sources immediately after connecting',
+  '连接成功后立即同步': 'Sync immediately after connecting',
+  '跳过公开价格目录更新': 'Skip public pricing update',
+};
+
+function localizedCompletion(script) {
+  if (getLocale() === 'zh') return script;
+  let output = script;
+  for (const [zh, en] of Object.entries(COMPLETION_TRANSLATIONS).sort(([left], [right]) => right.length - left.length)) {
+    output = output.replaceAll(zh, en);
+  }
+  return output;
+}
+
 export function generateZshCompletion() {
-  return `#compdef kbu-usage usage npx\\ @kimi.builders/usage
+  return localizedCompletion(`#compdef kbu-usage usage npx\\ @kimi.builders/usage
 
 _kbu_usage_completion() {
   local -a commands
@@ -122,7 +198,7 @@ _kbu_usage_completion() {
 }
 
 compdef _kbu_usage_completion kbu-usage usage "npx @kimi.builders/usage"
-`;
+`);
 }
 
 export function generateBashCompletion() {
@@ -178,7 +254,7 @@ complete -F _kbu_usage_bash_completion kbu-usage usage "npx @kimi.builders/usage
 }
 
 export function generateFishCompletion() {
-  return `# Fish completion for @kimi.builders/usage
+  return localizedCompletion(`# Fish completion for @kimi.builders/usage
 
 set -l commands sync stats quota limits top summary dashboard status pricing export doctor inspect sources daemon init reset completion
 
@@ -214,7 +290,7 @@ complete -c kbu-usage -n "__fish_seen_subcommand_from init" -l api-url -d "社�
 complete -c kbu-usage -n "__fish_seen_subcommand_from init" -l sync -d "连接成功后立即同步"
 complete -c kbu-usage -n "__fish_seen_subcommand_from init" -l skip-pricing-update -d "跳过公开价格目录更新"
 complete -c kbu-usage -n "__fish_seen_subcommand_from sources" -a "list set enable disable add-root remove-root"
-`;
+`);
 }
 
 export function runCompletion(shellArg) {
@@ -235,12 +311,12 @@ export function runCompletion(shellArg) {
   }
 
   // Guide
-  console.log(`\n${c.bold(c.cyan('◆ Shell 自动补全安装指南'))}`);
+  console.log(`\n${c.bold(c.cyan(isZh ? '◆ Shell 自动补全安装指南' : '◆ Shell Completion Setup'))}`);
   console.log(c.dim('─'.repeat(Math.min(68, (process.stdout.columns || 80) - 2))));
 
-  console.log(c.bold('1. Zsh (macOS 默认):'));
+  console.log(c.bold(isZh ? '1. Zsh (macOS 默认):' : '1. Zsh (macOS default):'));
   console.log(`   ${c.cyan('source <(npx @kimi.builders/usage completion zsh)')}`);
-  console.log(`   ${c.dim('或写入 ~/.zshrc 以持久生效:')}`);
+  console.log(`   ${c.dim(isZh ? '或写入 ~/.zshrc 以持久生效:' : 'Or add it to ~/.zshrc to keep it enabled:')}`);
   console.log(`   ${c.dim('echo "source <(npx @kimi.builders/usage completion zsh)" >> ~/.zshrc')}`);
 
   console.log(`\n${c.bold('2. Bash:')}`);

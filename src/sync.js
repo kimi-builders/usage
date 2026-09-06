@@ -159,7 +159,9 @@ export function applyPrivacy(result, uploadProject) {
 export async function runSync({ quiet = false, surface = 'cli', full = false } = {}) {
   let config = loadConfig();
   if (!config?.apiKey || !config?.sessionSalt) {
-    throw new Error('尚未连接设备，请先运行 `npx @kimi.builders/usage init`。');
+    throw new Error(getLocale() === 'zh'
+      ? '尚未连接设备，请先运行 `npx @kimi.builders/usage init`。'
+      : 'This device is not connected. Run `npx @kimi.builders/usage init` first.');
   }
   if (!sourcePolicyIsExplicit(config)) {
     config = applySourcePolicies(config, effectiveSourcePolicies(config));
@@ -167,15 +169,15 @@ export async function runSync({ quiet = false, surface = 'cli', full = false } =
   }
   const prepared = prepareStateForSync(config, { full });
   if (prepared.reconciliationRequired) {
-    const error = new Error(
-      '当前 checkpoint 无法证明属于这个社区设备。为避免意外全量上传，本次已取消；确认同步范围后运行 `npx @kimi.builders/usage sync --full`，或在本地看板中确认“完整重建社区数据”。',
-    );
+    const error = new Error(t('sync.reconciliation_required'));
     error.code = 'SYNC_RECONCILIATION_REQUIRED';
     throw error;
   }
   const settings = await fetchSettings(config.apiUrl, config.apiKey);
   if (typeof settings.uploadProject !== 'boolean') {
-    throw new Error('服务端没有返回有效的隐私设置，本次同步已安全取消。');
+    throw new Error(getLocale() === 'zh'
+      ? '服务端没有返回有效的隐私设置，本次同步已安全取消。'
+      : 'The server returned no valid privacy setting, so synchronization was safely cancelled.');
   }
 
   const collected = await collectAll({
@@ -241,15 +243,14 @@ export async function runSync({ quiet = false, surface = 'cli', full = false } =
       buckets: [],
       sessions: [],
     });
-    if (!response.ok) throw new Error('服务端拒绝了设备元数据更新。');
+    if (!response.ok) throw new Error(getLocale() === 'zh'
+      ? '服务端拒绝了设备元数据更新。'
+      : 'The server rejected the device metadata update.');
     saveState(state);
     if (!quiet) {
-      const isZh = getLocale() === 'zh';
-      console.log(isZh ? '暂无新增或变化的用量。' : 'No new or modified usage.');
+      console.log(t('sync.no_changes'));
       if (anyFailed) {
-        console.log(isZh
-          ? '⚠ 部分来源解析失败，其余来源不受影响；失败来源的旧数据已保留。'
-          : '⚠ Some sources failed to parse; remaining sources are unaffected and previous data is preserved.');
+        console.log(t('sync.partial_warning'));
       }
       printRejected(rejected);
     }
@@ -275,7 +276,9 @@ export async function runSync({ quiet = false, surface = 'cli', full = false } =
       buckets: bucketBatch.map(({ item }) => item),
       sessions: sessionBatch.map(({ item }) => item),
     });
-    if (!response.ok) throw new Error('服务端拒绝了同步批次。');
+    if (!response.ok) throw new Error(getLocale() === 'zh'
+      ? '服务端拒绝了同步批次。'
+      : 'The server rejected the synchronization batch.');
     for (const { key, hash } of bucketBatch) state.buckets[key] = hash;
     for (const { key, hash } of sessionBatch) state.sessions[key] = hash;
     saveState(state);
@@ -284,20 +287,12 @@ export async function runSync({ quiet = false, surface = 'cli', full = false } =
     protectedBucketTotal += Number(response.protected?.buckets ?? 0);
   }
   if (!quiet) {
-    const isZh = getLocale() === 'zh';
-    const syncedMsg = isZh
-      ? `已同步 ${bucketTotal} buckets · ${sessionTotal} sessions`
-      : `Synced ${bucketTotal} buckets · ${sessionTotal} sessions`;
-    console.log(syncedMsg);
+    console.log(t('sync.synced', { buckets: bucketTotal, sessions: sessionTotal }));
     if (protectedBucketTotal > 0) {
-      console.log(isZh
-        ? `服务端保留了 ${protectedBucketTotal} 个更大的已有 bucket（本次较小快照未覆盖）`
-        : `Server preserved ${protectedBucketTotal} larger existing buckets (not overwritten by this smaller snapshot)`);
+      console.log(t('sync.protected', { count: protectedBucketTotal }));
     }
     if (anyFailed) {
-      console.log(isZh
-        ? '⚠ 部分来源解析失败，其余来源不受影响；失败来源的旧数据已保留。'
-        : '⚠ Some sources failed to parse; remaining sources are unaffected and previous data is preserved.');
+      console.log(t('sync.partial_warning'));
     }
     printRejected(rejected);
   }
@@ -335,7 +330,7 @@ function calculateSourceMetrics(result) {
 
 function printSyncScanResults(results) {
   const isZh = getLocale() === 'zh';
-  console.log(isZh ? '来源扫描：' : 'Source scan:');
+  console.log(t('sync.scanning'));
   const width = Math.max(...results.map((result) => result.source.length), 0) + 4;
   let totalTokens = 0;
   let totalCost = 0;
@@ -358,18 +353,14 @@ function printSyncScanResults(results) {
       const metricsInfo = ` (${c.cyan(formatTokens(metrics.tokens))} · ${c.green(formatCurrency(metrics.cost))})`;
       console.log(`  ✓ ${label}${result.buckets.length} buckets · ${result.sessions.length} sessions${metricsInfo}`);
     } else if (result.status === 'skipped') {
-      console.log(`  - ${label}${isZh ? '未检测到本地数据，已跳过' : 'no local data found, skipped'}`);
+      console.log(`  - ${label}${t('sync.skipped_hint')}`);
     } else if (result.status === 'partial') {
       hasActiveData = true;
-      const extra = isZh
-        ? `（部分读取，本来源旧数据已保留）`
-        : ` (partially read, previous data retained)`;
+      const extra = isZh ? t('sync.partial_hint') : ` ${t('sync.partial_hint')}`;
       console.log(`  ~ ${label}${result.buckets.length} buckets · ${result.sessions.length} sessions${extra}`);
       for (const warning of (result.warnings || []).slice(0, 2)) console.log(`      ${warning}`);
     } else {
-      const errorMsg = isZh
-        ? `解析失败：${result.error}（已保留该来源的旧数据）`
-        : `parsing failed: ${result.error} (previous data retained)`;
+      const errorMsg = t('sync.failed_hint', { error: result.error });
       console.log(`  ✗ ${label}${errorMsg}`);
     }
   }
@@ -384,9 +375,7 @@ function printSyncScanResults(results) {
 function printRejected(rejected) {
   if (rejected.length === 0) return;
   const isZh = getLocale() === 'zh';
-  console.log(isZh
-    ? `⚠ 本地校验隔离了 ${rejected.length} 条异常记录，其余数据已继续同步：`
-    : `⚠ Local validation quarantined ${rejected.length} abnormal records; remaining data synced:`);
+  console.log(t('sync.rejected_warning', { count: rejected.length }));
   for (const item of rejected.slice(0, 5)) {
     console.log(`  - ${item.source} ${item.kind}: ${item.error}`);
   }

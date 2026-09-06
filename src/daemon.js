@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { getLocale } from './cli-ui.js';
 import { getConfigDir } from './config.js';
 import { COLLECTOR_VERSION } from './client-meta.js';
 import { loadSyncStatus, runManagedSync } from './sync-runtime.js';
@@ -14,6 +15,10 @@ const LABEL = 'builders.kimi.usage.sync';
 const SYSTEMD_NAME = 'kimi-builders-usage-sync';
 const WINDOWS_TASK = 'Kimi Builders Usage Sync';
 const DEFAULT_INTERVAL_MINUTES = 15;
+
+function localized(zh, en) {
+  return getLocale() === 'zh' ? zh : en;
+}
 
 export const DAEMON_INTERVAL = { default: DEFAULT_INTERVAL_MINUTES, min: 5, max: 1_440 };
 
@@ -80,7 +85,10 @@ function runChecked(runner, command, args, { allowFailure = false } = {}) {
   const result = runner(command, args) || {};
   if (!allowFailure && Number(result.status ?? 0) !== 0) {
     const detail = String(result.stderr || result.stdout || '').trim();
-    throw new Error(`${command} 执行失败${detail ? `：${detail}` : ''}`);
+    throw new Error(localized(
+      `${command} 执行失败${detail ? `：${detail}` : ''}`,
+      `${command} failed${detail ? `: ${detail}` : ''}`,
+    ));
   }
   return result;
 }
@@ -88,7 +96,10 @@ function runChecked(runner, command, args, { allowFailure = false } = {}) {
 function validateInterval(value) {
   const interval = Number(value ?? DEFAULT_INTERVAL_MINUTES);
   if (!Number.isInteger(interval) || interval < DAEMON_INTERVAL.min || interval > DAEMON_INTERVAL.max) {
-    throw new Error(`同步间隔必须是 ${DAEMON_INTERVAL.min}–${DAEMON_INTERVAL.max} 分钟的整数。`);
+    throw new Error(localized(
+      `同步间隔必须是 ${DAEMON_INTERVAL.min}–${DAEMON_INTERVAL.max} 分钟的整数。`,
+      `Sync interval must be an integer from ${DAEMON_INTERVAL.min} to ${DAEMON_INTERVAL.max} minutes.`,
+    ));
   }
   return interval;
 }
@@ -148,6 +159,7 @@ function windowsScript({ node, entry, log, environment = {} }) {
 function runtimeEnvironment() {
   return {
     PATH: process.env.PATH,
+    KBU_USAGE_LANG: process.env.KBU_USAGE_LANG?.trim(),
     KBU_USAGE_CONFIG_DIR: process.env.KBU_USAGE_CONFIG_DIR?.trim(),
     KBU_USAGE_STATE_DIR: process.env.KBU_USAGE_STATE_DIR?.trim(),
   };
@@ -170,7 +182,10 @@ export function renderDaemonFiles({
   if (platform === 'win32') {
     return { paths, files: [{ path: paths.descriptor, content: windowsScript(common) }] };
   }
-  throw new Error(`当前系统 ${platform} 暂不支持后台同步；仍可运行单次 sync。`);
+  throw new Error(localized(
+    `当前系统 ${platform} 暂不支持后台同步；仍可运行单次 sync。`,
+    `Background sync is not supported on ${platform}; one-time sync remains available.`,
+  ));
 }
 
 function writeMetadata(paths, intervalMinutes, platform, node) {
@@ -279,7 +294,10 @@ export function uninstallDaemon({
 
 export function restartDaemon(options = {}) {
   const current = getDaemonStatus(options);
-  if (!current.installed) throw new Error('后台同步尚未安装，请先运行 daemon install。');
+  if (!current.installed) throw new Error(localized(
+    '后台同步尚未安装，请先运行 daemon install。',
+    'Background sync is not installed. Run daemon install first.',
+  ));
   return installDaemon({ ...options, intervalMinutes: options.intervalMinutes || current.intervalMinutes || DEFAULT_INTERVAL_MINUTES });
 }
 
@@ -292,11 +310,16 @@ export function printDaemonStatus(status, { json = false } = {}) {
     console.log(JSON.stringify(status, null, 2));
     return;
   }
-  console.log(`后台同步: ${status.installed ? (status.loaded ? '已启用' : '已安装但未加载') : '未安装'}`);
-  console.log(`调度器: ${status.scheduler.label}`);
-  if (status.intervalMinutes) console.log(`间隔: 每 ${status.intervalMinutes} 分钟（设备唤醒且联网时）`);
-  if (status.lastSync?.lastSuccessAt) console.log(`最近成功: ${status.lastSync.lastSuccessAt}`);
-  if (status.lastSync?.lastError) console.log(`最近错误: ${status.lastSync.lastError}`);
-  console.log(`日志: ${status.logPath}`);
-  if (status.updateRequired) console.log('提示: Collector 已升级，请运行 daemon restart 更新后台服务路径。');
+  const isZh = getLocale() === 'zh';
+  console.log(`${isZh ? '后台同步' : 'Background sync'}: ${status.installed ? (status.loaded ? (isZh ? '已启用' : 'Enabled') : (isZh ? '已安装但未加载' : 'Installed but not loaded')) : (isZh ? '未安装' : 'Not installed')}`);
+  console.log(`${isZh ? '调度器' : 'Scheduler'}: ${status.scheduler.label}`);
+  if (status.intervalMinutes) console.log(isZh
+    ? `间隔: 每 ${status.intervalMinutes} 分钟（设备唤醒且联网时）`
+    : `Interval: every ${status.intervalMinutes} minutes (while the device is awake and online)`);
+  if (status.lastSync?.lastSuccessAt) console.log(`${isZh ? '最近成功' : 'Last success'}: ${status.lastSync.lastSuccessAt}`);
+  if (status.lastSync?.lastError) console.log(`${isZh ? '最近错误' : 'Last error'}: ${status.lastSync.lastError}`);
+  console.log(`${isZh ? '日志' : 'Log'}: ${status.logPath}`);
+  if (status.updateRequired) console.log(isZh
+    ? '提示: Collector 已升级，请运行 daemon restart 更新后台服务路径。'
+    : 'Note: Collector was upgraded. Run daemon restart to update the background service path.');
 }

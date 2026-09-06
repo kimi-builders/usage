@@ -3,6 +3,7 @@ import {
   unlinkSync, writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { getLocale } from './cli-ui.js';
 import { getConfigDir } from './config.js';
 import { runSync } from './sync.js';
 
@@ -76,7 +77,9 @@ function acquireLock(path) {
       if (nextError?.code !== 'ENOENT') throw nextError;
       return openSync(path, 'wx', 0o600);
     }
-    const busy = new Error('另一次同步仍在运行，请稍后重试。');
+    const busy = new Error(getLocale() === 'zh'
+      ? '另一次同步仍在运行，请稍后重试。'
+      : 'Another synchronization is still running. Try again later.');
     busy.code = 'SYNC_BUSY';
     throw busy;
   }

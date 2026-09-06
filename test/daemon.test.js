@@ -57,7 +57,10 @@ test('managed sync records private status and prevents overlapping runs', async 
     sync: () => new Promise((resolve) => { release = () => resolve({ buckets: 3, sessions: 2, rejected: 0 }); }),
   });
   try {
-    await assert.rejects(() => runManagedSync({ configDir: root, sync: async () => ({}) }), /另一次同步/);
+    await assert.rejects(
+      () => runManagedSync({ configDir: root, sync: async () => ({}) }),
+      (error) => error.code === 'SYNC_BUSY',
+    );
     release();
     await first;
     const status = loadSyncStatus({ configDir: root });
