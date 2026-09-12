@@ -15,6 +15,9 @@ import { parse as parseGrok, roots as grokRoots } from './grok.js';
 import { parse as parseTraeCli, roots as traeCliRoots } from './trae-cli.js';
 import { parse as parseMcode, roots as mcodeRoots } from './mcode.js';
 import { canonicalModelId } from '../model-meta.js';
+import { parseQoder, parseQoderCn } from './qoder.js';
+import { findQoderDataDirs } from '../qoder-roots.js';
+import { parse as parseDsh, roots as dshRoots } from './dsh.js';
 
 // Multi-source registry. Tiers: core (always on), stable (on), beta (on with
 // an explicit compatibility caveat), explicit-opt-in (configured by user).
@@ -36,6 +39,9 @@ export const sourceRegistry = [
   { id: 'grok', tier: 'beta', parse: parseGrok, roots: grokRoots },
   { id: 'trae-cli', tier: 'beta', parse: parseTraeCli, roots: traeCliRoots },
   { id: 'mcode', tier: 'beta', parse: parseMcode, roots: mcodeRoots },
+  { id: 'qoder', tier: 'beta', parse: parseQoder, roots: () => findQoderDataDirs('qoder') },
+  { id: 'qoder-cn', tier: 'beta', parse: parseQoderCn, roots: () => findQoderDataDirs('qoder-cn') },
+  { id: 'dsh', tier: 'beta', parse: parseDsh, roots: dshRoots },
   { id: 'cursor', tier: 'explicit-opt-in', parse: parseCursor, roots: cursorRoots },
 ];
 

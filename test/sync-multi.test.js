@@ -28,6 +28,7 @@ process.env.KBU_USAGE_WORKBUDDY_DIRS = join(root, 'workbuddy-absent');
 process.env.KBU_USAGE_GROK_SESSIONS = join(root, 'grok-absent');
 process.env.KBU_USAGE_TRAE_CLI_SESSIONS = join(root, 'trae-absent');
 process.env.KBU_USAGE_MCODE_DB = join(root, 'mcode-absent.sqlite');
+for (const key of ['QODER_PROJECTS', 'QODER_DB', 'QODER_CN_PROJECTS', 'QODER_CN_DB', 'DSH_SESSIONS']) process.env['KBU_USAGE_' + key] = join(root, key + '-absent');
 process.env.KBU_USAGE_CONFIG_DIR = join(root, 'config');
 process.env.KBU_USAGE_STATE_DIR = stateDir;
 process.env.KBU_USAGE_LANG = 'zh';
@@ -148,6 +149,9 @@ test('a failing source never blocks the others, and its old state survives', asy
       { source: 'grok', status: 'skipped' },
       { source: 'trae-cli', status: 'skipped' },
       { source: 'mcode', status: 'skipped' },
+      { source: 'qoder', status: 'skipped' },
+      { source: 'qoder-cn', status: 'skipped' },
+      { source: 'dsh', status: 'skipped' },
     ],
   );
   assert.equal(typeof result.sources[2].error, 'string');
@@ -210,6 +214,9 @@ test("a skipped source's state survives too", async () => {
       { source: 'grok', status: 'skipped' },
       { source: 'trae-cli', status: 'skipped' },
       { source: 'mcode', status: 'skipped' },
+      { source: 'qoder', status: 'skipped' },
+      { source: 'qoder-cn', status: 'skipped' },
+      { source: 'dsh', status: 'skipped' },
     ],
   );
   assert.ok(lines.some((line) => line.includes('- claude-code') && line.includes('未检测到')));
@@ -219,3 +226,44 @@ test("a skipped source's state survives too", async () => {
   for (const key of claudeKeys) assert.equal(state.buckets[key], claudeStateBefore.buckets[key]);
   assert.equal(state.buckets[seededCodexBucketKey], 'seeded');
 });
+
+for (const damagedTail of [false, true]) {
+  test(`DSH ${damagedTail ? 'unfinished tail' : 'middle corruption'} keeps missing checkpoint keys and recovers on repair`, async () => {
+    const oldRoot = process.env.KBU_USAGE_DSH_SESSIONS;
+    const oldState = readFileSync(join(stateDir, 'state.json'));
+    const sessions = join(root, `dsh-${damagedTail}`);
+    const directory = join(sessions, 'project', 'session'); mkdirSync(directory, { recursive: true });
+    const path = join(directory, 'session.jsonl');
+    const records = [
+      { type: 'session', version: 0, id: 'checkpoint', cwd: '/safe/project' },
+      { type: 'user/message', seq: 1, time: '2026-09-01T10:00:00Z', data: { source: { kind: 'user' } } },
+      { type: 'assistant/message', seq: 2, time: '2026-09-01T10:01:00Z', data: { message: { source: { model: 'deepseek-v4-pro' } }, usage: { inputTokens: 100, outputTokens: 20 } } },
+      { type: 'assistant/message', seq: 3, time: '2026-09-01T11:01:00Z', data: { message: { source: { model: 'deepseek-v4-pro' } }, usage: { inputTokens: 200, outputTokens: 30 } } },
+    ];
+    process.env.KBU_USAGE_DSH_SESSIONS = sessions;
+    saveConfig({ ...syncConfig, sourcePolicies: { dsh: 'private' } });
+    try {
+      writeFileSync(path, records.map(JSON.stringify).join('\n') + '\n');
+      const complete = await runSync({ quiet: true });
+      assert.equal(complete.sources.find(s => s.source === 'dsh').status, 'ok');
+      const before = readStateFile();
+      const missing = Object.keys(before.buckets).find(key => key.startsWith('dsh|') && key.includes('11:00:00'));
+      assert.ok(missing);
+      const corrupt = records.slice(0, 3).map(JSON.stringify).join('\n') + '\n{broken-json';
+      writeFileSync(path, corrupt + (damagedTail ? '' : '\n' + JSON.stringify({ type: 'session/end', time: '2026-09-01T11:02:00Z' }) + '\n'));
+      const partial = await runSync({ quiet: true });
+      assert.equal(partial.sources.find(s => s.source === 'dsh').status, 'partial');
+      assert.equal(readStateFile().buckets[missing], before.buckets[missing]);
+      assert.equal(readStateFile().buckets[seededCodexBucketKey], 'seeded');
+      records[3].data.usage.inputTokens = 250;
+      writeFileSync(path, records.map(JSON.stringify).join('\n') + '\n');
+      const repaired = await runSync({ quiet: true });
+      assert.equal(repaired.sources.find(s => s.source === 'dsh').status, 'ok');
+      assert.notEqual(readStateFile().buckets[missing], before.buckets[missing]);
+    } finally {
+      process.env.KBU_USAGE_DSH_SESSIONS = oldRoot;
+      writeFileSync(join(stateDir, 'state.json'), oldState);
+      saveConfig(syncConfig);
+    }
+  });
+}

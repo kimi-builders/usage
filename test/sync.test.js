@@ -28,6 +28,7 @@ process.env.KBU_USAGE_WORKBUDDY_DIRS = join(root, 'workbuddy-absent');
 process.env.KBU_USAGE_GROK_SESSIONS = join(root, 'grok-absent');
 process.env.KBU_USAGE_TRAE_CLI_SESSIONS = join(root, 'trae-absent');
 process.env.KBU_USAGE_MCODE_DB = join(root, 'mcode-absent.sqlite');
+for (const key of ['QODER_PROJECTS', 'QODER_DB', 'QODER_CN_PROJECTS', 'QODER_CN_DB', 'DSH_SESSIONS']) process.env['KBU_USAGE_' + key] = join(root, key + '-absent');
 
 const wireDir = join(currentRoot, 'sessions', 'wd_private-project_abcd', 'session_1', 'agents', 'main');
 mkdirSync(wireDir, { recursive: true });
@@ -86,7 +87,13 @@ after(async () => {
 });
 
 test('repeat sync sends no duplicate batch and hidden projects never enter payloads', async () => {
-  const first = await runSync({ quiet: true });
+  const progress = [];
+  const first = await runSync({ quiet: true, onProgress: (event) => progress.push(event) });
+  assert.deepEqual(progress.slice(0, 2).map(event => event.phase), ['preparing', 'scanning']);
+  assert.equal(progress.at(-1).phase, 'complete');
+  assert.equal(progress.at(-1).completedBatches, first.batchCount);
+  assert.equal(progress.at(-1).compressedBytes, first.compressedBytes);
+  assert.ok(first.compressedBytes > 0);
   const second = await runSync({ quiet: true });
   assert.equal(first.buckets, 1);
   assert.equal(first.sessions, 1);
@@ -107,6 +114,9 @@ test('repeat sync sends no duplicate batch and hidden projects never enter paylo
       { source: 'grok', status: 'skipped' },
       { source: 'trae-cli', status: 'skipped' },
       { source: 'mcode', status: 'skipped' },
+      { source: 'qoder', status: 'skipped' },
+      { source: 'qoder-cn', status: 'skipped' },
+      { source: 'dsh', status: 'skipped' },
     ],
   );
   assert.equal(second.buckets, 0);

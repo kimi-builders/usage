@@ -91,7 +91,7 @@ npx @kimi.builders/usage@latest inspect --dry-run
 | --- | --- |
 | 会上传对话或代码吗？ | 不会。Token 看板默认纯本地，也不会读取 prompt、response 或文件内容。 |
 | 必须注册社区账号吗？ | 不需要。本地看板和本地订阅分析可独立使用。 |
-| 支持哪些 Agent？ | 内置 14 个自动扫描来源，Cursor CSV 可显式启用；详见下方兼容表。 |
+| 支持哪些 Agent？ | 内置 17 个自动扫描来源，Cursor CSV 可显式启用；详见下方兼容表。 |
 | 费用是真实账单吗？ | 不是。费用按标准 API 价格估算，并明确显示定价覆盖率和未定价 Token。 |
 | 支持哪些系统？ | macOS、Linux、Windows；需要 Node.js 20 或更高版本。 |
 
@@ -151,7 +151,7 @@ npx @kimi.builders/usage@latest sync
 
 **项目状态：** 当前是公开 Beta。稳定来源经过跨平台 fixture 与 contract test；日志格式
 覆盖有限的来源会明确标为 Beta。[Roadmap](./docs/ROADMAP.md) ·
-[发布说明](./docs/RELEASE_NOTES_0.6.0.md) · [全部文档](./docs/README.md)
+[发布说明](./docs/RELEASE_NOTES_0.6.1.md) · [全部文档](./docs/README.md)
 
 ## 从源码运行
 
@@ -205,7 +205,7 @@ npx @kimi.builders/usage dashboard
 | Codex | 稳定 | `$CODEX_HOME` 或 `~/.codex` 的当前与归档会话 |
 | OpenCode | 稳定 | SQLite 数据库，旧版 JSON 回退 |
 | Gemini CLI | 稳定 | `~/.gemini/tmp` 中的 JSONL/JSON 会话 |
-| Antigravity | 稳定 | App 2.0 / `agy` CLI 的离线 SQLite 会话库 |
+| Antigravity | 稳定 | App 2.0 / 独立 IDE / `agy` CLI 的离线 SQLite 会话库 |
 | GitHub Copilot CLI | 稳定 | 本机 CLI 会话日志 |
 | Roo Code | 稳定 | VS Code 扩展的本地任务数据 |
 | Pi Coding Agent | Beta | `~/.pi/agent/sessions` 等 JSONL 会话；格式覆盖仍在扩充 |
@@ -214,7 +214,13 @@ npx @kimi.builders/usage dashboard
 | Grok CLI | Beta | `$GROK_HOME` 或 `~/.grok` 下的会话与精确 turn usage |
 | Trae CLI | Beta | 本机 CLI session、trace 与 event 日志 |
 | MiniMax Code | Beta | `~/.minimax/v2/sqlite/runtime-state.sqlite` 的 Token ledger |
+| Qoder / Qoder CN | Beta | 两个独立来源；IDE SQLite Token、CLI/App 会话；积分不转换成 Token |
+| DeepSeek Harness（DSH） | Beta | `$DSH_HOME/sessions` 的 V0–V3 JSONL / 多帧 Zstd；继承会话去重 |
 | Cursor | 显式启用 | Cursor Dashboard 主动导出的 Usage CSV |
+
+Qoder 的 `auto` 等路由档位会标为 `qoder-auto` 等未定价项，不冒充具体模型。
+DSH 压缩日志需要 Node ≥22.15 的内置解压或已安装的 `zstd`；无法解压时会提示部分失败。
+已有显式 Agent 同步范围的用户，新来源默认“仅本机”，需自行允许上传。
 
 每个来源独立解析。一个来源损坏、未安装或格式变化，不会阻塞其他来源，也不会清理它
 原有的同步 checkpoint。可先运行以下命令检查环境，全程不联网：
@@ -328,7 +334,11 @@ npx @kimi.builders/usage daemon uninstall
 
 后台服务以当前用户身份运行，不需要管理员权限：macOS 使用 `launchd`，Linux 使用 user
 `systemd`，Windows 使用 Task Scheduler。设备休眠或离线时不会工作；升级 Collector 后
-执行一次 `daemon restart`，让服务使用新版本路径。
+执行一次 `daemon restart`，把当前版本复制到本机固定运行目录。清理 npx 缓存不影响副本，
+后台不会自动升级；Node 本身仍需保持安装。
+
+同步弹窗会显示已核验的社区账户、上传确认批次、预计剩余时间和重试等待；命令行也有批次反馈。
+部分来源失败会保留为“部分完成”及本地诊断日志，不会刷新“最近完全成功”的时间。
 
 同步采用增量 checkpoint、失败来源隔离和并发锁。重复运行不会重复计数。如果你在社区
 删除了某台设备的数据、更换了设备连接，或看板提示本机与社区 checkpoint 无法确认一致，

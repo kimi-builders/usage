@@ -1,5 +1,6 @@
 import { loadConfig, saveConfig } from './config.js';
-import { fetchSettings, ingest } from './api.js';
+import { encodeIngestBody, fetchSettings, ingest } from './api.js';
+import { estimateSyncRemainingMs } from './sync-progress.js';
 import { createSyncClient, forBatch } from './client-meta.js';
 import { collectAll } from './local/snapshot.js';
 import { validateUploadBucket, validateUploadSession } from './protocol.js';
@@ -156,7 +157,9 @@ export function applyPrivacy(result, uploadProject) {
   };
 }
 
-export async function runSync({ quiet = false, surface = 'cli', full = false } = {}) {
+export async function runSync({ quiet = false, surface = 'cli', full = false, onProgress } = {}) {
+  const report = (progress) => { try { onProgress?.(progress); } catch { /* Feedback cannot change upload commits. */ } };
+  report({ phase: 'preparing' });
   let config = loadConfig();
   if (!config?.apiKey || !config?.sessionSalt) {
     throw new Error(getLocale() === 'zh'
@@ -180,6 +183,7 @@ export async function runSync({ quiet = false, surface = 'cli', full = false } =
       : 'The server returned no valid privacy setting, so synchronization was safely cancelled.');
   }
 
+  report({ phase: 'scanning' });
   const collected = await collectAll({
     sessionSalt: config.sessionSalt,
     enabledSourceIds: config.enabledSources,
@@ -237,16 +241,18 @@ export async function runSync({ quiet = false, surface = 'cli', full = false } =
   pruneState(state, liveBucketKeys, liveSessionKeys, okSources);
 
   if (changedBuckets.length === 0 && changedSessions.length === 0) {
+    report({ phase: 'uploading', totalBatches: 1, completedBatches: 0 });
     const response = await ingest(config.apiUrl, config.apiKey, {
       protocolVersion: 2,
       client: forBatch(client, 0, 1),
       buckets: [],
       sessions: [],
-    });
+    }, { onProgress: (progress) => report({ ...progress, totalBatches: 1, completedBatches: 0 }) });
     if (!response.ok) throw new Error(getLocale() === 'zh'
       ? '服务端拒绝了设备元数据更新。'
       : 'The server rejected the device metadata update.');
     saveState(state);
+    report({ phase: 'complete', totalBatches: 1, completedBatches: 1 });
     if (!quiet) {
       console.log(t('sync.no_changes'));
       if (anyFailed) {
@@ -263,6 +269,12 @@ export async function runSync({ quiet = false, surface = 'cli', full = false } =
   let bucketTotal = 0;
   let sessionTotal = 0;
   let protectedBucketTotal = 0;
+  let compressedBytes = 0;
+  const uploadStarted = Date.now();
+  const progress = { totalBatches: batchCount, pendingBuckets: changedBuckets.length, pendingSessions: changedSessions.length };
+  if (!quiet) console.log(getLocale() === 'zh'
+    ? `待上传 ${changedBuckets.length} 个用量桶、${changedSessions.length} 个会话，共 ${batchCount} 批。`
+    : `Pending: ${changedBuckets.length} buckets, ${changedSessions.length} sessions in ${batchCount} batches.`);
 
   for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
     const bucketBatch = bucketBatches[batchIndex] || [];
@@ -270,11 +282,20 @@ export async function runSync({ quiet = false, surface = 'cli', full = false } =
       batchIndex * SESSION_BATCH,
       (batchIndex + 1) * SESSION_BATCH,
     );
-    const response = await ingest(config.apiUrl, config.apiKey, {
+    const payload = {
       protocolVersion: 2,
       client: forBatch(client, batchIndex, batchCount),
       buckets: bucketBatch.map(({ item }) => item),
       sessions: sessionBatch.map(({ item }) => item),
+    };
+    const remainingMs = estimateSyncRemainingMs(Date.now() - uploadStarted, batchIndex, batchCount);
+    const response = await ingest(config.apiUrl, config.apiKey, payload, {
+      onProgress: (event) => {
+        report({ ...progress, ...event, completedBatches: batchIndex, compressedBytes, remainingMs });
+        if (!quiet && event.phase === 'retrying') console.log(getLocale() === 'zh'
+          ? `第 ${batchIndex + 1}/${batchCount} 批等待 ${Math.ceil(event.retryDelayMs / 1000)} 秒后重试。`
+          : `Batch ${batchIndex + 1}/${batchCount}: retrying in ${Math.ceil(event.retryDelayMs / 1000)}s.`);
+      },
     });
     if (!response.ok) throw new Error(getLocale() === 'zh'
       ? '服务端拒绝了同步批次。'
@@ -282,11 +303,20 @@ export async function runSync({ quiet = false, surface = 'cli', full = false } =
     for (const { key, hash } of bucketBatch) state.buckets[key] = hash;
     for (const { key, hash } of sessionBatch) state.sessions[key] = hash;
     saveState(state);
+    compressedBytes += encodeIngestBody(payload).length;
+    const eta = estimateSyncRemainingMs(Date.now() - uploadStarted, batchIndex + 1, batchCount);
+    report({ ...progress, phase: 'uploading', completedBatches: batchIndex + 1, compressedBytes, remainingMs: eta });
+    if (!quiet) console.log(getLocale() === 'zh'
+      ? `已完成 ${batchIndex + 1}/${batchCount} 批${eta == null ? '' : ` · 预计还需 ${Math.ceil(eta / 1000)} 秒`}`
+      : `Completed ${batchIndex + 1}/${batchCount} batches${eta == null ? '' : ` · about ${Math.ceil(eta / 1000)}s remaining`}`);
     bucketTotal += Number(response.ingested?.buckets ?? bucketBatch.length);
     sessionTotal += Number(response.ingested?.sessions ?? sessionBatch.length);
     protectedBucketTotal += Number(response.protected?.buckets ?? 0);
   }
   if (!quiet) {
+    console.log(getLocale() === 'zh'
+      ? `已确认压缩数据 ${(compressedBytes / 1024).toFixed(1)} KB · 上传耗时 ${Math.ceil((Date.now() - uploadStarted) / 1000)} 秒（不含重试流量）。`
+      : `Acknowledged compressed data: ${(compressedBytes / 1024).toFixed(1)} KB · ${Math.ceil((Date.now() - uploadStarted) / 1000)}s uploading (retry traffic excluded).`);
     console.log(t('sync.synced', { buckets: bucketTotal, sessions: sessionTotal }));
     if (protectedBucketTotal > 0) {
       console.log(t('sync.protected', { count: protectedBucketTotal }));
@@ -296,7 +326,9 @@ export async function runSync({ quiet = false, surface = 'cli', full = false } =
     }
     printRejected(rejected);
   }
+  report({ ...progress, phase: 'complete', completedBatches: batchCount, compressedBytes });
   return {
+    compressedBytes, batchCount,
     buckets: bucketTotal,
     sessions: sessionTotal,
     protectedBuckets: protectedBucketTotal,

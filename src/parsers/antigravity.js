@@ -16,7 +16,8 @@ import {
  * Conversation stores scanned:
  *   ~/.gemini/antigravity/conversations/*.db        (App 2.0)
  *   ~/.gemini/antigravity-cli/conversations/*.db    (agy CLI)
- * KBU_USAGE_ANTIGRAVITY_DIR overrides both with a single conversations dir.
+ *   ~/.gemini/antigravity-ide/conversations/*.db    (standalone IDE)
+ * KBU_USAGE_ANTIGRAVITY_DIR overrides all defaults with one conversations dir.
  *
  * Only the offline SQLite path is ported: each cascade is a per-conversation
  * `.db` of plain-protobuf blobs (see antigravity-db.js). The legacy `.pb`
@@ -100,6 +101,7 @@ function resolveConversationsDirs(sourceOptions = {}) {
     ...(override ? [override] : [
       join(homedir(), '.gemini', 'antigravity', 'conversations'),
       join(homedir(), '.gemini', 'antigravity-cli', 'conversations'),
+      join(homedir(), '.gemini', 'antigravity-ide', 'conversations'),
     ]),
     ...configuredExtraRoots(sourceOptions, 'antigravity').flatMap(antigravityConversationDirs),
   ])];

@@ -23,6 +23,7 @@ process.env.KBU_USAGE_WORKBUDDY_DIRS = join(root, 'workbuddy-absent');
 process.env.KBU_USAGE_GROK_SESSIONS = join(root, 'grok-absent');
 process.env.KBU_USAGE_TRAE_CLI_SESSIONS = join(root, 'trae-absent');
 process.env.KBU_USAGE_MCODE_DB = join(root, 'mcode-absent.sqlite');
+for (const key of ['QODER_PROJECTS', 'QODER_DB', 'QODER_CN_PROJECTS', 'QODER_CN_DB', 'DSH_SESSIONS']) process.env['KBU_USAGE_' + key] = join(root, key + '-absent');
 process.env.KBU_USAGE_CURSOR_CSV = join(root, 'cursor-absent.csv');
 
 const { sourceRegistry, enabledSources, parsers } = await import('../src/parsers/index.js');
@@ -44,6 +45,9 @@ const EXPECTED = [
   { id: 'grok', tier: 'beta' },
   { id: 'trae-cli', tier: 'beta' },
   { id: 'mcode', tier: 'beta' },
+  { id: 'qoder', tier: 'beta' },
+  { id: 'qoder-cn', tier: 'beta' },
+  { id: 'dsh', tier: 'beta' },
   { id: 'cursor', tier: 'explicit-opt-in' },
 ];
 

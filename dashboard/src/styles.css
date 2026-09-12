@@ -406,6 +406,12 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .sync-action-feedback.success { background: color-mix(in srgb, var(--green) 7%, transparent); color: var(--green); }.sync-action-feedback.warning { background: color-mix(in srgb, var(--amber) 7%, transparent); color: var(--amber); }.sync-action-feedback.error { background: color-mix(in srgb, var(--red) 7%, transparent); color: var(--red); }
 .sync-indeterminate { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; overflow: hidden; background: color-mix(in srgb, var(--blue) 15%, transparent); }.sync-indeterminate i { position: absolute; top: 0; bottom: 0; width: 34%; border-radius: 99px; background: var(--blue); animation: sync-progress 1.25s ease-in-out infinite; }
 @keyframes sync-progress { from { left: -34%; } to { left: 100%; } }
+.sync-indeterminate.determinate i { left: 0; transition: width .18s ease; }
+@media (min-width: 901px) {
+  .dialog--sync .sync-facts { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .dialog--sync .sync-facts > div:nth-child(3n) { border-right: 0; }
+  .dialog--sync .sync-facts > div:nth-child(n+4) { border-top: 1px solid var(--line); }
+}
 .sync-reconcile { display: grid; grid-template-columns: 24px minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 13px 14px; border-top: 1px solid color-mix(in srgb, var(--amber) 35%, var(--line)); background: color-mix(in srgb, var(--amber) 7%, transparent); color: var(--amber); }
 .sync-reconcile b { display: block; color: var(--paper-strong); font-size: 11px; }.sync-reconcile p { margin: 4px 0 0; color: var(--grey); font-size: 11px; line-height: 1.55; }
 .device-authorization-card { display: grid; gap: 16px; padding: 28px; background: color-mix(in srgb,var(--blue) 4%,var(--card)); }
@@ -1113,6 +1119,9 @@ body.drawer-open { overflow: hidden; }
 .onboarding-error { margin: 0 24px 18px; padding: 11px; border: 1px solid color-mix(in srgb,var(--red) 40%,var(--line)); border-radius: var(--radius-btn); color: var(--red); font-size: 11px; }
 
 .sync-scope-card, .sync-ownership { grid-column: 1 / -1; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--card); }
+.sync-scope-card [hidden] { display: none; }
+.sync-scope-help { margin: 0; padding: 12px 15px; color: var(--grey); font-size: 11px; line-height: 1.6; }
+.sync-scope-card footer { display: flex; justify-content: flex-end; padding: 12px 15px; border-top: 1px solid var(--line); }
 .sync-scope-card > header, .sync-ownership > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px; border-bottom: 1px solid var(--line); }
 .sync-scope-card header b, .sync-ownership header b { color: var(--paper-strong); font-size: 11px; }.sync-scope-card header p, .sync-ownership header p { margin-top: 4px; color: var(--grey); font-size: 11px; line-height: 1.45; }.sync-ownership header a { flex: none; display: flex; align-items: center; gap: 5px; color: var(--blue); font-size: 11px; }
 .sync-scope-card .source-policy-row { grid-template-columns: 30px minmax(120px,1fr) minmax(290px,auto); min-height: 62px; padding: 9px 14px; }

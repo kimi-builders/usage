@@ -11,6 +11,7 @@ import {
   getDaemonStatus, installDaemon, restartDaemon, uninstallDaemon,
 } from '../daemon.js';
 import { runManagedSync } from '../sync-runtime.js';
+import { publicSyncResult } from '../sync-progress.js';
 import { prepareStateForSync } from '../state.js';
 import { loadLocalDashboardData } from './dashboard-data.js';
 import {
@@ -165,22 +166,7 @@ export function getLocalSyncStatus() {
   };
 }
 
-export function publicSyncResult(result = {}) {
-  const statuses = new Set(['ok', 'skipped', 'partial', 'failed']);
-  return {
-    buckets: Number(result?.buckets || 0),
-    sessions: Number(result?.sessions || 0),
-    protectedBuckets: Number(result?.protectedBuckets || 0),
-    rejected: Number(result?.rejected || 0),
-    sources: (result?.sources || []).map((source) => ({
-      source: String(source?.source || '').slice(0, 64),
-      status: statuses.has(source?.status) ? source.status : 'failed',
-      buckets: Number(source?.buckets || 0),
-      sessions: Number(source?.sessions || 0),
-      warningCount: Array.isArray(source?.warnings) ? source.warnings.length : 0,
-    })),
-  };
-}
+export { publicSyncResult } from '../sync-progress.js';
 
 export async function runLocalSyncAction(payload = {}) {
   const action = String(payload.action || '');

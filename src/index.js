@@ -248,6 +248,14 @@ export async function run(inputArgs) {
     console.log(c.bold(isZh ? '【社区同步服务】' : '[Community Sync Service]'));
     console.log(`  • ${isZh ? '连接状态' : 'Connection'}: ${config?.apiKey ? c.green(isZh ? `已连接 (${config.apiKey.slice(0, 12)}…)` : `Connected (${config.apiKey.slice(0, 12)}…)`) : c.gray(isZh ? '未连接' : 'Not connected')}`);
     console.log(`  • ${isZh ? '目标站点' : 'API URL'}: ${config?.apiUrl || 'https://kimi.builders'}`);
+    if (config?.apiKey) {
+      const { fetchAccount } = await import('./api.js');
+      const identity = await fetchAccount(config.apiUrl, config.apiKey);
+      const label = identity.account ? `@${identity.account.handle}` : identity.status === 'unauthorized'
+        ? (isZh ? '授权已失效，请重新连接' : 'Authorization expired; reconnect')
+        : (isZh ? '暂时无法核验用户名' : 'Account identity unavailable');
+      console.log(`  • ${isZh ? '同步账号' : 'Sync account'}: ${label}`);
+    }
     console.log(`  • ${isZh ? '隐私模式' : 'Privacy'}: ${c.dim(isZh ? '脱敏聚合 (项目名默认隐藏)' : 'Anonymized aggregates (projects hidden by default)')}`);
 
     const { getDaemonStatus } = await import('./daemon.js');

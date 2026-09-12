@@ -2,7 +2,7 @@ import { existsSync, statSync } from 'node:fs';
 import { platform } from 'node:os';
 import { resolve } from 'node:path';
 import {
-  deleteCurrentDeviceData, fetchSettings, pollDeviceToken, requestDeviceCode, revokeCurrentDevice,
+  deleteCurrentDeviceData, fetchAccount, fetchSettings, pollDeviceToken, requestDeviceCode, revokeCurrentDevice,
 } from '../api.js';
 import { COLLECTOR_VERSION } from '../client-meta.js';
 import { createSessionSalt, loadConfig, saveConfig } from '../config.js';
@@ -76,7 +76,7 @@ export async function detectSourceCatalog({ config = loadConfig(), registry = so
 }
 
 export async function getDashboardControlState({
-  config = loadConfig(), registry = sourceRegistry, daemon = getDaemonStatus(), authorization = null,
+  config = loadConfig(), registry = sourceRegistry, daemon = getDaemonStatus(), authorization = null, identity = null,
 } = {}) {
   const apiUrl = config?.apiUrl || 'https://kimi.builders';
   const isConnected = connected(config);
@@ -96,6 +96,7 @@ export async function getDashboardControlState({
       apiUrl,
       dashboardUrl: new URL('/usage', normalizeCommunityUrl(apiUrl)).toString(),
       authorization,
+      identity: isConnected ? identity : null,
       device: isConnected ? {
         id: config.deviceId || '',
         name: deviceDisplayName(),
@@ -128,6 +129,7 @@ export function createDashboardControl({
   deviceCodeRequester = requestDeviceCode,
   deviceTokenPoller = pollDeviceToken,
   settingsFetcher = fetchSettings,
+  accountFetcher = fetchAccount,
   remoteDataDeleter = deleteCurrentDeviceData,
   remoteDeviceRevoker = revokeCurrentDevice,
   daemonStatus = getDaemonStatus,
@@ -136,6 +138,7 @@ export function createDashboardControl({
   now = () => Date.now(),
 } = {}) {
   let pendingConnection = null;
+  let accountLookup = null;
 
   const state = async () => {
     let config = configLoader();
@@ -148,6 +151,7 @@ export function createDashboardControl({
       registry,
       daemon: daemonStatus(),
       authorization: publicAuthorization(pendingConnection, now()),
+      identity: accountLookup && accountLookup.apiKey === config?.apiKey && accountLookup.apiUrl === config?.apiUrl ? accountLookup.identity : null,
     });
   };
 
@@ -155,6 +159,13 @@ export function createDashboardControl({
     const action = String(payload.action || '');
     const loadedConfig = configLoader();
     const config = loadedConfig || {};
+    if (action === 'refresh-account') {
+      if (connected(config)) {
+        const identity = await accountFetcher(config.apiUrl, config.apiKey);
+        accountLookup = { apiKey: config.apiKey, apiUrl: config.apiUrl, identity };
+      }
+      return { ...(await state()), action };
+    }
     if (action === 'save-locale') {
       const locale = String(payload.locale || '').toLowerCase();
       if (!['zh', 'en'].includes(locale)) {

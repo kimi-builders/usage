@@ -33,6 +33,8 @@ try {
   const required = new Set([
     'package.json', 'README.md', 'LICENSE', 'NOTICE', 'bin/kbu-usage.js',
     'dashboard/dist/client/index.html',
+    `docs/RELEASE_NOTES_${manifest.version}.md`,
+    `docs/RELEASE_NOTES_${manifest.version}.en.md`,
   ]);
   const allowedRoots = ['bin/', 'dashboard/dist/client/', 'docs/', 'src/'];
   const allowedFiles = new Set([

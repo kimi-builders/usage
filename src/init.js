@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { platform } from 'node:os';
 import { createSessionSalt, loadConfig, saveConfig } from './config.js';
-import { fetchSettings, pollDeviceToken, requestDeviceCode } from './api.js';
+import { fetchAccount, fetchSettings, pollDeviceToken, requestDeviceCode } from './api.js';
 import { normalizeCommunityUrl } from './community-url.js';
 import { getLocale } from './cli-ui.js';
 import { deviceDisplayName } from './device-info.js';
@@ -94,6 +94,10 @@ export async function runInit({
   console.log(isZh
     ? `[3/3] 设备已连接，配置保存到 owner-only 文件。Key 前缀：${apiKey.slice(0, 12)}…`
     : `[3/3] Device connected. Configuration was saved to an owner-only file. Key prefix: ${apiKey.slice(0, 12)}…`);
+  const identity = await fetchAccount(normalizedApiUrl, apiKey);
+  console.log(identity.account
+    ? (isZh ? `已连接社区账号：@${identity.account.handle}。之后的同步将记在此账号下。` : `Connected account: @${identity.account.handle}. Future uploads belong to this account.`)
+    : (isZh ? '暂时无法核验社区用户名，可稍后在看板中刷新账号信息。' : 'Account identity is unavailable. Refresh it in the dashboard later.'));
   if (updatePricing) {
     try {
       const { updatePriceCatalog } = await import('./pricing/catalog.js');

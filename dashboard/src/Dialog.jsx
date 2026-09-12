@@ -15,7 +15,8 @@ export function Dialog({ open, onClose, title, subtitle, children, wide = false,
   useEffect(() => {
     if (!open) return undefined;
     const previousFocus = document.activeElement;
-    const focusables = () => [...(dialogRef.current?.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled):not([tabindex="-1"]), select:not(:disabled), [tabindex]:not([tabindex="-1"])') || [])];
+    const focusables = () => [...(dialogRef.current?.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled):not([tabindex="-1"]), select:not(:disabled), [tabindex]:not([tabindex="-1"])') || [])]
+      .filter(element => element.getClientRects().length > 0);
     const onKey = (event) => {
       if (event.key === 'Escape') { onClose(); return; }
       if (event.key !== 'Tab') return;

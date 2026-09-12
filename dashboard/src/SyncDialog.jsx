@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
-  AlertTriangle, Check, CircleCheck, Cloud, CloudUpload, Copy, ExternalLink, LoaderCircle, LogOut, Monitor,
+  AlertTriangle, Check, ChevronDown, CircleCheck, Cloud, CloudUpload, Copy, ExternalLink, LoaderCircle, LogOut, Monitor,
   RefreshCw, ShieldCheck, TimerReset, Trash2, Unplug,
 } from 'lucide-react';
 import { Dialog } from './Dialog.jsx';
 import { SourceModeRows, policiesFromSources } from './DataSourceControls.jsx';
 import { DeviceAuthorizationCard } from './DeviceAuthorizationCard.jsx';
-import { buildSyncOutcome, formatSyncDuration } from './sync-feedback.js';
+import { buildSyncFailure, buildSyncOutcome, describeSyncProgress, formatSyncDuration, syncScopeState } from './sync-feedback.js';
 
 const PACKAGE = '@kimi.builders/usage';
 const INTERVALS = [5, 15, 30, 60];
@@ -58,6 +58,10 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
   const [syncFeedback, setSyncFeedback] = useState(null);
   const [syncStartedAt, setSyncStartedAt] = useState(0);
   const [syncElapsed, setSyncElapsed] = useState(0);
+  const observedRun = useRef('');
+  const scopeId = useId();
+  const [scopeExpanded, setScopeExpanded] = useState(() => !control?.community?.connected);
+  const runSignature = (next) => `${next?.lastAttemptAt || ''}:${next?.state || ''}:${next?.lastCompletedAt || ''}`;
 
   const load = async () => {
     setLoading(true); setError('');
@@ -65,6 +69,12 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
       const response = await fetch('/api/sync', { credentials: 'same-origin', cache: 'no-store' });
       if (!response.ok) throw new Error(await response.text() || `Sync status failed (${response.status})`);
       const next = await response.json(); setStatus(next);
+      observedRun.current = runSignature(next.daemon?.lastSync);
+      if (next.daemon?.lastSync?.state !== 'running') {
+        setSyncFeedback(next.daemon?.lastSync?.state === 'error'
+          ? buildSyncFailure(next.daemon.lastSync, zh)
+          : next.daemon?.lastSync?.result ? buildSyncOutcome(next.daemon.lastSync.result, zh) : null);
+      }
       if (next.daemon?.intervalMinutes) setInterval(next.daemon.intervalMinutes);
     } catch (reason) { setError(reason?.message || String(reason)); }
     finally { setLoading(false); }
@@ -78,8 +88,46 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
     refresh?.then((next) => { setLocalControl(next); setPolicies(policiesFromSources(next.sources)); setAuthorization(next.community?.authorization || null); }).catch(() => {});
   }, [open]);
 
+  const refreshAccount = async () => {
+    try { const next = await onControlAction({ action: 'refresh-account' }); setLocalControl(next); }
+    catch { /* Identity lookup is optional; offline usage remains available. */ }
+  };
+
   useEffect(() => {
-    if (control) { setLocalControl(control); setPolicies(policiesFromSources(control.sources)); setAuthorization(control.community?.authorization || null); }
+    if (open && localControl?.community?.connected) refreshAccount();
+  }, [open, localControl?.community?.connected]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    let cancelled = false;
+    let pending = false;
+    const poll = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const response = await fetch('/api/sync', { credentials: 'same-origin', cache: 'no-store' });
+        if (!response.ok) return;
+        const next = await response.json();
+        if (cancelled) return;
+        setStatus(next);
+        const signature = runSignature(next.daemon?.lastSync);
+        if (!busy && !fullSyncRequired && signature !== observedRun.current && next.daemon?.lastSync?.state !== 'running') {
+          if (next.daemon?.lastSync?.state === 'error') setSyncFeedback(buildSyncFailure(next.daemon.lastSync, zh));
+          else if (next.daemon?.lastSync?.result) setSyncFeedback(buildSyncOutcome(next.daemon.lastSync.result, zh));
+        }
+        if (!busy) observedRun.current = signature;
+      } catch { /* Keep the last verified result on transient local connection errors. */ }
+      finally { pending = false; }
+    };
+    const timer = window.setInterval(poll, 1_500);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [open, busy, zh, fullSyncRequired]);
+
+  useEffect(() => {
+    if (control) {
+      setPolicies(current => syncScopeState(localControl?.sources, current).dirty ? current : policiesFromSources(control.sources));
+      setLocalControl(control); setAuthorization(control.community?.authorization || null);
+    }
   }, [control]);
 
   useEffect(() => {
@@ -163,7 +211,7 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
       if (!response.ok) {
         throw new Error(body?.error?.message || `Sync action failed (${response.status})`);
       }
-      const next = body; setStatus(next);
+      const next = body; setStatus(next); observedRun.current = runSignature(next.daemon?.lastSync);
       if (['sync', 'sync-full'].includes(name)) setFullSyncRequired(false);
       if (syncAction) {
         const outcome = buildSyncOutcome(next.result, zh);
@@ -246,11 +294,19 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
   };
 
   const connected = Boolean(status?.connected || localControl?.community?.connected);
-  const syncCount = Object.values(policies).filter((mode) => mode === 'private').length;
+  const { syncCount, dirty: scopeDirty } = syncScopeState(localControl?.sources, policies);
   const daemon = status?.daemon;
+  const running = ['sync', 'sync-full'].includes(busy) || daemon?.lastSync?.state === 'running';
+  const feedback = running ? {
+    tone: 'running', title: zh ? '正在同步' : 'Sync in progress',
+    text: describeSyncProgress(daemon?.lastSync?.progress, zh),
+  } : syncFeedback;
+  const progress = daemon?.lastSync?.progress;
+  const identity = localControl?.community?.identity;
   const automatic = Boolean(daemon?.installed && daemon?.loaded);
   const installCommand = `npx ${PACKAGE} daemon install --interval ${interval}`;
   const statusFacts = [
+    { label: zh ? '同步账户' : 'Sync account', value: identity?.status === 'verified' ? `@${identity.account.handle}` : identity?.status === 'unauthorized' ? (zh ? '授权已失效，请重新连接' : 'Authorization expired—reconnect') : (zh ? '暂无法确认账户' : 'Account not confirmed') },
     { label: zh ? '社区' : 'Community', value: status?.apiUrl || localControl?.community?.apiUrl || 'https://kimi.builders' },
     { label: zh ? '当前设备' : 'Current device', value: localControl?.community?.device?.name || (zh ? '当前电脑' : 'This computer') },
     { label: 'Collector', value: `v${localControl?.community?.device?.collectorVersion || '—'}` },
@@ -266,26 +322,27 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
         <em>{loading ? <LoaderCircle className="spin" size={16}/> : automatic ? (zh ? '自动同步中' : 'Automatic') : connected ? (zh ? '按需同步' : 'On demand') : (zh ? '待配置' : 'Setup')}</em>
       </section>
 
-      {connected ? <div className="sync-facts">{statusFacts.map((fact) => <div key={fact.label}><span>{fact.label}</span><strong>{fact.value}</strong></div>)}</div> : <section className="sync-setup"><AlertTriangle size={18}/><div><b>{zh ? '在这里连接，无需终端命令' : 'Connect here—no terminal required'}</b><p>{zh ? '浏览器登录并批准当前设备；凭据只保存在本机。批准连接不会自动上传，之后仍需选择 Agent 同步范围并点击同步。' : 'Sign in and approve this device in your browser; the credential stays local. Approval does not upload data—you still choose agent scope and start sync afterward.'}</p></div>{authorization ? <DeviceAuthorizationCard authorization={authorization} zh={zh} onCancel={cancelConnection} onRetry={startConnection} compact/> : <button className="primary-btn" type="button" onClick={startConnection} disabled={busy === 'connect'}>{busy === 'connect' ? <LoaderCircle className="spin" size={15}/> : <Cloud size={15}/>} {zh ? '连接社区账户' : 'Connect community account'}</button>}<details><summary>{zh ? '终端备用方式' : 'CLI fallback'}</summary><CommandRow zh={zh} label={zh ? '连接' : 'Connect'} command={`npx ${PACKAGE} init`}/></details></section>}
+      {!connected ? <section className="sync-setup"><AlertTriangle size={18}/><div><b>{zh ? '在这里连接，无需终端命令' : 'Connect here—no terminal required'}</b><p>{zh ? '浏览器登录并批准当前设备；凭据只保存在本机。批准连接不会自动上传，之后仍需选择 Agent 同步范围并点击同步。' : 'Sign in and approve this device in your browser; the credential stays local. Approval does not upload data—you still choose agent scope and start sync afterward.'}</p></div>{authorization ? <DeviceAuthorizationCard authorization={authorization} zh={zh} onCancel={cancelConnection} onRetry={startConnection} compact/> : <button className="primary-btn" type="button" onClick={startConnection} disabled={busy === 'connect'}>{busy === 'connect' ? <LoaderCircle className="spin" size={15}/> : <Cloud size={15}/>} {zh ? '连接社区账户' : 'Connect community account'}</button>}<details><summary>{zh ? '终端备用方式' : 'CLI fallback'}</summary><CommandRow zh={zh} label={zh ? '连接' : 'Connect'} command={`npx ${PACKAGE} init`}/></details></section> : null}
 
-      {localControl?.sources?.length ? <section className="sync-scope-card"><header><div><b>{zh ? '按 Agent 控制同步范围' : 'Per-agent sync scope'}</b><p>{zh ? '关闭 = 不扫描；仅本机 = 只在当前设备分析；本机并同步 = 允许发送到你的社区账户。账号公开设置另行决定这些聚合数据是否公开。' : 'Off = no scan; Local only = analyze on this device; Local + sync = may upload to your community account. Account-level visibility settings separately decide whether those aggregates are public.'}</p></div><button className="ghost-btn" type="button" onClick={saveScope} disabled={busy === 'scope'}>{busy === 'scope' ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>} {zh ? '保存范围' : 'Save scope'}</button></header><SourceModeRows sources={localControl.sources} policies={policies} onChange={setPolicies} onConfigure={configureSource} connected={connected} zh={zh} compact/></section> : null}
+
 
       <section className="sync-mode-card">
-        <header><div className="sync-mode-icon"><CloudUpload size={19}/></div><div><b>{zh ? '立即同步一次' : 'Sync once now'}</b><p>{zh ? `扫描本机变化并上传 ${syncCount} 个已允许 Agent 的标准化用量；不会上传对话正文、完整路径或供应商凭据。` : `Scan changes and upload normalized usage from ${syncCount} allowed agent${syncCount === 1 ? '' : 's'}—never conversations, full paths, or provider credentials.`}</p></div>{connected ? <button className="primary-btn" type="button" disabled={Boolean(busy) || syncCount === 0} onClick={() => action('sync')}>{busy === 'sync' ? <LoaderCircle className="spin" size={15}/> : <RefreshCw size={15}/>} {busy === 'sync' ? (zh ? '同步中' : 'Syncing') : (zh ? '立即同步' : 'Sync now')}</button> : null}</header>
-        {syncFeedback ? <div className={`sync-action-feedback ${syncFeedback.tone}`} role={syncFeedback.tone === 'error' ? 'alert' : 'status'} aria-live="polite">
-          {syncFeedback.tone === 'running' ? <LoaderCircle className="spin" size={17}/> : syncFeedback.tone === 'success' ? <CircleCheck size={17}/> : <AlertTriangle size={17}/>}
-          <div><b>{syncFeedback.title}</b><p>{syncFeedback.text}</p><small>{syncFeedback.tone === 'running'
-            ? (zh ? `已用时 ${formatSyncDuration(syncElapsed, true)} · 正在等待 Collector 返回可验证结果` : `${formatSyncDuration(syncElapsed, false)} elapsed · waiting for a verified Collector result`)
-            : syncFeedback.details}</small></div>
-          {syncFeedback.tone === 'running' ? <span className="sync-indeterminate" role="progressbar" aria-label={zh ? '同步进行中' : 'Sync in progress'}><i/></span> : null}
+        <header><div className="sync-mode-icon"><CloudUpload size={19}/></div><div><b>{zh ? '立即同步一次' : 'Sync once now'}</b><p>{zh ? `扫描本机变化并上传 ${syncCount} 个已允许 Agent 的标准化用量；不会上传对话正文、完整路径或供应商凭据。` : `Scan changes and upload normalized usage from ${syncCount} allowed agent${syncCount === 1 ? '' : 's'}—never conversations, full paths, or provider credentials.`}</p></div>{connected ? <button className="primary-btn" type="button" disabled={Boolean(busy) || running || scopeDirty || syncCount === 0} onClick={() => action('sync')}>{busy === 'sync' ? <LoaderCircle className="spin" size={15}/> : <RefreshCw size={15}/>} {busy === 'sync' ? (zh ? '同步中' : 'Syncing') : (zh ? '立即同步' : 'Sync now')}</button> : null}</header>
+        {scopeDirty ? <p className="sync-scope-help" role="status">{zh ? '范围有未保存的修改；请先保存范围，再同步或启用后台同步。' : 'Scope has unsaved changes. Save it before syncing or enabling background sync.'}</p> : null}
+        {feedback ? <div className={`sync-action-feedback ${feedback.tone}`} role={feedback.tone === 'error' ? 'alert' : 'status'} aria-live="polite">
+          {feedback.tone === 'running' ? <LoaderCircle className="spin" size={17}/> : feedback.tone === 'success' ? <CircleCheck size={17}/> : <AlertTriangle size={17}/>}
+          <div><b>{feedback.title}</b><p>{feedback.text}</p><small>{feedback.tone === 'running'
+            ? (zh ? `按服务端确认批次更新；剩余时间为估计${busy ? ` · 已用时 ${formatSyncDuration(syncElapsed, true)}` : ''}` : `Updates on acknowledged batches; ETA is an estimate${busy ? ` · ${formatSyncDuration(syncElapsed, false)} elapsed` : ''}`)
+            : feedback.details}</small></div>
+          {feedback.tone === 'running' ? <span className={`sync-indeterminate ${progress?.totalBatches > 0 ? 'determinate' : ''}`} aria-valuemin={0} aria-valuemax={progress?.totalBatches || undefined} aria-valuenow={progress?.totalBatches ? progress.completedBatches : undefined} role="progressbar" aria-label={zh ? '同步进行中' : 'Sync in progress'}><i style={progress?.totalBatches > 0 ? { width: `${100 * Math.min(progress.completedBatches, progress.totalBatches) / progress.totalBatches}%`, animation: 'none' } : undefined}/></span> : null}
         </div> : null}
-        {fullSyncRequired ? <div className="sync-reconcile"><AlertTriangle size={17}/><div><b>{zh ? '需要完整重建一次' : 'One complete replay is required'}</b><p>{zh ? `这会重新上传当前标记为“本机并同步”的 ${syncCount} 个 Agent，用于补齐当前设备缺失的数据；不会上传关闭或仅本机来源。` : `This re-uploads the ${syncCount} agents currently marked “Local + sync” to fill missing data for this device. Off and local-only sources remain local.`}</p></div><button type="button" className="danger-confirm" disabled={Boolean(busy) || syncCount === 0} onClick={() => action('sync-full')}>{busy === 'sync-full' ? <LoaderCircle className="spin" size={14}/> : <CloudUpload size={14}/>} {zh ? '确认完整同步' : 'Confirm complete sync'}</button></div> : null}
+        {fullSyncRequired ? <div className="sync-reconcile"><AlertTriangle size={17}/><div><b>{zh ? '需要完整重建一次' : 'One complete replay is required'}</b><p>{zh ? `这会重新上传当前标记为“本机并同步”的 ${syncCount} 个 Agent，用于补齐当前设备缺失的数据；不会上传关闭或仅本机来源。` : `This re-uploads the ${syncCount} agents currently marked “Local + sync” to fill missing data for this device. Off and local-only sources remain local.`}</p></div><button type="button" className="danger-confirm" disabled={Boolean(busy) || running || scopeDirty || syncCount === 0} onClick={() => action('sync-full')}>{busy === 'sync-full' ? <LoaderCircle className="spin" size={14}/> : <CloudUpload size={14}/>} {zh ? '确认完整同步' : 'Confirm complete sync'}</button></div> : null}
         <CommandRow zh={zh} label={zh ? '单次' : 'Once'} command={`npx ${PACKAGE} sync`}/>
         {fullSyncRequired ? <CommandRow zh={zh} label={zh ? '完整' : 'Full'} command={`npx ${PACKAGE} sync --full`}/> : null}
       </section>
 
       <section className="sync-mode-card">
-        <header><div className="sync-mode-icon purple"><TimerReset size={19}/></div><div><b>{zh ? '后台持续同步' : 'Continuous background sync'}</b><p>{zh ? `使用 ${daemon?.scheduler?.label || 'system scheduler'}，无需保持看板页面打开；仅在设备唤醒且联网时运行。` : `Uses ${daemon?.scheduler?.label || 'the system scheduler'}; the dashboard can stay closed. Runs while the device is awake and online.`}</p></div>{daemon?.supported && connected ? (automatic ? <button className="ghost-btn danger-soft" type="button" disabled={Boolean(busy)} onClick={() => action('uninstall')}>{busy === 'uninstall' ? <LoaderCircle className="spin" size={15}/> : <Unplug size={15}/>} {zh ? '停用' : 'Disable'}</button> : <button className="primary-btn" type="button" disabled={Boolean(busy) || syncCount === 0} onClick={() => action('install')}>{busy === 'install' ? <LoaderCircle className="spin" size={15}/> : <Monitor size={15}/>} {zh ? '启用自动同步' : 'Enable automatic sync'}</button>) : null}</header>
+        <header><div className="sync-mode-icon purple"><TimerReset size={19}/></div><div><b>{zh ? '后台持续同步' : 'Continuous background sync'}</b><p>{zh ? `使用 ${daemon?.scheduler?.label || 'system scheduler'}，无需保持看板页面打开；仅在设备唤醒且联网时运行。` : `Uses ${daemon?.scheduler?.label || 'the system scheduler'}; the dashboard can stay closed. Runs while the device is awake and online.`}</p></div>{daemon?.supported && connected ? (automatic ? <button className="ghost-btn danger-soft" type="button" disabled={Boolean(busy)} onClick={() => action('uninstall')}>{busy === 'uninstall' ? <LoaderCircle className="spin" size={15}/> : <Unplug size={15}/>} {zh ? '停用' : 'Disable'}</button> : <button className="primary-btn" type="button" disabled={Boolean(busy) || running || scopeDirty || syncCount === 0} onClick={() => action('install')}>{busy === 'install' ? <LoaderCircle className="spin" size={15}/> : <Monitor size={15}/>} {zh ? '启用自动同步' : 'Enable automatic sync'}</button>) : null}</header>
         <div className="sync-interval"><span>{zh ? '同步间隔' : 'Sync interval'}</span><div>{INTERVALS.map((minutes) => <button type="button" key={minutes} className={interval === minutes ? 'active' : ''} onClick={() => setInterval(minutes)}>{minutes < 60 ? `${minutes}m` : '1h'}</button>)}</div>{automatic && daemon?.intervalMinutes !== interval ? <button type="button" className="sync-apply" disabled={Boolean(busy)} onClick={() => action('restart')}>{busy === 'restart' ? <LoaderCircle className="spin" size={13}/> : <RefreshCw size={13}/>} {zh ? '应用' : 'Apply'}</button> : null}</div>
         <div className="sync-command-stack">
           <CommandRow zh={zh} label={zh ? '安装' : 'Install'} command={installCommand}/>
@@ -293,7 +350,18 @@ export function SyncDialog({ open, onClose, zh, control, onControlAction, onCont
           <CommandRow zh={zh} label={zh ? '重载' : 'Restart'} command={`npx ${PACKAGE} daemon restart`}/>
           <CommandRow zh={zh} label={zh ? '卸载' : 'Remove'} command={`npx ${PACKAGE} daemon uninstall`}/>
         </div>
+        {daemon?.installed && daemon?.updateRequired ? <div className="sync-reconcile"><AlertTriangle size={17}/><div><b>{zh ? '后台运行副本需要更新' : 'Background runtime needs updating'}</b><p>{zh ? '把当前 Collector 版本保存为固定本机副本，避免 npx 缓存清理后服务失效。更新会重启后台同步，不会自动升级到未知版本。' : 'Save this Collector version as a stable local copy so npx cache cleanup cannot remove it. Updating restarts background sync without downloading an unknown version.'}</p></div><button type="button" className="ghost-btn" disabled={Boolean(busy)} onClick={() => action('restart')}>{zh ? '更新到当前版本' : 'Update to this version'}</button></div> : null}
       </section>
+
+      {localControl?.sources?.length ? <section className="sync-scope-card">
+        <header><div><b>{zh ? '按 Agent 控制同步范围' : 'Per-agent sync scope'}</b><p>{zh ? `已保存：${syncCount} 个 Agent 允许同步` : `Saved: ${syncCount} agents allowed to sync`}{scopeDirty ? (zh ? ' · 有未保存的修改' : ' · Unsaved changes') : ''}</p></div><button className="ghost-btn" type="button" aria-expanded={scopeExpanded} aria-controls={scopeId} onClick={() => setScopeExpanded(value => !value)}><ChevronDown size={14}/>{scopeExpanded ? (zh ? '收起范围' : 'Collapse scope') : (zh ? '调整范围' : 'Edit scope')}</button></header>
+        <div id={scopeId} hidden={!scopeExpanded}>
+          <p className="sync-scope-help">{zh ? '关闭 = 不扫描；仅本机 = 只在当前设备分析；本机并同步 = 允许发送到你的社区账户。账号公开设置另行决定这些聚合数据是否公开。' : 'Off = no scan; Local only = analyze on this device; Local + sync = may upload to your community account. Account visibility separately decides whether aggregates are public.'}</p>
+          <SourceModeRows sources={localControl.sources} policies={policies} onChange={setPolicies} onConfigure={configureSource} connected={connected} zh={zh} compact/>
+          <footer><button className="ghost-btn" type="button" onClick={saveScope} disabled={Boolean(busy) || !scopeDirty}>{busy === 'scope' ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>} {zh ? '保存范围' : 'Save scope'}</button></footer>
+        </div>
+      </section> : null}
+      {connected ? <div className="sync-facts">{statusFacts.map((fact) => <div key={fact.label}><span>{fact.label}</span><strong title={fact.value}>{fact.value}</strong></div>)}</div> : null}
 
       <section className="sync-boundary"><ShieldCheck size={18}/><div><b>{zh ? '“重新扫描”不等于“同步数据”' : '“Rescan” is not “Sync”'}</b><p>{zh ? '重新扫描只刷新当前本地页面，零上传；立即同步或后台同步才会把增量发送到已连接的社区账户。云端没有命令可以主动拉取本机日志。' : 'Rescan only refreshes this local page with zero upload. Sync now or background sync sends increments to the connected community account. The cloud cannot pull local logs.'}</p><small>{zh ? '运行日志' : 'Run log'} · {daemon?.logPath || (zh ? '首次同步后生成' : 'created after first sync')}</small></div></section>
       {connected ? <section className="sync-ownership"><header><div><b>{zh ? '远程数据由你控制' : 'You control remote data'}</b><p>{zh ? '停止同步只停后台任务；断开会撤销当前设备 Key，但保留社区历史。删除数据是独立操作。' : 'Stopping sync only stops the background job. Disconnecting revokes this device key but keeps community history. Data deletion is separate.'}</p></div><a href={localControl?.community?.dashboardUrl || status?.apiUrl} target="_blank" rel="noreferrer">{zh ? '社区设备与公开设置' : 'Community devices & visibility'}<ExternalLink size={12}/></a></header><div><button type="button" className={confirmAction === 'disconnect' ? 'danger-confirm' : 'ghost-btn'} onClick={() => destructiveAction('disconnect')} disabled={Boolean(busy)}><LogOut size={14}/>{confirmAction === 'disconnect' ? (zh ? '确认撤销 Key 并断开' : 'Revoke key and disconnect') : (zh ? '安全断开当前设备' : 'Safely disconnect device')}</button><button type="button" className={confirmAction === 'delete-device-data' ? 'danger-confirm' : 'ghost-btn'} onClick={() => destructiveAction('delete-device-data')} disabled={Boolean(busy)}><Trash2 size={14}/>{confirmAction === 'delete-device-data' ? (zh ? '再次点击删除云端数据' : 'Click again to delete cloud data') : (zh ? '删除当前设备云端数据' : 'Delete this device’s cloud data')}</button></div>{disconnectFallback ? <div className="sync-revoke-warning"><AlertTriangle size={17}/><div><b>{zh ? '社区暂时无法确认撤销' : 'Remote revocation could not be confirmed'}</b><p>{zh ? '为避免留下一个你看不见的有效 Key，本机连接仍完整保留。只有在你准备稍后到社区设备管理手动撤销时，才使用下面的本机清除。' : 'Your local connection was kept so an active key is not hidden from you. Use local-only removal only if you will revoke it later in community device management.'}</p></div><button type="button" className={confirmAction === 'disconnect-local' ? 'danger-confirm' : 'ghost-btn'} onClick={() => destructiveAction('disconnect-local')} disabled={Boolean(busy)}>{confirmAction === 'disconnect-local' ? (zh ? '确认仅清除本机' : 'Confirm local-only removal') : (zh ? '仅清除本机连接' : 'Forget locally only')}</button></div> : null}</section> : null}

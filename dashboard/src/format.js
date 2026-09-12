@@ -14,6 +14,9 @@ export const SOURCE_LABELS = {
   grok: 'Grok CLI',
   'trae-cli': 'Trae CLI',
   mcode: 'MiniMax Code',
+  qoder: 'Qoder',
+  'qoder-cn': 'Qoder CN',
+  dsh: 'DeepSeek Harness',
   cursor: 'Cursor',
 };
 

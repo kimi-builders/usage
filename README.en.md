@@ -109,7 +109,7 @@ or remove the background daemon unless I explicitly approve that separate step.
 | --- | --- |
 | Does it upload conversations or code? | No. The Token dashboard is local by default and does not read prompts, responses, or file contents. |
 | Is a community account required? | No. Local usage and subscription analysis work independently. |
-| Which agents are supported? | Fourteen sources are auto-scanned; Cursor CSV is an explicit opt-in. See the matrix below. |
+| Which agents are supported? | Seventeen sources are auto-scanned; Cursor CSV is an explicit opt-in. See the matrix below. |
 | Are the costs real bills? | No. They are standard-API estimates with visible pricing coverage and unpriced Tokens. |
 | Which systems are supported? | macOS, Linux, and Windows with Node.js 20 or newer. |
 
@@ -181,7 +181,7 @@ browser and is never uploaded to the community or a third party.
 **Project status:** public Beta. Stable sources are covered by cross-platform
 fixtures and contract tests; sources with limited log-format evidence remain
 explicitly labelled Beta. [Roadmap](./docs/ROADMAP.en.md) ·
-[Release notes](./docs/RELEASE_NOTES_0.6.0.en.md) · [All docs](./docs/README.en.md)
+[Release notes](./docs/RELEASE_NOTES_0.6.1.en.md) · [All docs](./docs/README.en.md)
 
 ## Run from source
 
@@ -241,7 +241,7 @@ See [Local Snapshot v1](./docs/LOCAL_SNAPSHOT_V1.en.md) for fields and formulas.
 | Codex | Stable | Current and archived sessions under `$CODEX_HOME` or `~/.codex` |
 | OpenCode | Stable | SQLite database with legacy JSON fallback |
 | Gemini CLI | Stable | JSONL/JSON sessions under `~/.gemini/tmp` |
-| Antigravity | Stable | Offline SQLite stores from App 2.0 / `agy` CLI |
+| Antigravity | Stable | Offline SQLite stores from App 2.0 / standalone IDE / `agy` CLI |
 | GitHub Copilot CLI | Stable | Local CLI session logs |
 | Roo Code | Stable | Local VS Code extension task data |
 | Pi Coding Agent | Beta | JSONL sessions such as `~/.pi/agent/sessions`; format coverage is still growing |
@@ -250,7 +250,14 @@ See [Local Snapshot v1](./docs/LOCAL_SNAPSHOT_V1.en.md) for fields and formulas.
 | Grok CLI | Beta | Sessions and exact turn usage under `$GROK_HOME` or `~/.grok` |
 | Trae CLI | Beta | Local CLI session, trace, and event logs |
 | MiniMax Code | Beta | Token ledger in `~/.minimax/v2/sqlite/runtime-state.sqlite` |
+| Qoder / Qoder CN | Beta | Separate sources; IDE SQLite tokens and CLI/app sessions; credits are never converted into tokens |
+| DeepSeek Harness (DSH) | Beta | V0–V3 JSONL / multi-frame Zstd under `$DSH_HOME/sessions`; inherited-session deduplication |
 | Cursor | Explicit opt-in | Usage CSV exported by Cursor Dashboard |
+
+Qoder routing tiers such as `auto` are left unpriced as `qoder-auto`, never treated as concrete models.
+Compressed DSH logs require Node ≥22.15 with built-in Zstd or an installed `zstd` binary;
+missing decompression support is reported as a partial source failure. New sources default
+to local-only for users with an explicit per-agent sync scope; uploading requires opting in.
 
 Sources are parsed independently. A missing, damaged, or changed source never
 blocks another source and never clears that source's previous sync checkpoint.
@@ -393,7 +400,14 @@ npx @kimi.builders/usage daemon uninstall
 The service needs no administrator privileges. It uses `launchd` on macOS,
 user `systemd` on Linux, and Task Scheduler on Windows. It works only while the
 device is awake and online. After upgrading the Collector, run `daemon restart`
-so the service records the new package path.
+to copy that version into a stable local runtime directory. Clearing the npx cache
+does not remove that copy; background sync never automatically upgrades. Node
+itself must remain installed.
+
+The sync dialog shows the verified community account, acknowledged upload batches,
+estimated remaining time, and retry waits. The CLI also reports batch progress.
+Partial source failures persist as partial results with local diagnostics, without
+advancing the last fully successful synchronization time.
 
 Sync uses incremental checkpoints, per-source failure isolation, and a
 concurrency lock. Repeated runs do not duplicate counts. If you delete a

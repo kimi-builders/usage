@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { getLocale } from './cli-ui.js';
 import { getConfigDir } from './config.js';
 import { runSync } from './sync.js';
+import { publicSyncProgress, publicSyncResult } from './sync-progress.js';
 
 const LOCK_STALE_MS = 2 * 60 * 60 * 1000;
 
@@ -98,22 +99,31 @@ export async function runManagedSync({
   const handle = acquireLock(paths.lock);
   const startedAt = new Date().toISOString();
   const prior = loadSyncStatus({ configDir }) || {};
-  writeJson(paths.status, { ...prior, state: 'running', trigger, lastAttemptAt: startedAt, lastError: null });
+  const running = { ...prior, state: 'running', trigger, lastAttemptAt: startedAt, lastError: null, progress: publicSyncProgress() };
+  writeJson(paths.status, running);
   appendLog(paths.log, `[${trigger}] synchronization started`);
   const started = Date.now();
   try {
-    const result = await sync({ quiet, surface, full });
+    const result = await sync({ quiet, surface, full, onProgress: (progress) => {
+      running.progress = publicSyncProgress(progress);
+      try { writeJson(paths.status, running); } catch { /* Progress is best effort; final status is not. */ }
+    } });
     const completedAt = new Date().toISOString();
+    const summary = publicSyncResult(result);
+    const issues = summary.sources.filter((source) => ['partial', 'failed'].includes(source.status));
+    const partial = issues.length > 0 || summary.rejected > 0;
     const next = {
-      state: 'idle', trigger, lastAttemptAt: startedAt, lastSuccessAt: completedAt,
+      state: partial ? 'partial' : 'idle', trigger, lastAttemptAt: startedAt, lastCompletedAt: completedAt,
+      lastSuccessAt: partial ? prior.lastSuccessAt || null : completedAt,
       lastDurationMs: Date.now() - started, lastError: null,
-      result: {
-        buckets: Number(result?.buckets || 0), sessions: Number(result?.sessions || 0),
-        protectedBuckets: Number(result?.protectedBuckets || 0), rejected: Number(result?.rejected || 0),
-      },
+      result: summary,
     };
     writeJson(paths.status, next);
-    appendLog(paths.log, `[${trigger}] synchronization completed (${next.result.buckets} buckets, ${next.result.sessions} sessions)`);
+    appendLog(paths.log, `[${trigger}] synchronization ${partial ? 'partially completed' : 'completed'} (${next.result.buckets} buckets, ${next.result.sessions} sessions; ${summary.rejected} rejected)`);
+    for (const source of result?.sources || []) {
+      if (['partial', 'failed'].includes(source.status)) appendLog(paths.log, `[${source.source}] ${source.status}: ${privateMessage(source.error || 'Source could not be fully read')}`);
+      for (const warning of (source.warnings || []).slice(0, 10)) appendLog(paths.log, `[${source.source}] ${privateMessage(warning)}`);
+    }
     return result;
   } catch (error) {
     const privateDetail = privateMessage(error);

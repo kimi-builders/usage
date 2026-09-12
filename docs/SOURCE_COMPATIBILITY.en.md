@@ -2,7 +2,7 @@
 
 > [中文](./SOURCE_COMPATIBILITY.md)
 >
-> Last reviewed: 2026-09-05 · Collector `0.5.x`
+> Last reviewed: 2026-09-11 · Collector `0.6.1` release candidate (not yet published)
 
 This matrix describes the compatibility evidence available for each parser; it
 is not an official support claim by any Agent vendor. Every source reads local
@@ -13,7 +13,9 @@ per-record timestamps.
 Automatic discovery is not forced scanning or upload. The first-run wizard and
 “Local & sources” screen let each source be Off, Local only, or Local + sync.
 Only the last mode enters community sync. Newly supported automatic sources
-default to Local only and never silently join an existing user's sync set.
+default to Local only on devices with explicit source policies and never silently
+join their sync set. Legacy connected devices without a migrated source policy
+retain their existing compatibility behavior.
 
 ## Maturity definitions
 
@@ -24,7 +26,7 @@ default to Local only and never silently join an existing user's sync set.
 | Beta | Scanning and dedicated tests exist, but version, platform, or historical-format evidence remains limited |
 | Explicit opt-in | Never read automatically; the user must provide an import file or configuration |
 
-## 0.5.x matrix
+## Current source matrix
 
 | Source | Level | Auto-discovered | Main evidence | Known boundary |
 | --- | --- | --- | --- | --- |
@@ -33,7 +35,7 @@ default to Local only and never silently join an existing user's sync set.
 | Codex | Stable | Yes | Current/archived sessions, streaming huge JSONL, cross-directory copy deduplication, reasoning effort, context/processing tier, sub-agents | Events without usage never produce guessed Tokens |
 | OpenCode | Stable | Yes | SQLite, legacy JSON, Token mapping, malformed records | SQLite schema drift is isolated as a source failure |
 | Gemini CLI | Stable | Yes | JSONL, legacy JSON, nested sub-agents, malformed records | Reads only existing usage metadata; never estimates from text |
-| Antigravity | Stable | Yes | App/CLI offline databases, model and Token mapping | Locked or changed databases may be partially readable |
+| Antigravity | Stable | Yes | App/standalone IDE/CLI offline databases, model and Token mapping | Locked or changed databases may be partially readable |
 | GitHub Copilot CLI | Stable | Yes | Session discovery, mutually exclusive cache/input classification | Some versions retain sessions without usable Token counts |
 | Roo Code | Stable | Yes | VS Code task history, cache fields, time events | Covers only task data still retained locally |
 | Pi Coding Agent | Beta | Yes | JSONL sessions, current/legacy reasoning fields, custom sessionDir, empty/malformed records | Version matrix and cross-directory copy deduplication evidence are still expanding |
@@ -42,6 +44,8 @@ default to Local only and never silently join an existing user's sync set.
 | Grok CLI | Beta | Yes | `turn_completed`, per-model usage, exclusive cache/reasoning fields, cross-directory copy deduplication | Real-version and cross-platform samples remain limited |
 | Trae CLI | Beta | Yes | Streaming large JSONL, authoritative span/failover selection, session events | Upstream trace categories and cache semantics are not guaranteed stable |
 | MiniMax Code | Beta | Yes | SQLite schema allowlist, Token ledger, separate cache/reasoning fields | Reads only Token/workspace metadata, never message payloads; Node 20 may need `sqlite3` |
+| Qoder / Qoder CN | Beta | Yes | Separate roots; IDE tokens, CLI/app sessions; cross-file deduplication, conflicting copies, scan budgets | Credits are not tokens; routing tiers stay unpriced; 64 MiB per JSONL / 256 MiB total read; real-device and cross-platform samples remain limited |
+| DeepSeek Harness (DSH) | Beta | Yes | V0–V3, multi-frame Zstd, parent replay deduplication; corrupt/torn records report partial and protect checkpoints | 64 MiB input / 128 MiB decoded cap; compressed logs require Node ≥22.15 or `zstd`; future formats explicitly fail |
 | Cursor | Dashboard-validated CSV or explicit CLI opt-in | No | Official Usage CSV references, Token categories, quoted fields | Supports user-exported CSV only; does not read editor conversations or private databases |
 
 ## Platforms and Node.js

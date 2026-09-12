@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildSyncOutcome, formatSyncDuration } from '../src/sync-feedback.js';
+import { buildSyncFailure, buildSyncOutcome, describeSyncProgress, formatSyncDuration, syncScopeState } from '../src/sync-feedback.js';
 
 test('sync outcome distinguishes success, no-change, partial, and rejected records', () => {
   const success = buildSyncOutcome({
@@ -32,4 +32,21 @@ test('sync outcome distinguishes success, no-change, partial, and rejected recor
 test('sync duration remains readable from seconds into minutes', () => {
   assert.equal(formatSyncDuration(12_400, true), '12 秒');
   assert.equal(formatSyncDuration(72_000, false), '1m 12s');
+});
+
+test('sync scope summary counts saved permissions, not unsaved drafts or unknown agents', () => {
+  const sources = [{ id: 'codex', mode: 'private' }, { id: 'qoder', mode: 'local' }, { id: 'dsh', mode: 'off' }];
+  assert.deepEqual(syncScopeState(sources, { codex: 'private', qoder: 'local', dsh: 'off' }), { syncCount: 1, dirty: false });
+  assert.deepEqual(syncScopeState(sources, { codex: 'off', qoder: 'private', dsh: 'private', unknown: 'private' }), { syncCount: 1, dirty: true });
+  assert.deepEqual(syncScopeState([], {}), { syncCount: 0, dirty: false });
+});
+
+test('progress labels separate scanning, retry waits, and measured upload ETA in both languages', () => {
+  assert.match(buildSyncFailure({ lastErrorCode: 'authentication_failed' }, true).text, /授权已失效/);
+  assert.match(buildSyncFailure({}, false).text, /private local run log/);
+  assert.equal(describeSyncProgress({ phase: 'scanning' }, true), '正在扫描本机来源');
+  assert.equal(describeSyncProgress({ phase: 'scanning' }, false), 'Scanning local sources');
+  assert.match(describeSyncProgress({ phase: 'retrying', totalBatches: 4, completedBatches: 1, retryDelayMs: 2000 }, true), /1\/4 批 · 2 秒后重试/);
+  assert.match(describeSyncProgress({ phase: 'uploading', totalBatches: 4, completedBatches: 1, remainingMs: 9000 }, false), /1\/4 batches acknowledged · About 9s remaining/);
+  assert.match(buildSyncOutcome({ compressedBytes: 2048 }, true).details, /2.0 KB（不含重试）/);
 });

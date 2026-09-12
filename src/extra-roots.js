@@ -114,6 +114,7 @@ export function antigravityConversationDirs(value) {
       join(root, 'conversations'),
       join(root, '.gemini', 'antigravity', 'conversations'),
       join(root, '.gemini', 'antigravity-cli', 'conversations'),
+      join(root, '.gemini', 'antigravity-ide', 'conversations'),
     ];
   return [...new Set(candidates)].filter((path) => existsSync(path) && isDirectory(path));
 }

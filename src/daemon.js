@@ -10,6 +10,7 @@ import { getConfigDir } from './config.js';
 import { COLLECTOR_VERSION } from './client-meta.js';
 import { loadSyncStatus, runManagedSync } from './sync-runtime.js';
 import { safeLocalPathDisplay } from './safe-display.js';
+import { installDaemonRuntime } from './daemon-runtime.js';
 
 const LABEL = 'builders.kimi.usage.sync';
 const SYSTEMD_NAME = 'kimi-builders-usage-sync';
@@ -167,10 +168,11 @@ function runtimeEnvironment() {
 
 export function renderDaemonFiles({
   platform = process.platform, home = homedir(), configDir = getConfigDir(),
-  intervalMinutes = DEFAULT_INTERVAL_MINUTES, node = process.execPath,
+  intervalMinutes = DEFAULT_INTERVAL_MINUTES, node = process.execPath, entry,
 } = {}) {
   const interval = validateInterval(intervalMinutes);
   const paths = daemonPaths({ platform, home, configDir });
+  if (entry) paths.entry = entry;
   const common = { node, entry: paths.entry, log: paths.schedulerLog, environment: runtimeEnvironment() };
   if (platform === 'darwin') {
     return { paths, files: [{ path: paths.descriptor, content: launchdPlist({ ...common, intervalSeconds: interval * 60 }) }] };
@@ -192,7 +194,7 @@ function writeMetadata(paths, intervalMinutes, platform, node) {
   const now = new Date().toISOString();
   const prior = readJson(paths.metadata);
   const metadata = {
-    schemaVersion: 1, platform, scheduler: paths.scheduler.id,
+    schemaVersion: 1, platform, scheduler: paths.scheduler.id, runtimeMode: 'managed',
     intervalMinutes, collectorVersion: COLLECTOR_VERSION,
     installedAt: prior?.installedAt || now, updatedAt: now, entry: paths.entry, node,
   };
@@ -230,9 +232,11 @@ export function getDaemonStatus({
     scheduler: paths.scheduler, intervalMinutes: metadata?.intervalMinutes || null,
     installedVersion: metadata?.collectorVersion || null,
     updateRequired: Boolean(
-      (metadata?.collectorVersion && metadata.collectorVersion !== COLLECTOR_VERSION) || !runtimeAvailable,
+      (metadata?.collectorVersion && metadata.collectorVersion !== COLLECTOR_VERSION) || !runtimeAvailable
+      || (installed && metadata?.runtimeMode !== 'managed'),
     ),
     runtimeAvailable,
+    managedRuntime: metadata?.runtimeMode === 'managed',
     logPath: safeLocalPathDisplay(paths.log, { home }),
     schedulerLogPath: safeLocalPathDisplay(paths.schedulerLog, { home }),
     logAvailable: existsSync(paths.log),
@@ -243,10 +247,13 @@ export function getDaemonStatus({
 
 export function installDaemon({
   intervalMinutes = DEFAULT_INTERVAL_MINUTES, platform = process.platform, home = homedir(),
-  configDir = getConfigDir(), runner = defaultRunner, node = process.execPath,
+  configDir = getConfigDir(), runner = defaultRunner, node = process.execPath, packageRoot,
 } = {}) {
   const interval = validateInterval(intervalMinutes);
-  const { paths, files } = renderDaemonFiles({ platform, home, configDir, intervalMinutes: interval, node });
+  // Validate the platform before creating runtime files.
+  renderDaemonFiles({ platform, home, configDir, intervalMinutes: interval, node });
+  const entry = installDaemonRuntime(configDir, packageRoot);
+  const { paths, files } = renderDaemonFiles({ platform, home, configDir, intervalMinutes: interval, node, entry });
   mkdirSync(configDir, { recursive: true, mode: 0o700 });
   for (const file of files) writeAtomic(file.path, file.content, platform === 'win32' ? 0o700 : 0o600);
   const metadata = writeMetadata(paths, interval, platform, node);
@@ -317,6 +324,9 @@ export function printDaemonStatus(status, { json = false } = {}) {
     ? `间隔: 每 ${status.intervalMinutes} 分钟（设备唤醒且联网时）`
     : `Interval: every ${status.intervalMinutes} minutes (while the device is awake and online)`);
   if (status.lastSync?.lastSuccessAt) console.log(`${isZh ? '最近成功' : 'Last success'}: ${status.lastSync.lastSuccessAt}`);
+  if (status.lastSync?.state === 'partial') console.log(isZh
+    ? '最近同步仅部分完成；失败来源的旧数据已保留，详情请检查运行日志。'
+    : 'Last sync only partially completed; prior data for failed sources was kept. Check the run log.');
   if (status.lastSync?.lastError) console.log(`${isZh ? '最近错误' : 'Last error'}: ${status.lastSync.lastError}`);
   console.log(`${isZh ? '日志' : 'Log'}: ${status.logPath}`);
   if (status.updateRequired) console.log(isZh

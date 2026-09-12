@@ -11,7 +11,8 @@ removed with the CLI at any time.
 
 | Command | Network | Purpose |
 | --- | --- | --- |
-| no arguments, `help`, `status`, `sources`, `completion` | No | Local help, configuration, completion scripts, and capability display |
+| no arguments, `help`, `sources`, `completion` | No | Local help, configuration, completion scripts, and capability display |
+| `status` | Only when connected | Local configuration plus a best-effort lookup of the bound community account (5-second timeout, no usage upload) |
 | `stats`, `top` | No | Local offline multi-dimensional usage analytics and model rankings |
 | `export` | No | Local export of token/session records as CSV/JSON/JSONL |
 | `quota` / `limits` | Configured providers only | Query public quota endpoints and reset windows for enabled providers |
@@ -35,6 +36,8 @@ For the default origin `https://kimi.builders`, the current endpoints are:
 
 - `POST /api/usage/device/code`
 - `POST /api/usage/device/token`
+- `GET /api/usage/device/current` (display identity of the authenticated device owner; no email)
+- `DELETE /api/usage/device/current` (explicit device disconnection)
 - `GET /api/usage/settings`
 - `POST /api/usage/ingest`
 - `DELETE /api/usage/ingest`
@@ -59,8 +62,12 @@ The Collector sends the device API key only to the configured origin. Ingest
 bodies are gzip-compressed JSON; compression changes transport size, not fields.
 
 The background service uses macOS `launchd`, Linux user `systemd`, or Windows
-Task Scheduler. It stores only scheduler metadata, last-run status, a lock, and
-a bounded local log under `~/.kimi-builders/usage`. It has no additional network
+Task Scheduler. It stores scheduler metadata, last-run status, a lock, a bounded
+local log, and a fixed-version Collector copy under `~/.kimi-builders/usage/runtime`.
+It does not depend on the npx cache or automatically download upgrades. Explicit
+`daemon restart` refreshes the copy from the Collector version you are running;
+Node itself must remain installed. Uninstall retains runtime copies and user data.
+It has no additional network
 destinations and cannot be installed by merely opening the dashboard.
 
 The local web dashboard binds to loopback only and uses a random per-launch
@@ -68,7 +75,10 @@ browser token, strict Host/Origin checks, a restrictive CSP, and no-store
 responses. Its Token analysis stays offline. The Dashboard can request device
 authorization, run one sync, manage the OS scheduler, disconnect the current
 device, or delete that device's cloud history only after the user presses the
-corresponding control. Subscription-limit checks are separate, disabled by
+corresponding control. Opening the community-sync dialog also verifies the bound
+account once; an old or unreachable community API shows an unconfirmed identity,
+never a guessed account. Local Token views perform no identity lookup.
+Subscription-limit checks are separate, disabled by
 default, and contact only the provider explicitly enabled in local settings:
 
 Quota-history recording, Token-to-quota correlation, pace forecasts, and

@@ -8,7 +8,8 @@
 
 | 命令 | 是否联网 | 用途 |
 | --- | --- | --- |
-| 无参数、`help`、`status`、`sources`、`completion` | 否 | 显示本地帮助、配置、能力与补全脚本 |
+| 无参数、`help`、`sources`、`completion` | 否 | 显示本地帮助、配置、能力与补全脚本 |
+| `status` | 仅在已连接时 | 本地配置与绑定社区账户核验（5 秒超时，不上传用量） |
 | `stats`、`top` | 否 | 本地离线多维用量分析与模型/项目排行 |
 | `export` | 否 | 本地导出 Token/Session 用量为 CSV/JSON/JSONL |
 | `quota` / `limits` | 仅限已登录/配置平台 | 向明确启用的 Provider 查询公开额度与重置窗口 |
@@ -32,6 +33,8 @@
 
 - `POST /api/usage/device/code`
 - `POST /api/usage/device/token`
+- `GET /api/usage/device/current`（设备凭据所归属账户的显示身份，不含邮箱）
+- `DELETE /api/usage/device/current`（用户明确断开设备）
 - `GET /api/usage/settings`
 - `POST /api/usage/ingest`
 - `DELETE /api/usage/ingest`
@@ -50,14 +53,17 @@
 `init --api-url` 可在开发或自托管场景指定其他地址。Collector 只把设备 API Key 发送给配置的
 社区 Origin。上传正文是 gzip 压缩 JSON；压缩只改变传输大小，不改变字段。
 
-后台服务使用 macOS `launchd`、Linux user `systemd` 或 Windows Task Scheduler。它只在
-`~/.kimi-builders/usage` 下保存调度元数据、最近运行状态、锁和有界本地日志。它没有额外
+后台服务使用 macOS `launchd`、Linux user `systemd` 或 Windows Task Scheduler。它在
+`~/.kimi-builders/usage` 下保存调度元数据、最近运行状态、锁、有界本地日志，以及 `runtime/`
+中的固定版本 Collector 副本。不依赖 npx 缓存，也不自动下载升级；明确执行 `daemon restart`
+才从当前正在运行的版本更新副本。Node 本身仍需保持安装；卸载服务保留副本和用户数据。它没有额外
 网络目标，也不会仅因打开看板而安装。
 
 本地 Web 看板只监听 loopback，使用每次启动随机浏览器令牌、严格 Host/Origin 检查、限制性
 CSP 和 no-store 响应。Token 分析始终离线。只有用户点击相应控件后，看板才可申请设备授权、
 执行一次同步、管理系统调度器、断开当前设备或删除该设备云端历史。订阅额度查询是独立能力，
-默认关闭，并且只联系本地设置中明确启用的平台。
+默认关闭，并且只联系本地设置中明确启用的平台。打开社区同步弹窗时会核验一次绑定账户；
+旧社区 API 或离线时明确显示“暂无法确认”，不会猜测账户。本机 Token 页面不发起身份查询。
 
 额度历史记录、Token 与额度关联、节奏预测和订阅价值观察都是本地计算，不会增加网络目标。
 读取看板缓存不会制造重复历史点；只有一次真正的新 Provider 刷新才会追加脱敏观测。

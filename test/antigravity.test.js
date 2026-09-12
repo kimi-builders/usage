@@ -1,6 +1,6 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -115,6 +115,16 @@ test('missing conversations dir reports not installed (null)', async () => {
   process.env.KBU_USAGE_ANTIGRAVITY_DIR = join(root, 'absent');
   assert.deepEqual(roots(), []);
   assert.equal(await parse({ sessionSalt: SALT }), null);
+});
+
+test('corrupt Antigravity database becomes a source failure, not an empty successful scan', async () => {
+  const dir = useDir('corrupt');
+  writeFileSync(join(dir, 'broken.db'), 'not a SQLite database');
+  const { collectAll } = await import('../src/local/snapshot.js');
+  const snapshot = await collectAll({ sessionSalt: SALT, sourceEntries: [{ id: 'antigravity', tier: 'stable', roots, parse }] });
+  assert.equal(snapshot.results[0].status, 'failed');
+  assert.deepEqual(snapshot.buckets, []);
+  assert.ok(snapshot.results[0].error);
 });
 
 test('sqlite cascade: token mapping, display-name model, workspace project, steps timing', async (t) => {

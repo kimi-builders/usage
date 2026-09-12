@@ -130,7 +130,7 @@ _kbu_usage_completion() {
           _arguments \\
             '--period[统计时间周期]:period:(today 24h 7d 30d 90d all)' \\
             '--days[指定天数]:days:(1 7 14 30 60 90)' \\
-            '--source[指定 Agent 来源]:source:(kimi-code claude-code codex opencode gemini-cli antigravity copilot-cli roo-code pi-coding-agent zcode workbuddy grok trae-cli mcode cursor)' \\
+            '--source[指定 Agent 来源]:source:(kimi-code claude-code codex opencode gemini-cli antigravity copilot-cli roo-code pi-coding-agent zcode workbuddy grok trae-cli mcode qoder qoder-cn dsh cursor)' \\
             '--model[按模型名模糊过滤]:model:' \\
             '--project[按项目名精确过滤]:project:' \\
             '--json[以 JSON 输出]' \\
@@ -150,7 +150,7 @@ _kbu_usage_completion() {
             '--output[保存文件路径]:output:_files' \\
             '-o[保存文件路径]:output:_files' \\
             '--period[时间范围]:period:(today 24h 7d 30d 90d all)' \\
-            '--source[指定 Agent 来源]:source:(kimi-code claude-code codex opencode gemini-cli antigravity copilot-cli roo-code pi-coding-agent zcode workbuddy grok trae-cli mcode cursor)'
+            '--source[指定 Agent 来源]:source:(kimi-code claude-code codex opencode gemini-cli antigravity copilot-cli roo-code pi-coding-agent zcode workbuddy grok trae-cli mcode qoder qoder-cn dsh cursor)'
           ;;
         sources)
           local -a subcommands

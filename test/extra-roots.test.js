@@ -12,12 +12,14 @@ test('extra-root discovery is bounded and browser metadata omits full paths', ()
   const codexHome = join(directory, 'workspace', 'task', 'codex-home');
   const tooDeep = join(directory, 'one', 'two', 'three', 'four', 'codex-home');
   const antigravity = join(directory, '.gemini', 'antigravity', 'conversations');
+  const standaloneIde = join(directory, '.gemini', 'antigravity-ide', 'conversations');
   mkdirSync(join(codexHome, 'sessions'), { recursive: true });
   mkdirSync(join(tooDeep, 'sessions'), { recursive: true });
   mkdirSync(antigravity, { recursive: true });
+  mkdirSync(standaloneIde, { recursive: true });
   try {
     assert.deepEqual(discoverCodexHomes(directory), [codexHome]);
-    assert.deepEqual(antigravityConversationDirs(directory), [antigravity]);
+    assert.deepEqual(new Set(antigravityConversationDirs(directory)), new Set([antigravity, standaloneIde]));
     const metadata = publicExtraRoots({ codex: { extraRoots: [directory] } }, 'codex');
     assert.equal(metadata[0].label, basename(directory));
     assert.equal(JSON.stringify(metadata).includes(directory), false);

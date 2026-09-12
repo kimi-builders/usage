@@ -194,15 +194,11 @@ function queryCascadeDb(conversationsDir, cascadeId, sql) {
 
 /** List cascade IDs backed by a `.db` file in a conversations directory. */
 export function listDbCascades(conversationsDir) {
-  try {
-    const out = [];
-    for (const file of readdirSync(conversationsDir)) {
-      if (file.endsWith('.db') && file !== 'db.sqlite') out.push(file.slice(0, -3));
-    }
-    return out;
-  } catch {
-    return [];
+  const out = [];
+  for (const file of readdirSync(conversationsDir)) {
+    if (file.endsWith('.db') && file !== 'db.sqlite') out.push(file.slice(0, -3));
   }
+  return out;
 }
 
 /**
@@ -211,13 +207,7 @@ export function listDbCascades(conversationsDir) {
  * the node:sqlite and sqlite3-CLI backends uniformly.
  */
 export function readDbUsageRecords(conversationsDir, cascadeId) {
-  let rows;
-  try {
-    rows = queryCascadeDb(conversationsDir, cascadeId, 'SELECT idx, hex(data) AS h FROM gen_metadata ORDER BY idx');
-  } catch (error) {
-    if (isSqliteUnavailableError(error)) throw error;
-    return [];
-  }
+  const rows = queryCascadeDb(conversationsDir, cascadeId, 'SELECT idx, hex(data) AS h FROM gen_metadata ORDER BY idx');
   if (!rows.length) return [];
 
   let stepMap = null;
@@ -323,17 +313,11 @@ export function parseStepMetadata(buf) {
 
 /** Read session timing events (user/assistant turns) for a cascade. */
 export function readDbSessionEvents(conversationsDir, cascadeId) {
-  let rows;
-  try {
-    rows = queryCascadeDb(
+  const rows = queryCascadeDb(
       conversationsDir,
       cascadeId,
       'SELECT hex(metadata) AS h FROM steps WHERE metadata IS NOT NULL ORDER BY idx',
     );
-  } catch (error) {
-    if (isSqliteUnavailableError(error)) throw error;
-    return [];
-  }
   const events = [];
   for (const row of rows) {
     if (!row.h) continue;

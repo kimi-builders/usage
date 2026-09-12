@@ -22,12 +22,15 @@ export function buildSyncOutcome(result = {}, zh = false) {
   const base = changed
     ? (zh ? `已上传 ${buckets} 个 buckets、${sessions} 个 sessions。` : `Uploaded ${buckets} buckets and ${sessions} sessions.`)
     : (zh ? '扫描完成，没有新增或变化的用量需要上传。' : 'Scan complete. No new or changed usage needed uploading.');
-  const details = sources.length
+  let details = sources.length
     ? (zh
       ? `检查 ${sources.length} 个 Agent · ${completedSources} 个完成${skippedSources ? ` · ${skippedSources} 个无本地数据` : ''}`
       : `Checked ${sources.length} agents · ${completedSources} complete${skippedSources ? ` · ${skippedSources} without local data` : ''}`)
     : '';
 
+  if (result.compressedBytes > 0) details = [details, zh
+    ? `已确认压缩载荷 ${(result.compressedBytes / 1024).toFixed(1)} KB（不含重试）`
+    : `Acknowledged compressed payload ${(result.compressedBytes / 1024).toFixed(1)} KB (excluding retries)`].filter(Boolean).join(' · ');
   if (problemSources.length) {
     return {
       tone: 'warning',
@@ -51,5 +54,26 @@ export function buildSyncOutcome(result = {}, zh = false) {
     title: changed ? (zh ? '同步成功' : 'Sync successful') : (zh ? '同步完成' : 'Sync complete'),
     text: base,
     details,
+  };
+}
+
+export function describeSyncProgress(progress, zh) {
+  if (!progress || progress.phase === 'preparing') return zh ? '正在准备同步' : 'Preparing sync';
+  if (progress.phase === 'scanning') return zh ? '正在扫描本机来源' : 'Scanning local sources';
+  const batches = zh ? `已确认 ${progress.completedBatches || 0}/${progress.totalBatches || 0} 批` : `${progress.completedBatches || 0}/${progress.totalBatches || 0} batches acknowledged`;
+  if (progress.phase === 'retrying') return `${batches} · ${zh ? `${formatSyncDuration(progress.retryDelayMs, true)}后重试` : `Retrying in ${formatSyncDuration(progress.retryDelayMs, false)}`}`;
+  return [batches, progress.remainingMs > 0 ? (zh ? `预计还需 ${formatSyncDuration(progress.remainingMs, true)}` : `About ${formatSyncDuration(progress.remainingMs, false)} remaining`) : ''].filter(Boolean).join(' · ');
+}
+
+export function buildSyncFailure(status, zh) {
+  return { tone: 'error', title: zh ? '同步失败' : 'Sync failed', text: status?.lastErrorCode === 'authentication_failed'
+    ? (zh ? '设备授权已失效，请重新连接社区后再同步。' : 'Device authorization failed. Reconnect to the community before syncing.')
+    : (zh ? '同步未完成，请查看本机运行日志后重试。' : 'Synchronization did not complete. Check the private local run log and retry.') };
+}
+
+export function syncScopeState(sources = [], policies = {}) {
+  return {
+    syncCount: sources.filter(source => source.mode === 'private').length,
+    dirty: sources.some(source => policies[source.id] !== source.mode),
   };
 }

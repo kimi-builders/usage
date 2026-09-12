@@ -16,7 +16,7 @@ test('generateZshCompletion produces valid zsh completion syntax', () => {
   assert.match(script, /stats:多维用量统计与趋势分析/);
   assert.match(script, /quota:查询 AI 平台订阅额度/);
   assert.match(script, /export:导出本地用量数据/);
-  assert.match(script, /mcode cursor/);
+  assert.match(script, /mcode qoder qoder-cn dsh cursor/);
   assert.match(script, /add-root:添加额外本机数据目录/);
   setLocale('en');
   const english = generateZshCompletion();

@@ -34,6 +34,8 @@ const TOOL_ICONS = {
   opencode: { svg: openCodeMono, tone: 'opencode', label: 'OpenCode' },
   cursor: { svg: cursorMono, tone: 'cursor', label: 'Cursor' },
   qoder: { src: qoderIcon, tone: 'qoder', label: 'Qoder' },
+  'qoder-cn': { src: qoderIcon, tone: 'qoder', label: 'Qoder CN' },
+  dsh: { src: deepseekIcon, tone: 'deepseek', label: 'DeepSeek Harness' },
   trae: { src: traeIcon, tone: 'trae', label: 'Trae' },
   'trae-cli': { src: traeIcon, tone: 'trae', label: 'Trae CLI' },
   grok: { svg: grokMono, tone: 'grok', label: 'Grok CLI' },

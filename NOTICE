@@ -21,14 +21,16 @@ CODE ADAPTATION
 Project:  @vibe-cafe/vibe-usage
 Source:   https://github.com/vibe-cafe/vibe-usage
 License:  MIT, as declared by the upstream package and README
-Audited snapshot: a4967515b770264d61c53cab1a29752bfb31bce6
+Audited snapshot: 850f27dcf1db511b8c48a7ec93a27f77d1b35437
 
 The initial implementations and related tests/fixtures for parts of the parser
 layer were adapted from this project. The affected area includes shared parser
 aggregation patterns and source readers for Kimi Code, Claude Code, Codex,
 OpenCode, Gemini CLI, Antigravity, GitHub Copilot CLI, Cursor, and Roo Code,
 as well as later Pi Coding Agent, ZCode, and WorkBuddy compatibility work,
-including supporting SQLite utilities where applicable.
+including supporting SQLite utilities where applicable. Subsequent adaptations
+include Grok CLI, Trae CLI, MiniMax Code, Qoder/Qoder CN and DeepSeek Harness
+(DSH, session formats V0–V3) readers and corresponding test fixtures.
 
 The adapted code has since been substantially modified for this project,
 including exclusive cache-write/cache-read/reasoning counters, canonical model
