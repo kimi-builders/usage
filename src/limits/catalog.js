@@ -1,4 +1,5 @@
 import { safeLocalPathDisplay } from '../safe-display.js';
+import { regionalCredentialKey } from './providers/coding-plan-common.js';
 
 export const LIMIT_PROVIDER_CATALOG = [
   {
@@ -101,6 +102,42 @@ export const LIMIT_PROVIDER_CATALOG = [
     defaultAuthMode: 'unavailable', authModes: ['unavailable'], dashboardUrl: 'https://www.trae.ai',
     localHint: 'Trae 尚未提供稳定、可验证的个人订阅额度接口。我们不会要求你提交账号密码，也不会显示猜测数据。',
   },
+  {
+    id: 'glm', label: 'GLM / Z.ai', group: 'more', popular: true,
+    description: '个人 Coding Plan 多窗口额度与 MCP', quotaSupport: 'manual', quotaCoverage: 'best-effort',
+    defaultAuthMode: 'environment', authModes: ['environment', 'keychain'],
+    defaultEnvironmentVariable: 'GLM_API_KEY', secretKind: 'Coding Plan API Key', defaultSite: 'china', extraFields: ['site'],
+    dashboardUrl: 'https://bigmodel.cn/coding-plan/personal/usage',
+    sites: {
+      china: { host: 'open.bigmodel.cn', environmentVariable: 'GLM_API_KEY', dashboardUrl: 'https://bigmodel.cn/coding-plan/personal/usage' },
+      international: { host: 'api.z.ai', environmentVariable: 'Z_AI_API_KEY', dashboardUrl: 'https://z.ai/manage-apikey/coding-plan/personal/my-plan' },
+    },
+    localHint: '选择购买套餐的地区，使用该地区的个人 Coding Plan API Key。团队套餐暂不接入；额度单位不是原始 Token。',
+  },
+  {
+    id: 'minimax', label: 'MiniMax', group: 'more', popular: true,
+    description: 'Coding / Token Plan 模型额度与重置时间', quotaSupport: 'manual', quotaCoverage: 'best-effort',
+    defaultAuthMode: 'environment', authModes: ['environment', 'keychain'],
+    defaultEnvironmentVariable: 'MINIMAX_CODING_API_KEY', secretKind: 'Coding / Token Plan API Key', defaultSite: 'china', extraFields: ['site'],
+    dashboardUrl: 'https://platform.minimaxi.com/user-center/payment/coding-plan',
+    sites: {
+      china: { host: 'api.minimaxi.com', environmentVariable: 'MINIMAX_CODING_API_KEY', dashboardUrl: 'https://platform.minimaxi.com/user-center/payment/coding-plan' },
+      international: { host: 'api.minimax.io', environmentVariable: 'MINIMAX_CODING_API_KEY_GLOBAL', dashboardUrl: 'https://platform.minimax.io/user-center/payment/coding-plan' },
+    },
+    localHint: '使用 Coding / Token Plan 专用 Key（通常为 sk-cp-…），不是普通按量 API Key。先读新版接口，仅在同地区回退旧版；不会跨地区重试。',
+  },
+  {
+    id: 'alibaba-coding', label: 'Alibaba Coding Plan', group: 'more', popular: true,
+    description: '百炼 Coding Plan 的 5 小时、每周与每月请求额度', quotaSupport: 'manual', quotaCoverage: 'best-effort',
+    defaultAuthMode: 'environment', authModes: ['environment', 'keychain'],
+    defaultEnvironmentVariable: 'ALIBABA_CODING_PLAN_COOKIE', secretKind: 'Bailian Session Cookie', defaultSite: 'china', extraFields: ['site'],
+    dashboardUrl: 'https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan',
+    sites: {
+      china: { host: 'bailian.console.aliyun.com', environmentVariable: 'ALIBABA_CODING_PLAN_COOKIE', dashboardUrl: 'https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan' },
+      international: { host: 'modelstudio.console.alibabacloud.com', environmentVariable: 'ALIBABA_CODING_PLAN_COOKIE_GLOBAL', dashboardUrl: 'https://modelstudio.console.alibabacloud.com/ap-southeast-1/?tab=coding-plan#/efm/coding_plan' },
+    },
+    localHint: '使用对应地区百炼控制台的 Cookie，只读查询 Coding Plan。普通 DashScope API Key 不能代替控制台登录；新版个人/团队 Token Plan 暂不接入。',
+  },
 ];
 
 export const LIMIT_PROVIDER_IDS = LIMIT_PROVIDER_CATALOG.map((provider) => provider.id);
@@ -111,6 +148,7 @@ export const LIMIT_ENTITLEMENT_TYPES = ['unknown', 'paid', 'free', 'promotion', 
 export const DEFAULT_LIMIT_PROVIDER_ORDER = [
   'kimi-code', 'codex', 'claude-code', 'cursor', 'copilot', 'antigravity',
   'kiro', 'deepseek', 'opencode', 'qoder', 'warp', 'jetbrains-ai', 'trae',
+  'glm', 'minimax', 'alibaba-coding',
 ];
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -121,7 +159,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     enabled: false,
     authMode: provider.defaultAuthMode,
     environmentVariable: provider.defaultEnvironmentVariable || '',
-    customPath: '', workspaceId: '', site: 'international',
+    customPath: '', workspaceId: '', site: provider.defaultSite || 'international',
     accounts: [], activeAccountId: '',
     entitlementType: 'unknown',
     subscriptionPrice: null, subscriptionCurrency: 'usd', billingCycle: 'monthly', renewsAt: '',
@@ -235,20 +273,24 @@ export function normalizeLimitSettings(value) {
     const accounts = normalizeAccounts(candidate, provider, legacySubscription);
     const subscription = provider.id === 'opencode' ? normalizeSubscription(null) : legacySubscription;
     const activeAccountId = safeAccountId(candidate?.activeAccountId);
+    const site = ['china', 'international'].includes(candidate?.site) ? candidate.site : provider.defaultSite || 'international';
     providers[provider.id] = {
       enabled: provider.quotaSupport !== 'unavailable' && candidate?.enabled === true,
       authMode,
-      environmentVariable: safeText(candidate?.environmentVariable || provider.defaultEnvironmentVariable, 80),
+      environmentVariable: safeText(candidate?.environmentVariable || provider.sites?.[site]?.environmentVariable || provider.defaultEnvironmentVariable, 80),
       customPath: safeText(candidate?.customPath, 1_024),
       // Only persist the non-secret wrk_ identifier. This intentionally drops
       // cookies accidentally pasted into the old Workspace field.
       workspaceId: provider.id === 'opencode' ? safeWorkspaceId(candidate?.workspaceId) : safeText(candidate?.workspaceId, 240),
-      site: candidate?.site === 'china' ? 'china' : 'international',
+      site,
       accounts,
       activeAccountId: accounts.some((account) => account.id === activeAccountId)
         ? activeAccountId
         : accounts[0]?.id || '',
       ...subscription,
+      ...(provider.sites ? { regionSubscriptions: Object.fromEntries(['china', 'international'].map(region => [region,
+        region === site ? subscription : normalizeSubscription(candidate?.regionSubscriptions?.[region]),
+      ])) } : {}),
     };
   }
   const refreshMinutes = Number(input.refreshMinutes);
@@ -291,7 +333,9 @@ export function publicLimitSettings(settings, {
     keychainAvailable,
     catalog: normalized.providerOrder.map((id) => catalogById.get(id)).filter(Boolean).map((provider) => ({
       ...provider,
-      hasSecret: hasSecret(provider.id),
+      dashboardUrl: provider.sites?.[providers[provider.id]?.site]?.dashboardUrl || provider.dashboardUrl,
+      hasSecret: hasSecret(regionalCredentialKey(provider.id, providers[provider.id])),
+      ...(provider.sites ? { siteSecrets: Object.fromEntries(['china', 'international'].map(site => [site, hasSecret(regionalCredentialKey(provider.id, { site }))])) } : {}),
       accountCount: providers[provider.id]?.accounts?.length || 0,
       supportsKeychain: keychainAvailable && provider.authModes.includes('keychain'),
       detection: detections[provider.id] || {

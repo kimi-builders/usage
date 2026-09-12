@@ -47,6 +47,7 @@ Source:     https://github.com/steipete/CodexBar
 License:    MIT
 Copyright:  Copyright (c) 2026 Peter Steinberger
 Audited snapshot: 211781be7b815cbd93d676a83ab6e7fbb22c9ded
+Additional Coding Plan review: f9bc62c344b3ba5fa758632c94a5c43af8fae90e (2026-09-12)
 
 Provider-specific endpoint knowledge, request shapes, response mapping, local
 credential discovery, and related test cases in the subscription-limit layer
@@ -54,6 +55,13 @@ were adapted or reimplemented from CodexBar's provider integrations. This
 particularly applies to Codex, Claude, Cursor, GitHub Copilot, OpenCode Go,
 Kiro, Qoder, Warp, Antigravity, DeepSeek, and JetBrains AI where the
 corresponding source exists upstream.
+
+The later GLM / Z.ai, MiniMax Coding / Token Plan, and Alibaba Coding Plan
+integrations adapt endpoint/request shapes and sanitized quota fixtures from
+the corresponding CodexBar providers. They retain separate quota units, omit
+unverifiable capacity, isolate region-specific credentials/history, and do not
+copy cross-region credential retries or custom endpoint overrides. Alibaba's
+new personal/team Token Plan and GLM team scopes are not included.
 
 The implementation here translates those provider facts into JavaScript and a
 different normalized quota contract, then adds a provider allowlist, loopback-

@@ -265,7 +265,7 @@ export function buildPortfolioReview(providers, now = Date.now()) {
     isPaidProvider(provider) && provider.renewalReview?.configured && provider.renewalReview.daysRemaining <= 30
   )).sort((left, right) => left.renewalReview.daysRemaining - right.renewalReview.daysRemaining);
   const paidWithoutLocalUsage = providers.filter((provider) => (
-    isPaidProvider(provider) && provider.subscription.monthlyPrice != null && provider.recentTotals.totalTokens === 0
+    provider.localAttributionAvailable !== false && isPaidProvider(provider) && provider.subscription.monthlyPrice != null && provider.recentTotals.totalTokens === 0
   ));
   const paidProviders = providers.filter(isPaidProvider);
   const benefitProviders = providers.filter((provider) => (

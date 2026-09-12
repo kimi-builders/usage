@@ -4,6 +4,8 @@ import {
 } from './subscription-review.js';
 
 const PROVIDER_SOURCES = {
+  // A model name or Agent does not establish which Coding Plan paid for it.
+  glm: [], minimax: [], 'alibaba-coding': [],
   'kimi-code': ['kimi-code'],
   codex: ['codex'],
   'claude-code': ['claude-code'],
@@ -128,11 +130,16 @@ function evidenceClock(usageObservedAt, quotaObservedAt) {
 function inferredWindowSeconds(window) {
   const provided = finite(window.windowSeconds);
   if (provided > 0) return provided;
+  // Explicit null means the provider could not establish the cycle duration.
+  // Keep that fact through current/history joins instead of guessing it anew.
+  if (Object.prototype.hasOwnProperty.call(window, 'windowSeconds')) return null;
   const value = `${window.id || ''} ${window.label || ''}`.toLowerCase();
+  // Legacy labels may identify fixed periods, but a calendar/billing month has
+  // no fixed length. Only a provider-reported duration can define that window.
+  if (/month|月度|每月/.test(value)) return null;
   if (/5\s*(小时|hour|hr)|five/.test(value)) return 5 * 3_600;
   if (/day|每日|daily/.test(value)) return DAY_SECONDS;
   if (/week|每周|7\s*(天|day)/.test(value)) return 7 * DAY_SECONDS;
-  if (/month|月度|每月/.test(value)) return MONTH_SECONDS;
   return null;
 }
 
@@ -715,6 +722,7 @@ function decisionSignals(provider) {
     signals.push({
       code: 'quota-unobservable', tone: 'info',
       bestEffort: provider.quotaObservation.bestEffort,
+      localAttributionAvailable: provider.localAttributionAvailable,
       localTokens: provider.lifetimeTotals.totalTokens,
     });
   } else if (provider.quotaObservation?.state === 'historical') {
@@ -855,12 +863,13 @@ export function buildSubscriptionInsights(snapshot, limits, {
     const primaryWindow = [...enrichedWindows]
       .filter((window) => window.estimatedCapacityTokens != null && window.windowSeconds)
       .sort((left, right) => right.windowSeconds - left.windowSeconds)[0] || null;
+    const localAttributionAvailable = attribution.kind !== 'source' || sources.size > 0;
     const economics = {
       apiEquivalentUsd: recentTotals.costMicros / 1_000_000,
       costPerMillionTokens: monthlyPrice != null && recentTotals.totalTokens > 0
         ? monthlyPrice / recentTotals.totalTokens * 1_000_000
         : null,
-      valueRatio: monthlyPrice > 0 && (subscription.subscriptionCurrency || 'usd') === 'usd'
+      valueRatio: localAttributionAvailable && monthlyPrice > 0 && (subscription.subscriptionCurrency || 'usd') === 'usd'
         ? (recentTotals.costMicros / 1_000_000) / monthlyPrice
         : null,
     };
@@ -868,6 +877,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
       ...provider,
       dashboardUrl: catalogById.get(provider.id)?.dashboardUrl || null,
       sources: [...sources],
+      localAttributionAvailable,
       attribution,
       lifetimeTotals,
       recentTotals,

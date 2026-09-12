@@ -106,7 +106,24 @@ CSP 和 no-store 响应。Token 分析始终离线。只有用户点击相应控
   `https://codewhisperer.us-east-1.amazonaws.com/` 的
   `AmazonCodeWhispererService.GetUsageLimits`。工具不执行 Kiro CLI、不接管令牌续期；登录过期时
   由用户运行 `kiro-cli login`。奖励 Credits 无法和套餐可靠拆分时不会猜测套餐余额；
+- GLM / Z.ai：按所选地区，使用个人 Coding Plan Key 请求
+  `https://open.bigmodel.cn/api/monitor/usage/quota/limit` 或
+  `https://api.z.ai/api/monitor/usage/quota/limit`；不添加组织请求头、不查询团队或附加分析接口；
+- MiniMax：按所选地区请求 `https://api.minimaxi.com/v1/token_plan/remains` 或
+  `https://api.minimax.io/v1/token_plan/remains`。仅在 404 或认证失败时回退同一域名的
+  `/v1/api/openplatform/coding_plan/remains`；凭据不跟随重定向；
+- 百炼 Coding Plan：用户明确提供的控制台 Cookie 仅发送给所选地区的
+  `https://bailian.console.aliyun.com` 或 `https://modelstudio.console.alibabacloud.com`
+  控制台页面，必要时查询 `/tool/user/info.json` 获取控制台 SEC Token；随后向
+  `https://bailian-cs.console.aliyun.com/data/api.json`（中国）或
+  `https://bailian-singapore-cs.alibabacloud.com/data/api.json`（国际）发送只读的
+  `queryCodingPlanInstanceInfoV2` POST。不自动提取浏览器 Cookie、不接受任意端点替换，
+  不购买套餐，也不请求新版 Token Plan 接口；
 - JetBrains AI：不联网，只读取最新的本地 IDE 额度文件。
+
+这三个地区型 Coding Plan 的钥匙串凭据、用户填写的价格按地区独立保存；不跨地区重试。
+额度历史使用凭据与地区的单向指纹隔离；更换 Key/Cookie 会开始新的历史序列。
+凭据、原始额度响应和额度历史均不会上传社区。
 
 Trae 会显示在配置目录中，但当前版本没有稳定、可独立验证的订阅额度接口，因此保持禁用。
 仅在设置中看到某个平台不会触发连接。

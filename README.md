@@ -256,9 +256,14 @@ Codex、Antigravity、Pi、Grok 与 Trae CLI 支持在“本机与数据源”�
 Collector 才会复用该平台的本机登录或读取你指定的凭据并发起查询。
 
 当前支持 Codex、Claude Code、Kimi Code、Cursor、GitHub Copilot、Antigravity、Kiro、
-DeepSeek、OpenCode Go、Qoder、Warp 与 JetBrains AI。不同平台支持自动检测、
+DeepSeek、OpenCode Go、Qoder、Warp、JetBrains AI、GLM / Z.ai、MiniMax 与百炼 Coding Plan。不同平台支持自动检测、
 环境变量或 macOS 钥匙串中的一种或多种方式。Trae 暂无稳定且可独立验证的个人额度接口，
 因此只显示“暂不可查”，不会生成猜测数据。
+
+**连接 GLM、MiniMax 或百炼：** 进入“权益设置 → 全部平台”，展开对应卡片，选择购买套餐的
+地区并按卡片说明填写凭据；保存后会出现在“已检测”。GLM、MiniMax 使用套餐 API Key，百炼
+Coding Plan 使用控制台 Cookie。详见[三平台连接指南](./docs/CODING_PLAN_SETUP.md)。
+它们目前只展示官方额度，不凭模型名把本机 Token 强行算进某份订阅。
 
 Gemini CLI 的个人版 OAuth 权益入口已由 Google 退役，因此不再作为权益 Provider；已有的
 Gemini CLI 本机 Token 历史仍由离线 Parser 保留。Antigravity 会优先复用已经运行并登录的

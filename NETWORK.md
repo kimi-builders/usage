@@ -132,7 +132,25 @@ points; only a fresh provider refresh can append a sanitized observation.
   Kiro CLI or take ownership of token refresh; an expired login must be renewed with
   `kiro-cli login`. When bonus credits cannot be separated reliably, no plan balance
   is guessed;
+- GLM / Z.ai: the selected region uses `https://open.bigmodel.cn/api/monitor/usage/quota/limit`
+  or `https://api.z.ai/api/monitor/usage/quota/limit` with the personal Coding Plan key;
+  no organization headers, team scopes, or optional analytics requests;
+- MiniMax: the selected region uses `https://api.minimaxi.com/v1/token_plan/remains`
+  or `https://api.minimax.io/v1/token_plan/remains`. Only 404/authentication failures may
+  retry `/v1/api/openplatform/coding_plan/remains` on that same host. Keys never follow redirects;
+- Alibaba Coding Plan: the explicitly supplied console Cookie goes to the selected
+  `https://bailian.console.aliyun.com` or `https://modelstudio.console.alibabacloud.com`
+  dashboard and, if needed, `/tool/user/info.json` to obtain its console SEC token.
+  A read-only `queryCodingPlanInstanceInfoV2` POST then goes to
+  `https://bailian-cs.console.aliyun.com/data/api.json` (China) or
+  `https://bailian-singapore-cs.alibabacloud.com/data/api.json` (international).
+  No browser-cookie extraction, arbitrary endpoint overrides, purchases, or Token Plan requests;
 - JetBrains AI: no network; the latest local IDE quota file is read.
+
+The three regional Coding Plan integrations keep Keychain credentials and declared prices
+separate by region. Switching region does not retry credentials against another host.
+Quota history uses a one-way credential/region fingerprint; rotation starts a new series.
+No credentials, raw quota responses, or quota history are uploaded to the community.
 Trae is visible in the setup catalog but disabled because this version has no
 stable, independently verifiable subscription-quota interface for it. Merely
 showing a provider in settings never causes a connection.

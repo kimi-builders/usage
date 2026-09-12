@@ -25,11 +25,18 @@ import { fetchKiroLimits, loadKiroCredentials } from './providers/kiro.js';
 import { fetchOpenCodeGoLimits } from './providers/opencode.js';
 import { fetchQoderLimits } from './providers/qoder.js';
 import { fetchWarpLimits } from './providers/warp.js';
+import { fetchGlmLimits } from './providers/glm.js';
+import { fetchMiniMaxLimits } from './providers/minimax.js';
+import { fetchAlibabaCodingLimits } from './providers/alibaba-coding.js';
+import { REGIONAL_PLAN_IDS, regionalCredentialKey } from './providers/coding-plan-common.js';
 import { loadLimitHistory, recordLimitSnapshot } from './history.js';
 import { assertProviderContract } from './contract.js';
 import { safeLocalPathDisplay } from '../safe-display.js';
 
 const FETCHERS = {
+  glm: fetchGlmLimits,
+  minimax: fetchMiniMaxLimits,
+  'alibaba-coding': fetchAlibabaCodingLimits,
   codex: fetchCodexLimits,
   'claude-code': fetchClaudeLimits,
   'kimi-code': fetchKimiLimits,
@@ -58,6 +65,7 @@ function providerError(provider, error) {
     id: provider.id,
     label: provider.label,
     status: 'error',
+    ...(REGIONAL_PLAN_IDS.includes(provider.id) && /^[a-f0-9]{32}$/.test(error?.accountId || '') ? { accountId: error.accountId } : {}),
     error: {
       code: knownCodes.has(error?.code) ? error.code : 'provider_error',
       message: {
@@ -200,7 +208,7 @@ export function getPublicLimitSettings(config = loadConfig(), options = {}) {
       const providerId = String(credentialKey || '').split(':', 1)[0];
       return keychainProviders.has(providerId) && Boolean(readSecret(credentialKey));
     });
-  const secretStates = Object.fromEntries(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id, hasSecret(provider.id)]));
+  const secretStates = Object.fromEntries(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id, hasSecret(regionalCredentialKey(provider.id, settings.providers[provider.id]))]));
   const detections = options.detections || Object.fromEntries(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id,
     providerDetection(provider, settings.providers[provider.id], {
       environment, hasKeychainSecret: secretStates[provider.id], hasSecret,
@@ -241,10 +249,11 @@ export function saveLimitSettings(payload, {
   const clearAccountSecrets = new Set(Array.isArray(payload?.clearAccountSecrets)
     ? payload.clearAccountSecrets : []);
   for (const provider of LIMIT_PROVIDER_CATALOG) {
-    if (clearSecrets.has(provider.id)) deleteSecret(provider.id);
+    const credentialKey = regionalCredentialKey(provider.id, settings.providers[provider.id]);
+    if (clearSecrets.has(provider.id)) deleteSecret(credentialKey);
     if (typeof secrets[provider.id] === 'string' && secrets[provider.id].trim()) {
       if (!provider.authModes.includes('keychain')) throw new Error(`${provider.label} 不支持手动钥匙串凭据。`);
-      writeSecret(provider.id, secrets[provider.id]);
+      writeSecret(credentialKey, secrets[provider.id]);
     }
     const priorAccounts = new Set(current.providers[provider.id]?.accounts?.map((account) => account.id) || []);
     const nextAccounts = new Set(settings.providers[provider.id]?.accounts?.map((account) => account.id) || []);
@@ -411,6 +420,7 @@ async function fetchEnabled(settings, options = {}) {
       });
       return {
         ...assertProviderContract(provider.id, result),
+        ...(REGIONAL_PLAN_IDS.includes(provider.id) && /^[a-f0-9]{32}$/.test(result.accountId || '') ? { accountId: result.accountId } : {}),
         label: provider.label,
         quotaCoverage: provider.quotaCoverage || 'supported',
       };

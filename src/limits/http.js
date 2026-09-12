@@ -15,6 +15,10 @@ export const LIMIT_ALLOWED_HOSTS = new Set([
   'qoder.com',
   'qoder.com.cn',
   'api.deepseek.com',
+  'open.bigmodel.cn', 'api.z.ai',
+  'api.minimaxi.com', 'api.minimax.io',
+  'bailian.console.aliyun.com', 'modelstudio.console.alibabacloud.com',
+  'bailian-cs.console.aliyun.com', 'bailian-singapore-cs.alibabacloud.com',
   'codewhisperer.us-east-1.amazonaws.com',
 ]);
 

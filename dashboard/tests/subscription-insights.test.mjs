@@ -56,6 +56,36 @@ test('does not expose an official usage link when the trusted catalog has none',
   assert.equal(result.providers[0].dashboardUrl, null);
 });
 
+test('monthly labels never invent duration, while explicit unknown durations stay unknown', () => {
+  for (const label of ['Monthly', 'Calendar month', '每月', '月度', '每月 / 30 days', '5 hours', 'Weekly']) {
+    const value = structuredClone(limits);
+    value.providers[0].windows[0] = { ...value.providers[0].windows[0], id: 'monthly', label, windowSeconds: null };
+    const window = buildSubscriptionInsights(snapshot, value).providers[0].windows[0];
+    assert.equal(window.windowSeconds, null, label);
+    assert.equal(window.pace, null, label);
+    assert.equal(window.localObserved, false, label);
+    assert.equal(window.estimatedCapacityTokens, null, label);
+  }
+  const legacy = structuredClone(limits);
+  legacy.providers[0].windows[0] = { ...legacy.providers[0].windows[0], id: 'monthly', label: 'Monthly' };
+  delete legacy.providers[0].windows[0].windowSeconds;
+  assert.equal(buildSubscriptionInsights(snapshot, legacy).providers[0].windows[0].windowSeconds, null);
+});
+
+test('supplier-reported month durations preserve 28, 29, 30 and 31-day periods without rounding to 30', () => {
+  for (const days of [28, 29, 30, 31]) {
+    const value = structuredClone(limits);
+    const seconds = days * 86400;
+    value.providers[0].windows[0] = { ...value.providers[0].windows[0],
+      id: 'monthly', label: 'Monthly', windowSeconds: seconds,
+      resetsAt: new Date(Date.parse(generatedAt) + seconds / 2 * 1000).toISOString(),
+    };
+    const window = buildSubscriptionInsights(snapshot, value).providers[0].windows[0];
+    assert.equal(window.windowSeconds, seconds);
+    assert.equal(window.pace.elapsedFraction, 0.5);
+  }
+});
+
 test('preserves provider-reported Token totals as facts instead of estimates', () => {
   const value = structuredClone(limits);
   value.providers[0].windows[0].unit = 'tokens';

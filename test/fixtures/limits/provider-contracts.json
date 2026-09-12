@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "sanitized": true,
-  "lastReviewedAt": "2026-09-05",
+  "lastReviewedAt": "2026-09-12",
   "providers": [
     {
       "id": "codex",
@@ -180,6 +180,39 @@
       "invalidInput": "<application/>",
       "invalidBehavior": "throws",
       "expected": { "status": "ok", "windowIds": ["credits"], "remainingPercents": [88] }
+    },
+    {
+      "id": "glm",
+      "upstreamShape": "Z.ai / BigModel personal monitor quota limits",
+      "input": { "success": true, "code": 200, "data": { "planName": "Pro", "limits": [
+        { "type": "TOKENS_LIMIT", "unit": 3, "number": 5, "percentage": 25 },
+        { "type": "CREDIT_LIMIT", "unit": 6, "number": 1, "percentage": 60 },
+        { "type": "TIME_LIMIT", "unit": 5, "number": 1, "percentage": 22, "usage": 1000, "currentValue": 224, "remaining": 776 }
+      ] } },
+      "invalidInput": {}, "invalidBehavior": "throws",
+      "expected": { "status": "ok", "windowIds": ["plan-3-5", "credits-6-1", "mcp-5-1"], "remainingPercents": [75, 40, 77.6] }
+    },
+    {
+      "id": "minimax",
+      "upstreamShape": "Token Plan remains percentage-only response; count zeros are placeholders",
+      "input": { "base_resp": { "status_code": 0 }, "data": { "current_subscribe_title": "Token Plan Plus", "model_remains": [
+        { "model_name": "general", "current_interval_total_count": 0, "current_interval_usage_count": 0,
+          "current_interval_remaining_percent": "96", "current_weekly_total_count": 0, "current_weekly_usage_count": 0,
+          "current_weekly_remaining_percent": "99", "weekly_boost_permille": 1500 }
+      ] } },
+      "invalidInput": {}, "invalidBehavior": "throws",
+      "expected": { "status": "ok", "windowIds": ["0feae16d55365acf07fe-interval", "0feae16d55365acf07fe-weekly"], "remainingPercents": [96, 99] }
+    },
+    {
+      "id": "alibaba-coding",
+      "upstreamShape": "Console queryCodingPlanInstanceInfoV2 request quotas",
+      "input": { "status_code": 0, "data": {
+        "codingPlanInstanceInfos": [{ "planName": "Pro" }],
+        "codingPlanQuotaInfo": { "per5HourUsedQuota": 20, "per5HourTotalQuota": 100,
+          "perWeekUsedQuota": 120, "perWeekTotalQuota": 1000, "perBillMonthUsedQuota": 500, "perBillMonthTotalQuota": 10000 }
+      } },
+      "invalidInput": {}, "invalidBehavior": "throws",
+      "expected": { "status": "ok", "windowIds": ["rolling", "weekly", "monthly"], "remainingPercents": [80, 88, 95] }
     },
     {
       "id": "trae",

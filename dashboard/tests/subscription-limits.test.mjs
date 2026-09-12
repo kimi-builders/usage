@@ -4,6 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
+import { parseAlibabaCodingQuota } from '../../src/limits/providers/alibaba-coding.js';
+import { assertProviderContract } from '../../src/limits/contract.js';
+import { compactLimitHistory } from '../../src/limits/history.js';
+import { buildBenefitCapacityOverview, buildSubscriptionInsights } from '../src/subscription-insights.js';
 
 let module;
 let utils;
@@ -140,6 +144,84 @@ test('English benefits center does not leak built-in Chinese provider copy', () 
   assert.match(markup, />Weekly</);
   assert.match(markup, /Kimi Web token/);
   assert.doesNotMatch(markup, /[\u3400-\u9fff]/u);
+});
+
+test('regional plans show unlinked evidence, not zero usage or zero value, including query failures', () => {
+  const generatedAt = new Date().toISOString();
+  for (const id of ['glm', 'minimax', 'alibaba-coding']) {
+    for (const status of ['ok', 'error']) {
+      for (const zh of [true, false]) {
+        const markup = renderToStaticMarkup(createElement(module.SubscriptionCenter, {
+          data: { enabled: true, generatedAt, providers: [{
+            id, label: id, status, updatedAt: generatedAt,
+            error: status === 'error' ? { code: 'unauthorized' } : null,
+            windows: status === 'ok' ? [{
+              id: 'primary', label: '5 hours', usedPercent: 25, remainingPercent: 75,
+              windowSeconds: 18000, resetsAt: new Date(Date.now() + 3600000).toISOString(),
+            }] : [],
+          }], history: { observations: [] } },
+          usageData: { generatedAt, buckets: [] },
+          settings: { providers: { [id]: { entitlementType: 'unknown' } } },
+          onRefresh: () => {}, onSettings: () => {}, view: 'accounts', zh,
+        }));
+        assert.match(markup, zh ? /本机累计 TOKEN<\/dt><dd>未关联/ : /LOCAL LIFETIME TOKENS<\/dt><dd>Unlinked/);
+        assert.match(markup, zh ? /近 30 天 API 等价价值<\/dt><dd>—/ : /30D API EQUIVALENT<\/dt><dd>—/);
+        assert.match(markup, zh ? /近 30 天 TOKEN<\/span><strong>—/ : /30D TOKENS<\/span><strong>—/);
+        assert.doesNotMatch(markup, /0 local Tokens still contribute|0 Token 仍参与|0 local tokens/);
+        if (status === 'ok') assert.match(markup, zh ? /本机观测用量<\/span><strong>—/ : /LOCAL USAGE OBSERVED<\/span><strong>—/);
+        if (!zh) assert.doesNotMatch(markup, /[\u3400-\u9fff]/u);
+      }
+    }
+  }
+});
+
+test('Alibaba calendar-month quota stays unknown-duration through parser, contract, history, insights and UI', () => {
+  // February (including leap years), 30-day and 31-day months; no wall-clock
+  // assumptions or label-derived duration may be added by any downstream layer.
+  for (const [observedAt, resetsAt] of [
+    ['2026-02-14T12:00:00Z', '2026-03-01T00:00:00Z'],
+    ['2028-02-14T12:00:00Z', '2028-03-01T00:00:00Z'],
+    ['2026-04-14T12:00:00Z', '2026-05-01T00:00:00Z'],
+    ['2026-07-14T12:00:00Z', '2026-08-01T00:00:00Z'],
+  ]) {
+    const now = new Date(observedAt);
+    const parsed = parseAlibabaCodingQuota({ status_code: 0, data: {
+      codingPlanInstanceInfos: [{ status: 'VALID', planName: 'Pro' }],
+      codingPlanQuotaInfo: { perBillMonthUsedQuota: 200, perBillMonthTotalQuota: 1000,
+        perBillMonthQuotaNextRefreshTime: resetsAt },
+    } }, { now });
+    const provider = assertProviderContract('alibaba-coding', parsed);
+    assert.equal(provider.windows[0].windowSeconds, null);
+    const history = { observations: compactLimitHistory([
+      { observedAt, providers: [provider] },
+    ], { now: now.getTime() }) };
+    const data = { enabled: true, generatedAt: observedAt, providers: [provider], history };
+    const usageData = { generatedAt: observedAt, buckets: [] };
+    const insight = buildSubscriptionInsights(usageData, data);
+    const window = insight.providers[0].windows[0];
+    assert.equal(window.windowSeconds, null);
+    assert.equal(window.observedFrom, null);
+    assert.equal(window.pace, null);
+    assert.equal(window.estimatedCapacityTokens, null);
+    assert.equal(window.historyPoints[0].windowSeconds, null);
+    assert.equal(window.cycleStats.sampledCycles, 0);
+    assert.equal(buildBenefitCapacityOverview(insight.providers, now.getTime()).resetRows[0].elapsedPercent, null);
+    assert.equal(insight.providers[0].decisionSignals.some(s => s.code.startsWith('pace-')), false);
+    const historical = buildSubscriptionInsights(usageData, {
+      ...data, providers: [{ ...provider, status: 'error', windows: [], error: { code: 'unauthorized' } }],
+    }).providers[0].windows[0];
+    assert.equal(historical.windowSeconds, null);
+    assert.equal(historical.pace, null);
+    for (const zh of [true, false]) {
+      const markup = renderToStaticMarkup(createElement(module.SubscriptionCenter, {
+        data, usageData, settings: { providers: { 'alibaba-coding': {} } },
+        onRefresh: () => {}, onSettings: () => {}, view: 'accounts', zh,
+      }));
+      assert.match(markup, zh ? /每月/ : /Monthly/);
+      assert.match(markup, /80%/);
+      assert.doesNotMatch(markup, /720\s*h\s*window|May hit the limit early|Quota is underused|可能提前触顶|额度较为充裕/);
+    }
+  }
 });
 
 test('DeepSeek renders official money separately from cross-Agent local model usage', () => {

@@ -8,7 +8,7 @@ import { moveEnabledProvider, reorderEnabledProviders } from './provider-order.j
 import {
   ENTITLEMENT_TYPES, entitlementBadge, entitlementLabel, entitlementNote,
   hasEnteredSecrets, idSegment, isValidOpenCodeWorkspaceId, localizedCount,
-  quotaErrorMessage, quotaProviderCatalogCopy,
+  quotaErrorMessage, quotaProviderCatalogCopy, regionalProviderPatch, regionalDraftDetection, quotaSaveFailures,
 } from './subscription-limits-utils.js';
 
 /* 权益设置弹窗(20260816 自 SubscriptionLimits.jsx 拆出,只导出组件) */
@@ -41,6 +41,16 @@ function authLabel(mode, zh) {
 }
 
 function SetupSteps({ provider, zh }) {
+  if (provider?.sites && provider.id !== 'alibaba-coding') return <div className="provider-setup-steps"><b>{zh ? '连接个人套餐' : 'Connect a personal plan'}</b><ol>
+    <li>{zh ? '先选择与你购买套餐一致的地区。' : 'Select the region where you purchased the plan.'}</li>
+    <li><a href={provider.dashboardUrl} target="_blank" rel="noreferrer">{zh ? '打开官方用量页并创建/复制套餐 API Key' : 'Open official usage and create/copy a plan API key'}<ExternalLink size={11}/></a></li>
+    <li>{zh ? '在下方安全粘贴 Key，或填写已配置的环境变量名，再保存验证。无需密码，不会上传到社区。' : 'Paste the key securely below or select a configured environment variable, then save to verify. No password is needed and nothing is uploaded to the community.'}</li>
+  </ol></div>;
+  if (provider?.id === 'alibaba-coding') return <div className="provider-setup-steps"><b>{zh ? '连接百炼控制台会话' : 'Connect a Bailian console session'}</b><ol>
+    <li><a href={provider.dashboardUrl} target="_blank" rel="noreferrer">{zh ? '打开所选地区的 Coding Plan 用量页' : 'Open Coding Plan usage in the selected region'}<ExternalLink size={11}/></a></li>
+    <li>{zh ? '开发者工具 → 网络，刷新页面，找到 queryCodingPlanInstanceInfoV2 请求。' : 'In DevTools → Network, refresh and find the queryCodingPlanInstanceInfoV2 request.'}</li>
+    <li>{zh ? '复制该请求的 Cookie 请求头或 cURL，粘贴到凭据框；不要填写 DashScope API Key。会话过期后需要重新复制。' : 'Copy its Cookie header or cURL into the credential field, not a DashScope API key. Copy a fresh cookie when the session expires.'}</li>
+  </ol></div>;
   if (!provider || !['opencode', 'qoder', 'cursor'].includes(provider.id)) return null;
   if (provider.id === 'opencode') return <div className="provider-setup-steps"><b>{zh ? '两种连接方式，按账户任选一种' : 'Choose one connection method per account'}</b><ol>
     <li>{zh ? 'API Key：粘贴 OpenCode Go API Key，不需要 Workspace ID。' : 'API Key: paste an OpenCode Go API key; no Workspace ID is needed.'}</li>
@@ -192,15 +202,28 @@ function OpenCodeGoConnectionPanel({
 function StandardProviderConfig({
   provider, item, updateProvider, secrets, setSecrets, clearSecrets, setClearSecrets, zh,
 }) {
+  const selectedSite = provider.sites?.[item.site];
+  provider = { ...provider, dashboardUrl: selectedSite?.dashboardUrl || provider.dashboardUrl,
+    hasSecret: provider.siteSecrets?.[item.site] ?? provider.hasSecret };
+  const secretPlaceholder = provider.sites && provider.id !== 'alibaba-coding'
+    ? (zh ? '粘贴此地区的套餐 API Key' : 'Paste this region’s plan API key')
+    : (zh ? '粘贴 Cookie、Token 或 cURL 片段' : 'Paste cookie, token, or cURL snippet');
+  const changeSite = (site) => {
+    updateProvider(provider.id, regionalProviderPatch(provider, item, site));
+    // A draft pasted for one region must not be saved under another region.
+    setSecrets(current => ({ ...current, [provider.id]: '' }));
+    setClearSecrets(current => current.filter(id => id !== provider.id));
+  };
   return <>
     <p>{provider.localHint}</p>
+    {provider.sites ? <label className="provider-region-field"><span>{zh ? '套餐地区' : 'Plan region'}</span><select value={item.site} onChange={event => changeSite(event.target.value)}>{Object.entries(provider.sites).map(([site, value]) => <option value={site} key={site}>{value.host} · {site === 'china' ? (zh ? '中国站' : 'China') : (zh ? '国际站' : 'International')}</option>)}</select><small>{zh ? '各地区凭据独立保存，不会跨地区重试；切换地区会清空尚未保存的凭据输入。' : 'Credentials are stored separately by region, with no cross-region retries. Switching clears unsaved credential input.'}</small></label> : null}
     {provider.authModes.length > 1 ? <div className="provider-auth-modes" role="radiogroup" aria-label={zh ? '凭据来源' : 'Credential source'}>{provider.authModes.map((mode) => <button type="button" role="radio" aria-checked={item.authMode === mode} className={item.authMode === mode ? 'active' : ''} onClick={() => updateProvider(provider.id, { authMode: mode })} disabled={mode === 'keychain' && !provider.supportsKeychain} key={mode}>{item.authMode === mode ? <Check size={11}/> : null}{authLabel(mode, zh)}</button>)}</div> : null}
     <SetupSteps provider={provider} zh={zh}/>
     <div className="provider-auth-fields">
       {item.authMode === 'environment' ? <label><span>{zh ? '环境变量名（凭据内容不要填在这里）' : 'Environment variable name—not the secret itself'}</span><input value={item.environmentVariable} onChange={(event) => updateProvider(provider.id, { environmentVariable: event.target.value })} placeholder={provider.defaultEnvironmentVariable || 'TOKEN'}/><small>{zh ? `在启动看板前设置 ${item.environmentVariable || provider.defaultEnvironmentVariable}，保存后会自动验证。` : 'Set this variable before starting the dashboard; saving will verify it.'}</small></label> : null}
-      {item.authMode === 'keychain' ? <label><span>{secretLabel(provider, zh)}</span><input type="password" autoComplete="off" spellCheck="false" value={secrets[provider.id] || ''} onChange={(event) => setSecrets((current) => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.hasSecret ? (zh ? '已安全保存 · 留空保持不变' : 'Saved securely · leave blank to keep') : (zh ? '粘贴 Cookie、Token 或 cURL 片段' : 'Paste cookie, token, or cURL snippet')} disabled={!provider.supportsKeychain}/><small>{zh ? '只会提交给 127.0.0.1 本地服务，并保存到系统钥匙串。' : 'Sent only to the local 127.0.0.1 service and stored in Keychain.'}</small>{provider.hasSecret ? <button type="button" onClick={() => setClearSecrets((current) => current.includes(provider.id) ? current.filter((id) => id !== provider.id) : [...current, provider.id])}>{clearSecrets.includes(provider.id) ? (zh ? '撤销清除' : 'Keep secret') : (zh ? '清除已保存凭据' : 'Clear saved secret')}</button> : null}</label> : null}
+      {item.authMode === 'keychain' ? <label><span>{secretLabel(provider, zh)}</span><input type="password" autoComplete="off" spellCheck="false" value={secrets[provider.id] || ''} onChange={(event) => setSecrets((current) => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.hasSecret ? (zh ? '已安全保存 · 留空保持不变' : 'Saved securely · leave blank to keep') : secretPlaceholder} disabled={!provider.supportsKeychain}/><small>{zh ? '只会提交给 127.0.0.1 本地服务，并保存到系统钥匙串。' : 'Sent only to the local 127.0.0.1 service and stored in Keychain.'}</small>{provider.hasSecret ? <button type="button" onClick={() => setClearSecrets((current) => current.includes(provider.id) ? current.filter((id) => id !== provider.id) : [...current, provider.id])}>{clearSecrets.includes(provider.id) ? (zh ? '撤销清除' : 'Keep secret') : (zh ? '清除已保存凭据' : 'Clear saved secret')}</button> : null}</label> : null}
       {provider.extraFields?.includes('workspaceId') ? <label><span>{zh ? 'Workspace ID 或账单页链接（可选）' : 'Workspace ID or billing URL (optional)'}</span><input value={item.workspaceId} onChange={(event) => updateProvider(provider.id, { workspaceId: event.target.value })} placeholder="https://opencode.ai/workspace/wrk_…/billing"/></label> : null}
-      {provider.extraFields?.includes('site') ? <label><span>{zh ? 'Qoder 站点' : 'Qoder site'}</span><select value={item.site} onChange={(event) => updateProvider(provider.id, { site: event.target.value })}><option value="international">qoder.com · {zh ? '国际站' : 'International'}</option><option value="china">qoder.com.cn · {zh ? '中国站' : 'China'}</option></select></label> : null}
+      {!provider.sites && provider.extraFields?.includes('site') ? <label><span>{zh ? 'Qoder 站点' : 'Qoder site'}</span><select value={item.site} onChange={(event) => updateProvider(provider.id, { site: event.target.value })}><option value="international">qoder.com · {zh ? '国际站' : 'International'}</option><option value="china">qoder.com.cn · {zh ? '中国站' : 'China'}</option></select></label> : null}
       {provider.extraFields?.includes('customPath') ? <label><span>{zh ? 'IDE 配置目录（通常留空）' : 'IDE config directory (usually blank)'}</span><input value={item.customPath} onChange={(event) => updateProvider(provider.id, { customPath: event.target.value })} placeholder="~/Library/Application Support/JetBrains/WebStorm2026.2"/></label> : null}
     </div>
     {provider.dashboardUrl ? <a className="provider-dashboard-link" href={provider.dashboardUrl} target="_blank" rel="noreferrer">{zh ? `打开 ${provider.label} 用量页` : `Open ${provider.label} usage`}<ExternalLink size={11}/></a> : null}
@@ -244,6 +267,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
   const [accountSecrets, setAccountSecrets] = useState({});
   const [clearAccountSecrets, setClearAccountSecrets] = useState([]);
   const [message, setMessage] = useState('');
+  const [messageTone, setMessageTone] = useState('info');
   const [validationErrors, setValidationErrors] = useState([]);
   const [view, setView] = useState('detected');
   const [query, setQuery] = useState('');
@@ -309,6 +333,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
   }));
   const submit = async ({ closeAfterSave = false } = {}) => {
     setMessage('');
+    setMessageTone('info');
     setValidationErrors([]);
     try {
       const openCode = draft.providers.opencode;
@@ -326,11 +351,10 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
       const result = await onSave({
         settings: draft, secrets, clearSecrets, accountSecrets, clearAccountSecrets,
       });
-      const failures = result?.providers?.filter((provider) => (
-        provider.status === 'error' && provider.quotaCoverage !== 'best-effort'
-      )) || [];
+      const failures = quotaSaveFailures(result);
       if (closeAfterSave) { onClose(); return; }
       setValidationErrors(failures);
+      setMessageTone(failures.length ? 'warning' : 'success');
       if (failures.length) {
         setMessage(zh
           ? `设置已保存，但 ${failures.map((provider) => provider.label).join('、')} 仍需处理。请按下方提示修正后重试。`
@@ -339,6 +363,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
       } else setMessage(zh ? '设置已保存，额度已刷新。' : 'Settings saved and quotas refreshed.');
     }
     catch (reason) {
+      setMessageTone('error');
       const reasonText = reason?.message || String(reason);
       setMessage(zh || !/\p{Script=Han}/u.test(reasonText)
         ? reasonText
@@ -371,6 +396,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
     }])),
   }));
   const handleCopilotConnected = () => {
+    setMessageTone('info');
     setMessage(zh ? 'GitHub 账户已连接，正在刷新账户列表与额度。' : 'GitHub account connected. Refreshing accounts and quotas.');
   };
   return <div className="dialog-layer" role="presentation"><section ref={dialogRef} className="dialog dialog--limit-settings" role="dialog" aria-modal="true" aria-label={zh ? '账户权益与额度设置' : 'Account benefit and quota settings'}><header><div><h2>{zh ? '连接并标注账户权益' : 'Connect and classify account benefits'}</h2><p>{zh ? '先自动检测账户，再标注付费、免费、活动或单位权益。额度读取失败不影响本机 Token 分析。' : 'Detect accounts first, then classify them as paid, free, promotional, or organization-provided. Quota failures never block local Token analytics.'}</p></div><button autoFocus className="icon-btn" type="button" onClick={requestClose} aria-label={zh ? '关闭账户权益设置' : 'Close account benefit settings'}><X size={18}/></button></header>
@@ -382,6 +408,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
       <div id="limit-sec-providers" className="limit-section">
       <div className="limit-provider-settings" id={SETTINGS_PROVIDER_PANEL_ID} role="tabpanel" aria-labelledby={settingsProviderTabId(view)} tabIndex={0}>{visible.map((provider) => {
         const item = draft.providers[provider.id];
+        provider = { ...provider, detection: regionalDraftDetection(provider, item, settings.providers[provider.id], zh) };
         const unavailable = provider.quotaSupport === 'unavailable';
         const isExpanded = expanded === provider.id;
         const setEnabled = (enabled) => {
@@ -431,7 +458,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
       </details>
       <div className="limit-sticky-alerts">
         {validationErrors.length ? <div className="provider-validation-errors" role="alert">{validationErrors.map((provider) => <div key={provider.id}><CircleAlert size={14}/><span><b>{provider.label}</b><small>{quotaErrorMessage(provider, zh)}</small></span><button type="button" onClick={() => { if (provider.id === 'copilot' || provider.id === 'opencode') { document.getElementById(`limit-account-provider-${provider.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; } setView('all'); setExpanded(provider.id); }}>{zh ? '去修复' : 'Fix'}</button></div>)}</div> : null}
-        {message ? <p className="dialog-error" role="alert">{message}</p> : null}
+        {message ? <p className={`limit-save-message limit-save-message--${messageTone}`} role={messageTone === 'error' || messageTone === 'warning' ? 'alert' : 'status'}>{message}</p> : null}
       </div></div>
     {confirmDiscard ? <div className="dialog-dirty-bar" role="alertdialog" aria-label={zh ? '未保存的更改' : 'Unsaved changes'}>
       <span>{zh ? '有未保存的更改' : 'You have unsaved changes'}</span>

@@ -301,11 +301,18 @@ The Collector contacts a provider only after you enable it, using an existing
 local login or a credential source you choose.
 
 Current integrations cover Codex, Claude Code, Kimi Code, Cursor, GitHub
-Copilot, Antigravity, Kiro, DeepSeek, OpenCode Go, Qoder, Warp, and JetBrains AI.
+Copilot, Antigravity, Kiro, DeepSeek, OpenCode Go, Qoder, Warp, JetBrains AI,
+GLM / Z.ai, MiniMax, and Alibaba Coding Plan.
 Depending on the provider, setup can use local detection, an
 environment variable, or macOS Keychain. Trae has no stable independently
 verifiable personal-limit interface, so it is labeled unavailable rather than
 showing invented data.
+
+**Connect GLM, MiniMax, or Alibaba:** open Benefit settings → All platforms,
+expand the provider, select your plan's region, and follow its credential instructions.
+After configuration it appears under Detected. GLM and MiniMax use plan API keys;
+Alibaba Coding Plan uses a console Cookie. See the [connection guide](./docs/CODING_PLAN_SETUP.en.md).
+These integrations show official quota facts only; model names alone never assign local Tokens to a plan.
 
 Google retired the individual Gemini CLI OAuth benefit surface, so it is no
 longer a Subscription Center provider. Existing Gemini CLI local Token history

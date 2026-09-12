@@ -16,6 +16,7 @@ import piMono from '@lobehub/icons-static-svg/icons/pi.svg?raw';
 import zaiMono from '@lobehub/icons-static-svg/icons/zai.svg?raw';
 import grokMono from '@lobehub/icons-static-svg/icons/grok.svg?raw';
 import minimaxIcon from '@lobehub/icons-static-svg/icons/minimax-color.svg';
+import bailianIcon from '@lobehub/icons-static-svg/icons/bailian-color.svg';
 import { createElement } from 'react';
 
 /* Agent glyph registry — mirrors the site's components/AgentIcon.tsx split:
@@ -29,6 +30,9 @@ const TOOL_ICONS = {
   antigravity: { src: antigravityIcon, tone: 'antigravity', label: 'Antigravity' },
   kiro: { src: kiroIcon, tone: 'kiro', label: 'Kiro' },
   deepseek: { src: deepseekIcon, tone: 'deepseek', label: 'DeepSeek' },
+  glm: { svg: zaiMono, tone: 'zcode', label: 'GLM / Z.ai' },
+  minimax: { src: minimaxIcon, tone: 'mcode', label: 'MiniMax' },
+  'alibaba-coding': { src: bailianIcon, tone: 'kimi', label: 'Alibaba Coding Plan' },
   'copilot-cli': { src: copilotIcon, tone: 'copilot', label: 'Copilot CLI' },
   copilot: { src: copilotIcon, tone: 'copilot', label: 'GitHub Copilot' },
   opencode: { svg: openCodeMono, tone: 'opencode', label: 'OpenCode' },

@@ -1812,3 +1812,13 @@ body.drawer-open { overflow: hidden; }
 /* v8.2 · weekly summary belongs to the chart header, above its divider. */
 .weekly-panel > .panel-header { border-bottom: 0; }
 .weekly-panel > .weekly-summary { border-bottom: 1px dashed var(--viz-grid); }
+.provider-region-field { display: grid; gap: 8px; min-width: 0; margin: 16px 0; }
+.provider-region-field select { width: 100%; min-width: 0; max-width: 100%; padding: 10px; background: var(--bg); border: 1px solid var(--line); color: var(--paper); font: inherit; }
+.provider-region-field small { color: var(--grey); overflow-wrap: anywhere; }
+.dialog--limit-settings > header, .dialog--limit-settings > .dialog-actions { flex: 0 0 auto; }
+.dialog--limit-settings > header > div { min-width: 0; }
+.dialog--limit-settings .limit-sticky-alerts { padding: 10px 16px; border-top: 1px solid var(--line); background: var(--surface-raised); }
+.limit-save-message { margin: 0; font-size: 11px; line-height: 1.5; color: var(--grey); }
+.limit-save-message--success { color: var(--green); }
+.limit-save-message--warning { color: var(--amber); }
+.limit-save-message--error { color: var(--red); }

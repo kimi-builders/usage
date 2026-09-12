@@ -229,7 +229,7 @@ function BenefitOverview({ overview, summary, providers, now, zh, error, onOpenA
   </section>;
 }
 
-function WindowRow({ providerId, window, tone, now, zh }) {
+function WindowRow({ providerId, window, tone, now, zh, localLinked = true }) {
   const left = remainingPercentForWindow(window);
   const used = left == null ? null : 100 - left;
   const detail = quotaWindowDetail(providerId, window, zh);
@@ -239,11 +239,11 @@ function WindowRow({ providerId, window, tone, now, zh }) {
     {used == null ? <p className="limit-progress-unavailable"><CircleAlert size={13}/>{zh ? '供应商未返回可验证的额度比例' : 'No verifiable quota ratio was reported'}</p> : usageSegments(used, tone, zh)}
     <footer><span>{resetText(window.resetsAt, now, zh)}</span>{window.windowSeconds ? <small>{Math.round(window.windowSeconds / 3_600)}h window</small> : null}</footer>
     <div className="limit-token-facts">
-      <div><span>{zh ? '本机观测用量' : 'LOCAL USAGE OBSERVED'}</span><strong>{window.observedFrom ? localizedCompact(window.localTotals.totalTokens, zh) : '—'}</strong></div>
+      <div><span>{zh ? '本机观测用量' : 'LOCAL USAGE OBSERVED'}</span><strong>{localLinked && window.observedFrom ? localizedCompact(window.localTotals.totalTokens, zh) : '—'}</strong></div>
       <div><span>{zh ? '本周期估算容量' : 'EST. CYCLE CAPACITY'}</span><strong>{estimateText(window.estimatedCapacityTokens, zh)}</strong></div>
       <div><span>{zh ? '折算月度容量' : 'MONTHLY EQUIVALENT'}</span><strong>{estimateText(window.monthlyEquivalentTokens, zh)}</strong></div>
     </div>
-    <p className="limit-estimate-note"><Info size={11}/>{window.estimatedCapacityTokens != null
+    <p className="limit-estimate-note"><Info size={11}/>{!localLinked ? (zh ? '本机用量未关联到此套餐，不能估算 Token 容量。' : 'Local usage is not linked to this plan; Token capacity cannot be estimated.') : window.estimatedCapacityTokens != null
       ? (zh ? `${confidenceLabel(window.estimationConfidence, zh)} · 根据官方消耗比例和本周期内的本机观测用量估算，并非官方公布的 Token 上限。` : `${confidenceLabel(window.estimationConfidence, zh)} · estimated from official utilization and locally observed usage, not a provider-published token cap.`)
       : (zh ? '官方比例、周期时长或本机样本不足，暂无法估算 Token 容量。' : 'Quota ratio, cycle length, or local sample is insufficient for a token estimate.')}</p>
   </article>;
@@ -254,6 +254,7 @@ function ModelScenario({ provider, zh }) {
   useEffect(() => {
     if (!provider.modelRows.some((model) => model.id === modelId)) setModelId(provider.modelRows[0]?.id || '');
   }, [modelId, provider.modelRows]);
+  if (provider.localAttributionAvailable === false) return <section className="model-scenario model-scenario--empty"><div><b>{zh ? '本机用量归属尚不可确认' : 'Local usage attribution is unavailable'}</b><p>{zh ? '模型名称无法证明请求使用了这份套餐。官方额度正常展示；本机 Token、容量估计和订阅价值暂不关联，避免串账。' : 'A model name does not prove which plan paid for a request. Official quotas remain visible; local Tokens, capacity estimates, and subscription value stay unlinked to avoid mixing accounts.'}</p></div></section>;
   if (!provider.modelRows.length) return <section className="model-scenario model-scenario--empty"><div><b>{zh ? '单模型容量情景' : 'Single-model capacity scenario'}</b><p>{zh ? '还没有与该订阅对应的本机 Token 记录。同步或继续使用后即可分析。' : 'No matching local token history yet. Use or sync this agent to unlock estimates.'}</p></div></section>;
   const selectedModel = provider.modelRows.find((model) => model.id === modelId) || provider.modelRows[0];
   const scenarios = provider.windows.map((window) => ({
@@ -316,7 +317,7 @@ function QuotaHistory({ provider, zh }) {
         <svg viewBox="0 0 640 176" role="img" aria-label={zh ? `${selectedLabel}额度消耗历史` : `${selectedLabel} quota usage history`}>
           {[0, 25, 50, 75, 100].map((value) => <g key={value}><line x1="34" x2="606" y1={148 - value * 1.14} y2={148 - value * 1.14}/><text x="4" y={152 - value * 1.14}>{value}%</text></g>)}
           {coords.length > 1 ? <path d={path}/> : null}
-          {coords.map((point) => <circle cx={point.x} cy={point.y} r={coords.length === 1 ? 5 : 3.5} key={point.observedAt}><title>{shortObservationTime(point.observedAt, zh)} · {percentNumber(point.usedPercent)} {zh ? '已用' : 'used'} · {localizedCompact(point.localTotals.totalTokens, zh)} local tokens</title></circle>)}
+          {coords.map((point) => <circle cx={point.x} cy={point.y} r={coords.length === 1 ? 5 : 3.5} key={point.observedAt}><title>{`${shortObservationTime(point.observedAt, zh)} · ${percentNumber(point.usedPercent)} ${zh ? '已用' : 'used'}${provider.localAttributionAvailable !== false && point.localObserved ? ` · ${localizedCompact(point.localTotals.totalTokens, zh)} ${zh ? '本机 Token' : 'local tokens'}` : ''}`}</title></circle>)}
         </svg>
       </div>
       <footer><span>{shortObservationTime(points[0].observedAt, zh)}</span><strong>{localizedCount(points.length, zh, '个本机快照', 'local snapshot', 'local snapshots')}</strong><span>{shortObservationTime(points.at(-1).observedAt, zh)}</span></footer>
@@ -326,6 +327,10 @@ function QuotaHistory({ provider, zh }) {
 
 function signalCopy(signal, zh, providerId) {
   const windowLabel = quotaWindowLabel(providerId, { id: signal.windowId, label: signal.windowLabel }, zh);
+  if (signal.code === 'quota-unobservable' && signal.localAttributionAvailable === false) return {
+    title: zh ? '官方额度暂不可观测' : 'Official quota is not observable',
+    body: zh ? '未取得可验证的额度，本机用量也尚未关联到此套餐；不能据此判断免费、闲置或剩余容量。' : 'No verifiable quota is available, and local usage is not linked to this plan. Neither free access, underuse, nor remaining capacity can be inferred.',
+  };
   if (signal.code === 'quota-unobservable') return {
     title: zh ? '官方额度不可观测，本机分析继续' : 'Official quota hidden; local analysis continues',
     body: zh
@@ -375,6 +380,7 @@ function signalCopy(signal, zh, providerId) {
 }
 
 function SubscriptionDecisionPanel({ provider, zh, currency, onSettings }) {
+  const localLinked = provider.localAttributionAvailable !== false;
   const exhausted = [...provider.windows].filter((window) => !window.stale && window.usedPercent != null && Number(window.usedPercent) >= 99)
     .sort((left, right) => (right.windowSeconds || 0) - (left.windowSeconds || 0))[0];
   const pace = [...provider.windows].filter((window) => window.pace?.projectedFinalPercent != null)
@@ -383,21 +389,22 @@ function SubscriptionDecisionPanel({ provider, zh, currency, onSettings }) {
   return <section className="subscription-decision-panel">
     <header><div><span>{zh ? '账户权益决策' : 'ACCOUNT BENEFIT DECISIONS'}</span><h2>{zh ? `${provider.label} 的用量与价值观察` : `${provider.label} usage and value`}</h2><p>{zh ? '本机 Token、官方额度和个人实际支出分别保真；读取不到官方额度时不会伪造剩余量。' : 'Local Tokens, official quota, and personal spend stay separate. Missing official quota is never replaced with a guessed balance.'}</p></div><small><ShieldCheck size={12}/>{zh ? '只读建议' : 'Read-only advice'}</small></header>
     <div className="subscription-economics-strip">
-      <article><span>{zh ? '近 30 天 TOKEN' : '30D TOKENS'}</span><strong>{localizedCompact(provider.recentTotals.totalTokens, zh)}</strong><small>{localizedCount(localizedCompact(provider.recentTotals.requestCount, zh), zh, '次请求', 'request', 'requests')}</small></article>
+      <article><span>{zh ? '近 30 天 TOKEN' : '30D TOKENS'}</span><strong>{localLinked ? localizedCompact(provider.recentTotals.totalTokens, zh) : '—'}</strong><small>{localLinked ? localizedCount(localizedCompact(provider.recentTotals.requestCount, zh), zh, '次请求', 'request', 'requests') : (zh ? '本机用量未关联' : 'Local usage unlinked')}</small></article>
       <article><span>{isPaid ? (zh ? '实际成本 / 百万 TOKEN' : 'ACTUAL COST / 1M') : (zh ? '权益来源' : 'BENEFIT SOURCE')}</span><strong>{isPaid ? (provider.economics.costPerMillionTokens == null ? '—' : subscriptionMoney(provider.economics.costPerMillionTokens, provider.subscription.currency)) : entitlementLabel(provider.subscription.entitlementType, zh)}</strong><small>{isPaid ? (zh ? '按所填月均订阅支出' : 'from entered monthly spend') : entitlementNote(provider.subscription.entitlementType, zh)}</small></article>
-      <article><span>{isPaid ? (zh ? 'API 等价价值比' : 'API-EQUIVALENT RATIO') : (zh ? 'API 等价承载价值' : 'API-EQUIVALENT THROUGHPUT')}</span><strong>{isPaid ? ratioText(provider.economics.valueRatio) : displayDollars(provider.economics.apiEquivalentUsd, currency)}</strong><small>{isPaid ? (provider.subscription.currency === 'cny' ? (zh ? '人民币未自动换汇' : 'no automatic FX') : (zh ? '等价价值 ÷ 月均支出' : 'equivalent value ÷ spend')) : (zh ? '标准价格口径，不代表实际节省' : 'standard-price basis, not realized savings')}</small></article>
-      <article><span>{provider.balanceObservation?.state === 'current' ? (zh ? '官方余额状态' : 'OFFICIAL BALANCE') : (zh ? '官方额度状态' : 'OFFICIAL QUOTA STATUS')}</span><strong>{provider.balanceObservation?.state === 'current' ? (zh ? '货币余额可读' : 'AVAILABLE') : exhausted ? (zh ? '已触顶' : 'EXHAUSTED') : pace ? percentNumber(pace.pace.projectedFinalPercent) : provider.quotaObservation?.state === 'historical' ? (zh ? '仅历史' : 'HISTORY') : (zh ? '不可观测' : 'UNOBSERVABLE')}</strong><small>{provider.balanceObservation?.state === 'current' ? (zh ? '货币事实 · 不等于 Token 额度' : 'money fact · not a Token quota') : exhausted ? `${quotaWindowLabel(provider.id, exhausted, zh)} · ${zh ? '供应商额度事实' : 'provider quota fact'}` : pace ? `${quotaWindowLabel(provider.id, pace, zh)} · ${zh ? '重置时预计' : 'at reset'}` : (zh ? '本机 Token 分析仍然可用' : 'local Token analytics remain available')}</small></article>
+      <article><span>{isPaid ? (zh ? 'API 等价价值比' : 'API-EQUIVALENT RATIO') : (zh ? 'API 等价承载价值' : 'API-EQUIVALENT THROUGHPUT')}</span><strong>{!localLinked ? '—' : isPaid ? ratioText(provider.economics.valueRatio) : displayDollars(provider.economics.apiEquivalentUsd, currency)}</strong><small>{isPaid ? (provider.subscription.currency === 'cny' ? (zh ? '人民币未自动换汇' : 'no automatic FX') : (zh ? '等价价值 ÷ 月均支出' : 'equivalent value ÷ spend')) : (zh ? '标准价格口径，不代表实际节省' : 'standard-price basis, not realized savings')}</small></article>
+      <article><span>{provider.balanceObservation?.state === 'current' ? (zh ? '官方余额状态' : 'OFFICIAL BALANCE') : (zh ? '官方额度状态' : 'OFFICIAL QUOTA STATUS')}</span><strong>{provider.balanceObservation?.state === 'current' ? (zh ? '货币余额可读' : 'AVAILABLE') : exhausted ? (zh ? '已触顶' : 'EXHAUSTED') : pace ? percentNumber(pace.pace.projectedFinalPercent) : provider.quotaObservation?.state === 'historical' ? (zh ? '仅历史' : 'HISTORY') : provider.quotaObservation?.state === 'current' ? (zh ? '可观测' : 'AVAILABLE') : (zh ? '不可观测' : 'UNOBSERVABLE')}</strong><small>{provider.balanceObservation?.state === 'current' ? (zh ? '货币事实 · 不等于 Token 额度' : 'money fact · not a Token quota') : exhausted ? `${quotaWindowLabel(provider.id, exhausted, zh)} · ${zh ? '供应商额度事实' : 'provider quota fact'}` : pace ? `${quotaWindowLabel(provider.id, pace, zh)} · ${zh ? '重置时预计' : 'at reset'}` : (localLinked ? (zh ? '本机 Token 分析仍然可用' : 'local Token analytics remain available') : (zh ? '本机用量未关联' : 'local usage unlinked'))}</small></article>
     </div>
     <SubscriptionReviewGrid provider={provider} zh={zh} currency={currency} onSettings={onSettings}/>
     <div className="subscription-decision-grid">
       <QuotaHistory provider={provider} zh={zh}/>
-      <section className="subscription-signals"><header><Gauge size={15}/><div><b>{zh ? '本机观察' : 'LOCAL OBSERVATIONS'}</b><span>{zh ? '提示不是账单结论，也不会自动改套餐' : 'Evidence, not billing conclusions or automatic changes'}</span></div></header><div>{provider.decisionSignals.length ? provider.decisionSignals.map((signal) => { const copy = signalCopy(signal, zh, provider.id); return <article data-tone={signal.tone} key={signal.code}><i/><div><b>{copy.title}</b><p>{copy.body}</p></div></article>; }) : <article data-tone="positive"><i/><div><b>{zh ? '暂未发现明显异常' : 'No obvious issue yet'}</b><p>{zh ? '当前样本中没有明显的触顶、闲置、价值偏低或模型过度集中信号；继续积累历史后判断会更稳定。' : 'No clear limit, underuse, low-value, or concentration signal yet. More history will improve confidence.'}</p></div></article>}</div></section>
+      <section className="subscription-signals"><header><Gauge size={15}/><div><b>{zh ? '本机观察' : 'LOCAL OBSERVATIONS'}</b><span>{zh ? '提示不是账单结论，也不会自动改套餐' : 'Evidence, not billing conclusions or automatic changes'}</span></div></header><div>{provider.decisionSignals.length ? provider.decisionSignals.map((signal) => { const copy = signalCopy(signal, zh, provider.id); return <article data-tone={signal.tone} key={signal.code}><i/><div><b>{copy.title}</b><p>{copy.body}</p></div></article>; }) : <article data-tone="positive"><i/><div><b>{localLinked ? (zh ? '暂未发现明显异常' : 'No obvious issue yet') : (zh ? '仅分析官方额度' : 'Official quota analysis only')}</b><p>{!localLinked ? (zh ? '本机用量尚未关联，不判断套餐是否闲置或价值高低。' : 'Local usage is unlinked; plan underuse and value are not assessed.') : zh ? '当前样本中没有明显的触顶、闲置、价值偏低或模型过度集中信号；继续积累历史后判断会更稳定。' : 'No clear limit, underuse, low-value, or concentration signal yet. More history will improve confidence.'}</p></div></article>}</div></section>
     </div>
   </section>;
 }
 
 function ProviderCard({ provider, zh, currency, onSettings }) {
   const now = useNow();
+  const localLinked = provider.localAttributionAvailable !== false;
   const tone = PROVIDER_TONES[provider.id] || 'blue';
   const currentWindows = provider.windows?.filter((window) => !window.stale) || [];
   const quotaUnavailable = provider.quotaObservation?.state !== 'current';
@@ -409,15 +416,15 @@ function ProviderCard({ provider, zh, currency, onSettings }) {
       <div><dt>{zh ? '账户' : 'Account'}</dt><dd>{provider.accountLabel || provider.account || (provider.id === 'deepseek' ? (zh ? 'API 账户' : 'API account') : (zh ? '本机账户' : 'Local account'))}</dd></div>
       {provider.plan ? <div><dt>{zh ? '方案' : 'Plan'}</dt><dd>{String(provider.plan).replaceAll('_', ' ')}</dd></div> : null}
       <div><dt>{zh ? '权益类型' : 'BENEFIT TYPE'}</dt><dd>{entitlementLabel(provider.subscription.entitlementType, zh)}</dd></div>
-      <div><dt>{zh ? '本机累计 TOKEN' : 'LOCAL LIFETIME TOKENS'}</dt><dd>{localizedCompact(provider.lifetimeTotals.totalTokens, zh)}</dd></div>
+      <div><dt>{zh ? '本机累计 TOKEN' : 'LOCAL LIFETIME TOKENS'}</dt><dd>{localLinked ? localizedCompact(provider.lifetimeTotals.totalTokens, zh) : (zh ? '未关联' : 'Unlinked')}</dd></div>
       <div><dt>{zh ? '主要模型' : 'TOP MODEL'}</dt><dd>{provider.modelRows[0]?.label || '—'}</dd></div>
       <div><dt>{zh ? '个人月均支出' : 'PERSONAL MONTHLY SPEND'}</dt><dd>{provider.subscription.isPaid ? (provider.subscription.monthlyPrice == null ? (zh ? '待填写' : 'Not set') : subscriptionMoney(provider.subscription.monthlyPrice, provider.subscription.currency, zh ? '/月' : '/mo')) : (zh ? '不计入' : 'Excluded')}</dd></div>
-      <div><dt>{zh ? '近 30 天 API 等价价值' : '30D API EQUIVALENT'}</dt><dd>{displayDollars(provider.recentTotals.costMicros / 1_000_000, currency)}</dd></div>
+      <div><dt>{zh ? '近 30 天 API 等价价值' : '30D API EQUIVALENT'}</dt><dd>{localLinked ? displayDollars(provider.recentTotals.costMicros / 1_000_000, currency) : '—'}</dd></div>
       <div><dt>{zh ? '更新' : 'Updated'}</dt><dd>{relativeUpdated(provider.updatedAt, now, zh)}</dd></div>
       <div><dt>{zh ? '来源' : 'Source'}</dt><dd>{quotaSourceDisplay(provider.source, zh)}</dd></div>
       {provider.dashboardUrl ? <div><dt>{zh ? '官方用量中心' : 'OFFICIAL USAGE CENTER'}</dt><dd><a className="provider-official-link" href={provider.dashboardUrl} target="_blank" rel="noreferrer">{zh ? '打开查看' : 'Open usage'}<ExternalLink size={11}/></a></dd></div> : null}
     </dl>
-    {balanceAvailable ? <ProviderBalances provider={provider} zh={zh}/> : quotaUnavailable ? <section className="quota-unavailable-state"><div><Gauge size={22}/><span><b>{provider.quotaObservation?.state === 'historical' ? (zh ? '当前额度不可读，仅保留历史' : 'Current quota unavailable; history retained') : (zh ? '官方额度暂不可观测' : 'Official quota is not observable')}</b><small>{provider.quotaObservation.bestEffort ? (zh ? '该平台或当前账号不一定提供稳定额度数据' : 'This platform or account may not expose stable quota data') : (zh ? '当前没有取得可验证的额度窗口' : 'No verifiable quota window is available')}</small></span></div><p>{provider.status === 'error' ? quotaErrorMessage(provider, zh) : (zh ? '供应商没有返回可验证的额度比例。' : 'The provider did not return a verifiable quota ratio.')} {zh ? `这不代表免费、无限或未使用；本机 ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} Token 仍参与价值与工作负载分析。` : `This does not mean free, unlimited, or unused; ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} local Tokens still contribute to value and workload analysis.`}</p>{provider.status === 'error' ? <button type="button" className="ghost-btn" onClick={onSettings}>{zh ? '检查连接（可选）' : 'Check connection (optional)'}</button> : null}</section> : <div className="limit-window-list">{currentWindows.map((window) => <WindowRow providerId={provider.id} window={window} tone={tone} now={now} zh={zh} key={window.id}/>)}</div>}
+    {balanceAvailable ? <ProviderBalances provider={provider} zh={zh}/> : quotaUnavailable ? <section className="quota-unavailable-state"><div><Gauge size={22}/><span><b>{provider.quotaObservation?.state === 'historical' ? (zh ? '当前额度不可读，仅保留历史' : 'Current quota unavailable; history retained') : (zh ? '官方额度暂不可观测' : 'Official quota is not observable')}</b><small>{provider.quotaObservation.bestEffort ? (zh ? '该平台或当前账号不一定提供稳定额度数据' : 'This platform or account may not expose stable quota data') : (zh ? '当前没有取得可验证的额度窗口' : 'No verifiable quota window is available')}</small></span></div><p>{provider.status === 'error' ? quotaErrorMessage(provider, zh) : (zh ? '供应商没有返回可验证的额度比例。' : 'The provider did not return a verifiable quota ratio.')} {!localLinked ? (zh ? '这不代表免费、无限或未使用；本机用量尚未关联到此套餐。' : 'This does not mean free, unlimited, or unused; local usage is not linked to this plan.') : zh ? `这不代表免费、无限或未使用；本机 ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} Token 仍参与价值与工作负载分析。` : `This does not mean free, unlimited, or unused; ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} local Tokens still contribute to value and workload analysis.`}</p>{provider.status === 'error' ? <button type="button" className="ghost-btn" onClick={onSettings}>{zh ? '检查连接（可选）' : 'Check connection (optional)'}</button> : null}</section> : <div className="limit-window-list">{currentWindows.map((window) => <WindowRow localLinked={localLinked} providerId={provider.id} window={window} tone={tone} now={now} zh={zh} key={window.id}/>)}</div>}
     {provider.windows?.length ? <ModelScenario provider={provider} zh={zh}/> : null}
     {showResetCredits ? <div className="reset-credit" data-state={resetCredit.state}><div><span><b>{zh ? '额度重置券' : 'Limit reset credits'}</b><small>{resetCredit.detail || (provider.resetCredits?.nextExpiry ? resetText(provider.resetCredits.nextExpiry, now, zh) : (zh ? '未返回到期时间' : 'No expiry time reported'))}</small></span></div><strong>{resetCredit.value}</strong></div> : null}
     {provider.notice ? <p className="limit-notice">{quotaProviderNotice(provider.notice, zh)}</p> : null}

@@ -6,7 +6,7 @@ export const PROVIDER_TONES = {
   codex: 'blue', 'kimi-code': 'amber', warp: 'violet',
   antigravity: 'green', 'jetbrains-ai': 'pink', 'claude-code': 'amber', cursor: 'blue',
   copilot: 'violet', deepseek: 'blue', opencode: 'amber', qoder: 'green', trae: 'blue',
-  kiro: 'violet',
+  kiro: 'violet', glm: 'blue', minimax: 'blue', 'alibaba-coding': 'blue',
 };
 
 export function idSegment(value) {
@@ -17,6 +17,29 @@ export function hasEnteredSecrets(value) {
   if (typeof value === 'string') return value.trim().length > 0;
   if (!value || typeof value !== 'object') return false;
   return Object.values(value).some((entry) => hasEnteredSecrets(entry));
+}
+
+export function regionalProviderPatch(provider, item, site) {
+  const fields = ['entitlementType', 'subscriptionPrice', 'subscriptionCurrency', 'billingCycle', 'renewsAt'];
+  const subscriptions = { ...item.regionSubscriptions,
+    [item.site]: Object.fromEntries(fields.map(key => [key, item[key]])) };
+  const defaults = { entitlementType: 'unknown', subscriptionPrice: null,
+    subscriptionCurrency: 'usd', billingCycle: 'monthly', renewsAt: '' };
+  const regionDefaults = Object.values(provider.sites || {}).map(value => value.environmentVariable).filter(Boolean);
+  const environmentVariable = !item.environmentVariable || regionDefaults.includes(item.environmentVariable)
+    ? provider.sites?.[site]?.environmentVariable || provider.defaultEnvironmentVariable : item.environmentVariable;
+  return { site, environmentVariable, regionSubscriptions: subscriptions, ...defaults, ...subscriptions[site] };
+}
+
+export function regionalDraftDetection(provider, item, savedItem, zh) {
+  return provider.sites && item.site !== savedItem?.site
+    ? { state: 'manual', label: zh ? '地区已更改 · 保存后验证此地区的凭据' : 'Region changed · save to verify this region’s credential' }
+    : provider.detection;
+}
+
+export function quotaSaveFailures(result) {
+  // Best-effort describes integration stability, not a successful refresh.
+  return (result?.providers || []).filter(provider => provider.status === 'error');
 }
 
 export function isValidOpenCodeWorkspaceId(value) {
@@ -130,6 +153,10 @@ export function quotaWindowLabel(providerId, window, zh) {
 }
 
 export function quotaWindowDetail(providerId, window, zh) {
+  if (['glm', 'minimax', 'alibaba-coding'].includes(providerId) && window?.value != null && window?.limit != null) {
+    const unit = window.unit === 'requests' ? (zh ? '次请求' : 'requests') : (zh ? '额度单位' : 'quota units');
+    return `${localizedCompact(window.value, zh)} / ${localizedCompact(window.limit, zh)} ${unit}`;
+  }
   const detail = limitWindowDetail(window);
   if (!detail) return detail;
   if (zh) return normalizeChineseWindowLabel(detail);
@@ -141,6 +168,9 @@ export function quotaWindowDetail(providerId, window, zh) {
 }
 
 const ENGLISH_PROVIDER_NOTICES = new Map([
+  ['个人 Coding Plan 官方额度；TOKENS_LIMIT 名称不代表可用原始 Token。MCP 单独展示，不与本机 Token 或其他额度相加。', 'Official personal Coding Plan quota; TOKENS_LIMIT does not mean raw Token capacity. MCP is shown separately, never added to local Tokens or other quota windows.'],
+  ['官方 Coding / Token Plan 额度；usage_count 在此接口表示剩余量。仅百分比窗口不伪造 Token 总额；未包含或无可量化上限的窗口不生成进度条。', 'Official Coding / Token Plan quota; usage_count means remaining allowance here. Percentage-only windows never imply a Token cap. Excluded or non-quantifiable windows have no progress bar.'],
+  ['百炼 Coding Plan 官方请求额度，不是新版 Token Plan。仅展示可验证窗口，不把请求数转换为 Token；套餐可见但额度缺失不代表未使用或无限。', 'Official Bailian Coding Plan request quotas, not the newer Token Plan. Only verifiable windows are shown; requests are not converted to Tokens. Missing quota does not mean unused or unlimited.'],
   ['订阅额度来自本机 Codex 登录会话，不等同于标准 API 速率限制。', 'Subscription quotas come from the local Codex login and are not standard API rate limits.'],
   ['来自 Claude Code OAuth 订阅窗口；它不等同于 Anthropic API 组织限额。', 'These are Claude Code OAuth subscription windows, not Anthropic API organization limits.'],
   ['Kimi Code 本机登录可读取 5 小时滚动（5H 频限）与每周额度；订阅总额度需要 Kimi Web 登录令牌。', 'The local Kimi Code login exposes the 5-hour rolling rate limit and weekly quota. Subscription totals require a Kimi Web token.'],
@@ -219,6 +249,18 @@ export function quotaPageError(value, zh) {
 }
 
 const ENGLISH_CATALOG_COPY = {
+  glm: {
+    description: 'Personal Coding Plan quota windows and MCP',
+    localHint: 'Select the plan’s region and use its personal Coding Plan API key. Team plans are not supported yet; quota units are not raw Tokens.',
+  },
+  minimax: {
+    description: 'Coding / Token Plan model quotas and reset times',
+    localHint: 'Use a dedicated Coding / Token Plan key (usually sk-cp-…), not a regular pay-as-you-go key. Uses the new endpoint with a same-region legacy fallback; never retries in another region.',
+  },
+  'alibaba-coding': {
+    description: 'Bailian Coding Plan 5-hour, weekly and monthly request quotas',
+    localHint: 'Read-only Coding Plan access using the selected region’s console Cookie. A regular DashScope API key cannot replace console login. New personal/team Token Plans are not supported yet.',
+  },
   codex: {
     description: 'ChatGPT Codex subscription windows and reset credits',
     localHint: 'Reuses the Codex CLI login automatically; no token copying required.',

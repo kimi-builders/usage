@@ -33,6 +33,8 @@ const PROVIDER_ALIASES = {
   antigravity: 'antigravity',
   agy: 'antigravity',
   deepseek: 'deepseek',
+  glm: 'glm', zai: 'glm', 'z.ai': 'glm', bigmodel: 'glm',
+  minimax: 'minimax', alibaba: 'alibaba-coding', bailian: 'alibaba-coding', 'alibaba-coding': 'alibaba-coding',
   kiro: 'kiro',
   opencode: 'opencode',
   qoder: 'qoder',
@@ -76,11 +78,12 @@ function quotaWindowLabel(providerId, window, isZh) {
     .replaceAll('5 小时滚动（5H 频限）', '5-hour rolling (5H rate limit)')
     .replaceAll('5 小时滚动', '5-hour rolling')
     .replaceAll('5 小时窗口', '5-hour window')
+    .replaceAll('5 小时', '5 hours')
     .replaceAll('订阅总额度', 'Total subscription quota')
     .replaceAll('月度 Credits', 'Monthly credits')
     .replaceAll('附加 Credits', 'Bonus credits')
     .replaceAll('当前 Credits', 'Current credits')
-    .replaceAll('每周', 'Weekly');
+    .replaceAll('每周', 'Weekly').replaceAll('每月', 'Monthly').replaceAll('额度', 'Quota');
 }
 
 function quotaErrorMessage(error, providerLabel, isZh) {
@@ -244,7 +247,8 @@ export function renderQuotaReport(quotaData) {
 
         let detailPart = '';
         if (window.value != null && window.limit != null) {
-          const unit = window.unit || '';
+          const rawUnit = window.unit || '';
+          const unit = isZh ? ({ 'quota units': '额度单位', requests: '次请求' }[rawUnit] || rawUnit) : rawUnit;
           const isCurrency = unit.toLowerCase() === 'usd' || unit.toLowerCase() === 'cny' || unit === '$' || unit === '¥';
           const valStr = isCurrency ? formatCurrency(window.value) : formatNumber(window.value);
           const limitStr = isCurrency ? formatCurrency(window.limit) : formatNumber(window.limit);

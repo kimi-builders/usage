@@ -15,6 +15,9 @@ import { parseKiroUsage } from '../src/limits/providers/kiro.js';
 import { parseOpenCodeGoUsage } from '../src/limits/providers/opencode.js';
 import { parseQoderUsage } from '../src/limits/providers/qoder.js';
 import { parseWarpUsage } from '../src/limits/providers/warp.js';
+import { parseGlmQuota } from '../src/limits/providers/glm.js';
+import { parseMiniMaxQuota } from '../src/limits/providers/minimax.js';
+import { parseAlibabaCodingQuota } from '../src/limits/providers/alibaba-coding.js';
 import { clearLimitCache, loadSubscriptionLimits } from '../src/limits/service.js';
 
 const NOW = new Date('2026-08-12T12:00:00.000Z');
@@ -23,6 +26,9 @@ const fixtureText = readFileSync(fixtureUrl, 'utf8');
 const fixture = JSON.parse(fixtureText);
 
 const PARSERS = {
+  glm: input => parseGlmQuota(input, { now: NOW }),
+  minimax: input => parseMiniMaxQuota(input, { now: NOW }),
+  'alibaba-coding': input => parseAlibabaCodingQuota(input, { now: NOW }),
   codex: (input) => parseCodexUsage(input, { plan: 'pro' }, { now: NOW }),
   'claude-code': (input) => parseClaudeUsage(input, { plan: 'max' }, { now: NOW }),
   'kimi-code': (input) => parseKimiCodeUsage(input, { now: NOW }),
