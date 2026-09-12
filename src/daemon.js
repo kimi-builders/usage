@@ -11,6 +11,7 @@ import { COLLECTOR_VERSION } from './client-meta.js';
 import { loadSyncStatus, runManagedSync } from './sync-runtime.js';
 import { safeLocalPathDisplay } from './safe-display.js';
 import { installDaemonRuntime } from './daemon-runtime.js';
+import { SOURCE_PATH_ENVIRONMENT_VARIABLES } from './source-environment.js';
 
 const LABEL = 'builders.kimi.usage.sync';
 const SYSTEMD_NAME = 'kimi-builders-usage-sync';
@@ -106,7 +107,7 @@ function validateInterval(value) {
 }
 
 function launchdPlist({ node, entry, intervalSeconds, log, environment = {} }) {
-  const envEntries = Object.entries(environment).filter(([, value]) => value);
+  const envEntries = Object.entries(environment).filter(([, value]) => value !== undefined);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -123,7 +124,7 @@ function launchdPlist({ node, entry, intervalSeconds, log, environment = {} }) {
 }
 
 function systemdUnits({ node, entry, intervalMinutes, log, environment = {} }) {
-  const env = Object.entries(environment).filter(([, value]) => value)
+  const env = Object.entries(environment).filter(([, value]) => value !== undefined)
     .map(([key, value]) => `Environment=${systemdQuote(`${key}=${value}`)}`).join('\n');
   const service = `[Unit]
 Description=Kimi Builders local usage synchronization
@@ -152,28 +153,33 @@ WantedBy=timers.target
 }
 
 function windowsScript({ node, entry, log, environment = {} }) {
-  const env = Object.entries(environment).filter(([, value]) => value)
+  if (Object.values(environment).some((value) => String(value).includes('"'))) throw new Error('Windows daemon environment cannot contain a double quote.');
+  const env = Object.entries(environment).filter(([, value]) => value !== undefined)
     .map(([key, value]) => `set "${key}=${String(value).replaceAll('%', '%%')}"`).join('\r\n');
-  return `@echo off\r\n${env ? `${env}\r\n` : ''}${cmdQuote(node)} ${cmdQuote(entry)} daemon run >> ${cmdQuote(log)} 2>&1\r\n`;
+  return `@echo off\r\nsetlocal DisableDelayedExpansion\r\n${env ? `${env}\r\n` : ''}${cmdQuote(node)} ${cmdQuote(entry)} daemon run >> ${cmdQuote(log)} 2>&1\r\n`;
 }
 
-function runtimeEnvironment() {
-  return {
-    PATH: process.env.PATH,
-    KBU_USAGE_LANG: process.env.KBU_USAGE_LANG?.trim(),
-    KBU_USAGE_CONFIG_DIR: process.env.KBU_USAGE_CONFIG_DIR?.trim(),
-    KBU_USAGE_STATE_DIR: process.env.KBU_USAGE_STATE_DIR?.trim(),
-  };
+// Persist only source-location/runtime settings; never inherit provider secrets.
+export function runtimeEnvironment(environment = process.env) {
+  const keys = [
+    'PATH', 'KBU_USAGE_LANG', 'KBU_USAGE_CONFIG_DIR', 'KBU_USAGE_STATE_DIR',
+    ...SOURCE_PATH_ENVIRONMENT_VARIABLES,
+  ];
+  return Object.fromEntries(keys.filter((key) => environment[key] !== undefined).map((key) => {
+    const value = String(environment[key]);
+    if (/[\r\n\0]/.test(value)) throw new Error('Daemon environment contains an unsupported control character.');
+    return [key, value];
+  }));
 }
 
 export function renderDaemonFiles({
   platform = process.platform, home = homedir(), configDir = getConfigDir(),
-  intervalMinutes = DEFAULT_INTERVAL_MINUTES, node = process.execPath, entry,
+  intervalMinutes = DEFAULT_INTERVAL_MINUTES, node = process.execPath, entry, environment = process.env,
 } = {}) {
   const interval = validateInterval(intervalMinutes);
   const paths = daemonPaths({ platform, home, configDir });
   if (entry) paths.entry = entry;
-  const common = { node, entry: paths.entry, log: paths.schedulerLog, environment: runtimeEnvironment() };
+  const common = { node, entry: paths.entry, log: paths.schedulerLog, environment: runtimeEnvironment(environment) };
   if (platform === 'darwin') {
     return { paths, files: [{ path: paths.descriptor, content: launchdPlist({ ...common, intervalSeconds: interval * 60 }) }] };
   }

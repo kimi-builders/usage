@@ -1,3 +1,4 @@
+import { preferences } from './preferences.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, BarChart3, ChevronLeft, ChevronRight, CircleAlert, Clock3, FileText, LayoutDashboard, ShieldCheck } from 'lucide-react';
 import { CHART_COLORS, CONSUMPTION_PALETTE } from './chart-colors.js';
@@ -43,7 +44,7 @@ function localizedCompact(value, zh) {
 }
 
 function storedBenefitRange(view) {
-  const value = localStorage.getItem(`kbu.benefit.${view}-range.v1`);
+  const value = preferences.getItem(`kbu.benefit.${view}-range.v1`);
   return BENEFIT_VIEW_RANGES.includes(value) ? value : 'all';
 }
 
@@ -436,7 +437,7 @@ export function BenefitActivityView({ provider, usageData, zh, currency }) {
   const selectedCell = hovered ? cells[hovered.day]?.[hovered.hour] : null;
   const changeRange = (value) => {
     setRange(value);
-    localStorage.setItem('kbu.benefit.activity-range.v1', value);
+    preferences.setItem('kbu.benefit.activity-range.v1', value);
     setHovered(null);
     setFocusCell(null);
   };
@@ -530,7 +531,7 @@ export function BenefitDistributionView({ provider, usageData, zh }) {
   ), [usageData, provider.attribution, provider.sources, range]);
   const changeRange = (value) => {
     setRange(value);
-    localStorage.setItem('kbu.benefit.distribution-range.v1', value);
+    preferences.setItem('kbu.benefit.distribution-range.v1', value);
   };
   const tokenTypeRows = [
     { id: 'input', label: zh ? '输入（含缓存写）' : 'Input + cache write', totalTokens: viewUsage.totals.inputTokens + viewUsage.totals.cacheWriteInputTokens },
@@ -612,7 +613,7 @@ export function BenefitRecordsView({ provider, drilldown, onClearDrilldown, zh, 
           <button type="button" aria-pressed={kind === 'usage'} className={kind === 'usage' ? 'active' : ''} onClick={() => { setKind('usage'); onClearDrilldown?.(); }}>{zh ? '本机用量' : 'Local usage'}</button>
           <span>{zh ? `共 ${total.toLocaleString()} 条` : `${total.toLocaleString()} total`}</span>
         </div>
-        {kind === 'usage' ? <BenefitRangeControl value={usageRange} onChange={(value) => { setUsageRange(value); localStorage.setItem('kbu.benefit.records-range.v1', value); }} zh={zh} label={zh ? '本机用量明细范围' : 'Local usage record range'}/> : null}
+        {kind === 'usage' ? <BenefitRangeControl value={usageRange} onChange={(value) => { setUsageRange(value); preferences.setItem('kbu.benefit.records-range.v1', value); }} zh={zh} label={zh ? '本机用量明细范围' : 'Local usage record range'}/> : null}
       </div>
     </header>
     {drilldown ? <div className="benefit-evidence-window"><span><ShieldCheck size={13}/>{zh ? '证据窗口：' : 'Evidence window: '}{drilldown.kind === 'usage' ? drilldown.date : dateLabel(drilldown.observedAt, zh, true)}</span><button type="button" onClick={onClearDrilldown} aria-label={zh ? '清除证据窗口' : 'Clear evidence window'}>×</button></div> : null}

@@ -252,7 +252,7 @@ test('Alibaba console requests use region-specific dashboard/RPC hosts and a rea
 test('region credentials and public detection remain isolated without exposing secrets', () => {
   const settings = normalizeLimitSettings({ providers: { glm: { site: 'international' } } });
   assert.equal(settings.providers.glm.environmentVariable, 'Z_AI_API_KEY');
-  const shown = getPublicLimitSettings({ subscriptionLimits: settings }, { environment: {}, readSecret: key => key === 'glm:china' ? 'private-value' : null, run: () => ({ status: 1 }) });
+  const shown = getPublicLimitSettings({ subscriptionLimits: settings }, { detectCredentials: true, environment: {}, readSecret: key => key === 'glm:china' ? 'private-value' : null, run: () => ({ status: 1 }) });
   const provider = shown.catalog.find(p => p.id === 'glm');
   assert.equal(provider.hasSecret, false);
   assert.deepEqual(provider.siteSecrets, { china: true, international: false });

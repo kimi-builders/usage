@@ -1,3 +1,4 @@
+import { preferences } from './preferences.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight, BarChart3, Check, ChevronDown, ChevronRight, CircleAlert, Code2,
@@ -47,7 +48,7 @@ export function ProviderIcon({ id, size = 18 }) {
 
 function storedAccountSelections() {
   try {
-    const value = JSON.parse(localStorage.getItem(SELECTED_BENEFIT_ACCOUNTS_KEY) || '{}');
+    const value = JSON.parse(preferences.getItem(SELECTED_BENEFIT_ACCOUNTS_KEY) || '{}');
     return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   } catch { return {}; }
 }
@@ -460,16 +461,16 @@ export function SubscriptionCenter({ data, usageData, settings, loading, error, 
     () => buildBenefitCapacityOverview(providers, now),
     [providers, now],
   );
-  const [selected, setSelected] = useState(() => localStorage.getItem(SELECTED_BENEFIT_KEY) || '');
+  const [selected, setSelected] = useState(() => preferences.getItem(SELECTED_BENEFIT_KEY) || '');
   const [drilldown, setDrilldown] = useState(null);
   useEffect(() => {
     if (!providers.some((provider) => provider.id === selected)) setSelected(providers[0]?.id || '');
   }, [providers, selected]);
   useEffect(() => {
-    if (selected) localStorage.setItem(SELECTED_BENEFIT_KEY, selected);
+    if (selected) preferences.setItem(SELECTED_BENEFIT_KEY, selected);
   }, [selected]);
   useEffect(() => {
-    localStorage.setItem(SELECTED_BENEFIT_ACCOUNTS_KEY, JSON.stringify(accountSelections));
+    preferences.setItem(SELECTED_BENEFIT_ACCOUNTS_KEY, JSON.stringify(accountSelections));
   }, [accountSelections]);
   const active = providers.find((provider) => provider.id === selected) || providers[0];
   const selectAccount = (accountId) => setAccountSelections((current) => ({

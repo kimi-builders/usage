@@ -22,6 +22,29 @@ sync mode. Off sources are not parsed. The snapshot may contain project basename
 private analysis. A project basename is removed from the sync payload unless the
 user enables project upload in community settings.
 
+## Log reads and local preferences
+
+The Collector must open and decode selected log records, which can also contain
+conversation text and full working-directory paths. It extracts allowlisted usage
+fields and discards those other fields; they are not retained in dashboard facts,
+exports, or community payloads. Kimi, Pi, and Gemini JSONL readers process one line at a
+time (16 MiB per-record limit); oversized or corrupt records produce a partial
+scan warning rather than a complete-success claim.
+
+Budget targets, theme, dismissed alerts, and poster identity/avatar preferences
+are stored in the owner-only local `preferences.json`, separately from source and
+community configuration. They survive changes to the loopback port and never
+join community sync. Values in the currently open legacy browser origin migrate
+only where no local value exists. Old values on other ports cannot be discovered
+automatically. User-entered poster identity appears only in an explicitly exported
+poster; local JSON facts use a domain-separated installation-derived session ID,
+not the original session identifier or the community session hash.
+
+Ordinary dashboard startup reads settings without probing login files or
+Keychain values. Select **Detect local logins** in benefit settings to perform
+that local detection. Saving/enabling quota checks permits credential use for the
+selected providers; detection alone does not make provider requests.
+
 ## Never uploaded
 
 - prompts, responses, reasoning text, or tool results;

@@ -64,6 +64,23 @@ test('OpenCode Go workspace validation requires an exact per-account ID', () => 
   assert.equal(utils.isValidOpenCodeWorkspaceId('wrk_'), false);
 });
 
+test('OpenCode preserves unprobed saved credentials but requires secrets for new or changed connections', () => {
+  for (const connectionType of ['workspace', 'api-key']) {
+    const saved = { id: 'personal', connectionType, hasSecret: null, credentialState: 'unchecked' };
+    assert.equal(utils.hasOpenCodeCredential({ ...saved, label: 'Renamed', subscriptionPrice: 25 }, saved, ''), true);
+    assert.equal(utils.hasOpenCodeCredential(saved, undefined, ''), false);
+    assert.equal(utils.hasOpenCodeCredential({ ...saved, id: 'new' }, saved, ''), false);
+    assert.equal(utils.hasOpenCodeCredential({ ...saved, connectionType: connectionType === 'api-key' ? 'workspace' : 'api-key' }, saved, ''), false);
+    assert.equal(utils.hasOpenCodeCredential({ ...saved, hasSecret: false, credentialState: 'absent' }, saved, ''), false);
+    assert.equal(utils.hasOpenCodeCredential({ ...saved, hasSecret: true, credentialState: 'present' }, saved, ''), true);
+    assert.equal(utils.hasOpenCodeCredential(saved, saved, '', true), false);
+    assert.equal(utils.hasOpenCodeCredential(saved, undefined, 'new-secret', true), true);
+  }
+  assert.equal(utils.credentialState({ hasSecret: null }), 'unchecked');
+  assert.equal(utils.credentialState({ hasSecret: false }), 'absent');
+  assert.equal(utils.credentialState({ hasSecret: true }), 'present');
+});
+
 test('reset-credit UI distinguishes available, observed zero, and unknown counts', () => {
   assert.deepEqual(utils.resetCreditPresentation({ availableCount: 2 }, false), {
     state: 'available', value: '2', detail: null,
@@ -465,7 +482,7 @@ test('settings filter tabs control their labelled provider panel', () => {
 
   assert.match(markup, /id="limit-provider-settings-tab-detected"/);
   assert.match(markup, /aria-controls="limit-provider-settings-panel"/);
-  assert.match(markup, /id="limit-provider-settings-panel" role="tabpanel" aria-labelledby="limit-provider-settings-tab-detected"/);
+  assert.match(markup, /id="limit-provider-settings-panel" role="tabpanel" aria-labelledby="limit-provider-settings-tab-all"/);
 });
 
 test('English benefit settings localize catalog and detection copy', () => {

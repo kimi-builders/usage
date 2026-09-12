@@ -151,6 +151,13 @@ dependencies. Their package versions are pinned in dashboard/package-lock.json.
 - React and React DOM (MIT)
   https://github.com/facebook/react
 
+Full license and copyright texts for bundled output, including Lucide’s Feather
+attribution and the JetBrains Mono OFL, are included in THIRD_PARTY_LICENSES.txt
+and the built dashboard at /THIRD_PARTY_LICENSES.txt. The build generates this
+file from installed, lockfile-verified packages and the reviewed licenses/ inputs;
+the package audit rejects missing or stale texts. Package metadata fallbacks are
+explicitly identified where an upstream npm archive omits a license file.
+
 Build-only dependencies and their complete transitive versions are recorded in
 dashboard/package-lock.json. Each dependency remains subject to its own license.
 Product names, service names, and logos are trademarks of their respective

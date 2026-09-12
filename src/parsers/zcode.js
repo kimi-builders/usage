@@ -1,5 +1,5 @@
 import { existsSync, statSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { aggregateToBuckets, extractSessions } from './index.js';
 import { queryDbJson } from './sqlite.js';
@@ -21,7 +21,7 @@ function count(value) {
 
 function projectName(root, cwd, sessionDir) {
   const value = root || cwd || sessionDir;
-  return value ? basename(String(value).replace(/[\\/]+$/, '')) || 'unknown' : 'unknown';
+  return value ? String(value).split(/[\\/]/).filter(Boolean).at(-1) || 'unknown' : 'unknown';
 }
 
 export async function parse({ sessionSalt } = {}) {
@@ -39,7 +39,8 @@ export async function parse({ sessionSalt } = {}) {
       json_extract(m.data, '$.path.root') AS pathRoot,
       json_extract(m.data, '$.path.cwd') AS pathCwd,
       s.directory AS sessionDir
-      FROM message m LEFT JOIN session s ON s.id = m.session_id`);
+      FROM (SELECT * FROM message WHERE CASE WHEN json_valid(data) THEN json_type(data) = 'object' ELSE 0 END) m
+      LEFT JOIN session s ON s.id = m.session_id`);
   } catch (error) {
     if (error?.status === 127 || error?.message?.includes('ENOENT')) {
       throw new Error('ZCode requires Node 22.5+ or the sqlite3 CLI.');
@@ -83,5 +84,10 @@ export async function parse({ sessionSalt } = {}) {
       requestCount: 1,
     });
   }
-  return { buckets: aggregateToBuckets(entries), sessions: extractSessions(events, sessionSalt) };
+  const invalid = queryDbJson(path, `SELECT COUNT(*) AS count FROM message
+    WHERE CASE WHEN json_valid(data) THEN json_type(data) != 'object' ELSE 1 END`)[0]?.count || 0;
+  return {
+    buckets: aggregateToBuckets(entries), sessions: extractSessions(events, sessionSalt),
+    ...(invalid ? { skipped: true, warnings: [`ZCode: ${invalid} invalid JSON records; healthy records retained`] } : {}),
+  };
 }

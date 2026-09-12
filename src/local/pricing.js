@@ -128,6 +128,8 @@ export function estimateLocalBucketCost(bucket) {
     priceSourceUrl: price.sourceUrl,
     priceInput: price.input,
     priceCacheWrite: price.cacheWrite,
+    priceCacheWrite5m: price.cacheWrite5m,
+    priceCacheWrite1h: price.cacheWrite1h,
     priceCacheRead: price.cacheRead,
     priceOutput: price.output,
     priceContextTier: price.contextTier || null,

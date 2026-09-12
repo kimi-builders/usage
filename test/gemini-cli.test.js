@@ -51,7 +51,7 @@ test('missing tmp dir reports not installed (null)', async () => {
   assert.equal(await parse({ sessionSalt: SALT }), null);
 });
 
-test('jsonl: tokens split to exclusive fields (cached out of input, thoughts out of output)', async () => {
+test('jsonl: tokens split to exclusive fields (cached out of input, thoughts separate from candidate output)', async () => {
   const dir = useDir('basic');
   writeChat(dir, 'abc123', 'session-2026-08-01T10-00-x1.jsonl', [
     { sessionId: 'x1', directories: ['/work/demo-app'] },
@@ -65,7 +65,7 @@ test('jsonl: tokens split to exclusive fields (cached out of input, thoughts out
   ]);
   const result = await parse({ sessionSalt: SALT });
   assert.deepEqual(sumTokens(result), {
-    input: 700, cacheWrite: 0, cacheRead: 300, output: 50, reasoning: 60, requests: 1,
+    input: 700, cacheWrite: 0, cacheRead: 300, output: 110, reasoning: 60, requests: 1,
   });
   assert.equal(result.buckets[0].project, 'demo-app');
   assert.equal(result.buckets[0].model, 'gemini-2.5-pro');
@@ -94,7 +94,7 @@ test('legacy usageMetadata records and .json session files are read', async () =
   });
   const result = await parse({ sessionSalt: SALT });
   assert.deepEqual(sumTokens(result), {
-    input: 400, cacheWrite: 0, cacheRead: 100, output: 60, reasoning: 20, requests: 1,
+    input: 400, cacheWrite: 0, cacheRead: 100, output: 80, reasoning: 20, requests: 1,
   });
   assert.equal(result.buckets[0].project, 'legacy-app');
 });
@@ -123,4 +123,18 @@ test('nested subagent sessions are collected; noise records are skipped', async 
   // parent + subagent + noise files are separate sessions (the zero-usage
   // turn in the noise file still counts as activity, just no tokens).
   assert.equal(result.sessions.length, 3);
+});
+
+test('Gemini candidates and thoughts sum to the reported total, including thoughts above candidates', async () => {
+  const dir = useDir('candidate-boundary');
+  writeChat(dir, 'project', 's.jsonl', [
+    { directories: ['C:\\Users\\private\\demo'] }, null, '{bad}',
+    { type: 'gemini', timestamp: '2026-08-10T10:00:06Z', model: 'gemini-3-pro', tokens: { input: 10731, cached: 100, output: 225, thoughts: 271, total: 11227 } },
+  ]);
+  const result = await parse({ sessionSalt: SALT });
+  const counts = sumTokens(result);
+  assert.equal(counts.input + counts.cacheWrite + counts.cacheRead + counts.output + counts.reasoning, 11227);
+  assert.equal(counts.output, 225);
+  assert.equal(result.buckets[0].project, 'demo');
+  assert.equal(result.skipped, true);
 });

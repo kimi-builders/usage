@@ -49,15 +49,15 @@ test('analysis separates selected range, equal previous window, and lifetime tot
   assert.equal(report.peakTokens, 300);
 });
 
-test('24H uses exactly 24 hourly slots with unambiguous date and hour labels', () => {
+test('24H retains both endpoint hourly slots with unambiguous date and hour labels', () => {
   const report = analyze(data, { range: '24h' });
   const expectedLabel = (value) => `${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')} ${String(value.getHours()).padStart(2, '0')}:00`;
   const last = new Date(data.generatedAt);
   last.setMinutes(0, 0, 0);
   const first = new Date(last);
-  first.setHours(first.getHours() - 23);
+  first.setHours(first.getHours() - 24);
   assert.equal(report.seriesUnit, 'hour');
-  assert.equal(report.series.length, 24);
+  assert.equal(report.series.length, 25);
   assert.equal(report.series[0].label, expectedLabel(first));
   assert.equal(report.series.at(-1).label, expectedLabel(last));
 });
@@ -130,4 +130,26 @@ test('distribution shares use every row, including rows below the top six', () =
   assert.equal(distributionShare(rows, rows[0], 'tokens'), 0.6);
   assert.equal(distributionShare(rows, rows[0], 'cost'), 0.6);
   assert.equal(distributionShare(rows, rows[6], 'tokens'), 0.01);
+});
+
+test('efficiency ratios are unavailable when activity cannot match the Token filter', () => {
+  for (const dimension of ['models', 'efforts', 'projects', 'agentVersions']) {
+    const report = analyze(data, { ...EMPTY_FILTERS, range: 'all', [dimension]: ['selected'] });
+    assert.equal(report.activityScopeMatches, false, dimension);
+    assert.equal(report.avgRequestSeconds, null, dimension);
+  }
+  const report = analyze(data, { ...EMPTY_FILTERS, range: 'all', sources: ['kimi-code'] });
+  assert.equal(report.activityScopeMatches, true);
+  assert.equal(report.avgRequestSeconds, 60);
+});
+
+test('rolling 24H chart includes usage in the first partial hour and matches the headline sum', () => {
+  const partial = { ...data, generatedAt: '2026-08-11T12:15:00Z', sessions: [], activityHours: [], buckets: [
+    bucket(1, 'codex', 'test', '2026-08-10T12:30:00Z', 123),
+    bucket(2, 'codex', 'test', '2026-08-11T12:00:00Z', 456),
+  ] };
+  const report = analyze(partial, { ...EMPTY_FILTERS, range: '24h' });
+  assert.equal(report.totals.totalTokens, 579);
+  assert.equal(report.series[0].totalTokens, 123);
+  assert.equal(report.series.reduce((sum, hour) => sum + hour.totalTokens, 0), 579);
 });

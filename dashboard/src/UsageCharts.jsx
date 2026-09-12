@@ -4,7 +4,7 @@ import { buildHeatmap, heatmapView } from './analytics.js';
 import { HeatModeTabs, WeekPager, storedHeatMode, storeHeatMode } from './heat-controls.jsx';
 import { addLocalWeeks, firstDataWeekStart, localWeekEnd, localWeekStart, weekLabel } from './week.js';
 import { CHART_COLORS as COLORS } from './chart-colors.js';
-import { compactMoney, compactNumber, displayMoney, distributionShare, duration, percent, sourceLabel } from './format.js';
+import { compactMoney, compactNumber, displayMoney, distributionShare, duration, percent, pluralUnit, sourceLabel } from './format.js';
 import { ToolGlyph } from './tool-glyphs.js';
 
 const METRICS = [
@@ -102,11 +102,11 @@ function TokenBreakdown({ row, zh }) {
 
 function trendFacts(row, zh, currency) {
   const facts = [
-    `${compact(row.requestCount || 0, zh)} ${zh ? '次请求' : 'requests'}`,
+    `${compact(row.requestCount || 0, zh)} ${zh ? '次请求' : pluralUnit(row.requestCount || 0, 'request')}`,
     `${zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} ${costText(row.costMicros || 0, currency)}`,
     `${zh ? '活跃' : 'active'} ${duration(row.activeSeconds || 0, zh)}`,
   ];
-  if (row.userMessageCount != null) facts.push(`${compact(row.userMessageCount, zh)} ${zh ? '条用户消息' : 'user messages'}`);
+  if (row.userMessageCount != null) facts.push(`${compact(row.userMessageCount, zh)} ${zh ? '条用户消息' : pluralUnit(row.userMessageCount, 'user message')}`);
   return facts.join(' · ');
 }
 
@@ -310,7 +310,7 @@ export function ActivityHeatmap({ report, data, zh, currency, metric, onMetric }
       <div className="heatmap-scroll" id={metricPanelId} role="tabpanel" aria-labelledby={`${metricPanelId}-${metric}-tab`} tabIndex={0}><div className="heatmap-grid">{cells.map((row, day) => <div className="heatmap-row" key={weekdays[day]}><span>{weekdayShort[day]}</span><div>{row.map((cell, hour) => {
         const value = metric === 'cost' ? cell.costMicros : metric === 'duration' ? cell.activeSeconds : metric === 'prompts' ? cell.userMessageCount : cell.totalTokens;
         const level = value > 0 && view.max ? Math.max(1, Math.ceil((value / view.max) * 5)) : 0;
-        const title = `${weekdays[day]} ${String(hour).padStart(2, '0')}:00 · ${compact(cell.totalTokens, zh)} tokens · ${costText(cell.costMicros, currency)} · ${duration(cell.activeSeconds, zh)} · ${compact(cell.userMessageCount, zh)} ${zh ? '条用户消息' : 'user messages'} · ${zh ? '输入' : 'input'} ${compact(cell.inputTokens + cell.cacheWriteInputTokens, zh)} · ${zh ? '缓存读' : 'cache'} ${compact(cell.cacheReadInputTokens, zh)} · ${zh ? '输出' : 'output'} ${compact(cell.outputTokens, zh)} · ${zh ? '推理' : 'reasoning'} ${compact(cell.reasoningOutputTokens, zh)}`;
+        const title = `${weekdays[day]} ${String(hour).padStart(2, '0')}:00 · ${compact(cell.totalTokens, zh)} tokens · ${costText(cell.costMicros, currency)} · ${duration(cell.activeSeconds, zh)} · ${compact(cell.userMessageCount, zh)} ${zh ? '条用户消息' : pluralUnit(cell.userMessageCount, 'user message')} · ${zh ? '输入' : 'input'} ${compact(cell.inputTokens + cell.cacheWriteInputTokens, zh)} · ${zh ? '缓存读' : 'cache'} ${compact(cell.cacheReadInputTokens, zh)} · ${zh ? '输出' : 'output'} ${compact(cell.outputTokens, zh)} · ${zh ? '推理' : 'reasoning'} ${compact(cell.reasoningOutputTokens, zh)}`;
         const peak = view.peak?.day === day && view.peak?.hour === hour && value > 0;
         if (!cell.observed) return <i key={hour} className="heatmap-missing" aria-hidden="true"/>;
         return <button ref={(node) => { const key = `${day}-${hour}`; if (node) heatCellRefs.current.set(key, node); else heatCellRefs.current.delete(key); }} type="button" key={hour} tabIndex={rovingCell?.day === day && rovingCell?.hour === hour ? 0 : -1} data-level={level} data-peak={peak ? 'true' : undefined} data-active={hovered?.day === day && hovered?.hour === hour ? 'true' : undefined} aria-label={title} onKeyDown={(event) => onHeatmapKeyDown(event, day, hour)} onMouseEnter={(event) => setHovered({ day, hour, ...tooltipPosition(event, heatmapPanel.current, 252, 230) })} onFocus={(event) => { setFocusCell({ day, hour }); setHovered({ day, hour, ...tooltipPosition(event, heatmapPanel.current, 252, 230) }); }} onBlur={() => setHovered(null)}/>;
@@ -321,7 +321,7 @@ export function ActivityHeatmap({ report, data, zh, currency, metric, onMetric }
         <div><span><i style={{ background: COLORS.cache }}/>{zh ? '缓存读' : 'Cache read'}</span><b>{compact(selectedCell.cacheReadInputTokens, zh)}</b></div>
         <div><span><i style={{ background: COLORS.output }}/>{zh ? '输出' : 'Output'}</span><b>{compact(selectedCell.outputTokens, zh)}</b></div>
         <div><span><i style={{ background: COLORS.reasoning }}/>{zh ? '推理' : 'Reasoning'}</span><b>{compact(selectedCell.reasoningOutputTokens, zh)}</b></div>
-        <footer>{zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} {costText(selectedCell.costMicros, currency)} · {zh ? '活跃' : 'Active'} {duration(selectedCell.activeSeconds, zh)} · {compact(selectedCell.userMessageCount, zh)} {zh ? '条用户消息' : 'user messages'}</footer>
+        <footer>{zh ? '标准 API 等价估算' : 'Standard API-equivalent estimate'} {costText(selectedCell.costMicros, currency)} · {zh ? '活跃' : 'Active'} {duration(selectedCell.activeSeconds, zh)} · {compact(selectedCell.userMessageCount, zh)} {zh ? '条用户消息' : pluralUnit(selectedCell.userMessageCount, 'user message')}</footer>
       </aside> : null}
       <footer className="heatmap-footer"><div><span className="heatmap-ramp"><em>{zh ? '少' : 'Less'}</em>{[1,2,3,4,5].map((level) => <i key={level} data-level={level}/>)}<em>{zh ? '多' : 'More'}</em></span><span><i className="legend-missing"/>{zh ? '描边 = 未观测' : 'Dashed = not observed'}</span><span>{zh ? '白圈 = 峰值 · 悬停查看数值' : 'White ring = peak · hover for values'}</span></div><span>{zh ? `时区：${timezone}（浏览器本地）` : `Timezone: ${timezone} (browser local)`}</span></footer>
     </section>

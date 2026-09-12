@@ -313,8 +313,15 @@ export function normalizeLimitSettings(value) {
 }
 
 export function publicLimitSettings(settings, {
-  keychainAvailable = process.platform === 'darwin', hasSecret = () => false, detections = {},
+  keychainAvailable = process.platform === 'darwin', hasSecret = () => null, detections = {},
 } = {}) {
+  const credential = (key) => {
+    const present = hasSecret(key);
+    return {
+      hasSecret: present == null ? null : Boolean(present),
+      credentialState: present == null ? 'unchecked' : present ? 'present' : 'absent',
+    };
+  };
   const normalized = normalizeLimitSettings(settings);
   const catalogById = new Map(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id, provider]));
   const providers = Object.fromEntries(Object.entries(normalized.providers).map(([id, provider]) => [id, {
@@ -324,7 +331,7 @@ export function publicLimitSettings(settings, {
     workspaceId: safeLocalPathDisplay(provider.workspaceId),
     accounts: provider.accounts.map((account) => ({
       ...account,
-      hasSecret: hasSecret(`${id}:${account.id}`),
+      ...credential(`${id}:${account.id}`),
     })),
   }]));
   return {
@@ -334,8 +341,11 @@ export function publicLimitSettings(settings, {
     catalog: normalized.providerOrder.map((id) => catalogById.get(id)).filter(Boolean).map((provider) => ({
       ...provider,
       dashboardUrl: provider.sites?.[providers[provider.id]?.site]?.dashboardUrl || provider.dashboardUrl,
-      hasSecret: hasSecret(regionalCredentialKey(provider.id, providers[provider.id])),
-      ...(provider.sites ? { siteSecrets: Object.fromEntries(['china', 'international'].map(site => [site, hasSecret(regionalCredentialKey(provider.id, { site }))])) } : {}),
+      ...credential(regionalCredentialKey(provider.id, providers[provider.id])),
+      ...(provider.sites ? {
+        siteSecrets: Object.fromEntries(['china', 'international'].map(site => [site, credential(regionalCredentialKey(provider.id, { site })).hasSecret])),
+        siteCredentialStates: Object.fromEntries(['china', 'international'].map(site => [site, credential(regionalCredentialKey(provider.id, { site })).credentialState])),
+      } : {}),
       accountCount: providers[provider.id]?.accounts?.length || 0,
       supportsKeychain: keychainAvailable && provider.authModes.includes('keychain'),
       detection: detections[provider.id] || {

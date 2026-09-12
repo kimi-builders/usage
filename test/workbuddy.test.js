@@ -58,3 +58,17 @@ test('WorkBuddy keeps routed models, exclusive tokens, per-session dedup, and no
   assert.equal(serialized.includes('PRIVATE_'), false);
   assert.equal(serialized.includes('/private/repo'), false);
 });
+
+test('WorkBuddy marks corrupt records partial without losing healthy usage', async () => {
+  const dir = join(root, 'damaged', 'projects');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'sessions.jsonl'), [
+    'null', '{bad}', JSON.stringify(record('healthy', 'session', 'hy3', '2026-08-10T10:00:10Z')), '{"unfinished":',
+  ].join('\n'));
+  process.env.KBU_USAGE_WORKBUDDY_DIRS = dir;
+  const result = await parse({ sessionSalt: SALT });
+  assert.equal(result.skipped, true);
+  assert.equal(result.buckets[0].requestCount, 1);
+  assert.equal(result.warnings.length, 2);
+  assert.doesNotMatch(JSON.stringify(result.warnings), /PRIVATE|damaged|unfinished/);
+});

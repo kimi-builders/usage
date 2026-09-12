@@ -178,6 +178,7 @@ test('public settings recognize a saved OpenCode account Cookie after reload', (
   } } }) };
   const reads = [];
   const exposed = getPublicLimitSettings(config, {
+    detectCredentials: true,
     keychainAvailable: true,
     readSecret: (key) => {
       reads.push(key);
@@ -196,6 +197,7 @@ test('public settings recognize a saved OpenCode API-key account without a Works
     activeAccountId: 'api',
   } } }) };
   const exposed = getPublicLimitSettings(config, {
+    detectCredentials: true,
     keychainAvailable: true,
     readSecret: (key) => key === 'opencode:api' ? 'sk-opencode-test' : null,
   });
@@ -1014,4 +1016,55 @@ test('subscription limit service never queries an incomplete OpenCode account', 
   assert.equal(requested, false);
   assert.equal(result.providers[0].accounts[0].status, 'error');
   assert.equal(result.providers[0].accounts[0].error.code, 'not_configured');
+});
+
+test('loading public settings never probes credentials unless detection is explicitly requested', () => {
+  let calls = 0;
+  const exposed = getPublicLimitSettings({ subscriptionLimits: { enabled: false } }, {
+    environment: {}, keychainAvailable: true,
+    readSecret: () => { calls++; throw new Error('must not read'); },
+    run: () => { calls++; throw new Error('must not execute'); },
+  });
+  assert.equal(calls, 0);
+  assert.ok(exposed.catalog.every((provider) => provider.detection.state === 'unchecked'
+    && provider.credentialState === 'unchecked' && provider.hasSecret === null));
+});
+
+test('public credentials distinguish unchecked, present, and absent without implicit probes', () => {
+  const config = { subscriptionLimits: { providers: {
+    opencode: { accounts: [{ id: 'saved', label: 'Saved', connectionType: 'api-key' }, { id: 'missing', label: 'Missing', connectionType: 'api-key' }] },
+  } } };
+  let reads = 0;
+  const options = { keychainAvailable: true, environment: {}, readSecret: (key) => {
+    reads++;
+    return key === 'opencode:saved' || key === 'minimax:china' ? 'test-secret' : null;
+  } };
+  const unchecked = getPublicLimitSettings(config, options);
+  assert.equal(reads, 0);
+  assert.deepEqual(unchecked.providers.opencode.accounts.map(account => account.credentialState), ['unchecked', 'unchecked']);
+  assert.deepEqual(unchecked.catalog.find(provider => provider.id === 'minimax').siteCredentialStates, { china: 'unchecked', international: 'unchecked' });
+  const checked = getPublicLimitSettings(config, { ...options, detectCredentials: true, run: () => ({ status: 1 }), platform: 'linux' });
+  assert.ok(reads > 0);
+  assert.deepEqual(checked.providers.opencode.accounts.map(account => [account.credentialState, account.hasSecret]), [['present', true], ['absent', false]]);
+  assert.deepEqual(checked.catalog.find(provider => provider.id === 'minimax').siteCredentialStates, { china: 'present', international: 'absent' });
+  assert.doesNotMatch(JSON.stringify(checked), /test-secret/);
+});
+
+test('saving unchanged unprobed OpenCode accounts preserves stored credentials and allows metadata edits', () => {
+  const current = { subscriptionLimits: { enabled: false, providers: { opencode: {
+    accounts: [{ id: 'saved', label: 'Saved', connectionType: 'api-key' }],
+  } } } };
+  const settings = getPublicLimitSettings(current, { keychainAvailable: true, readSecret: () => { throw new Error('Unexpected credential probe'); } });
+  settings.providers.opencode.accounts[0].label = 'Renamed';
+  settings.providers.opencode.accounts[0].entitlementType = 'paid';
+  settings.providers.opencode.accounts[0].subscriptionPrice = 25;
+  let saved;
+  const result = saveLimitSettings({ settings }, { config: current,
+    save: value => { saved = value; },
+    writeSecret: () => { throw new Error('Unexpected credential write'); },
+    deleteSecret: () => { throw new Error('Unexpected credential deletion'); },
+  });
+  assert.equal(saved.subscriptionLimits.providers.opencode.accounts[0].label, 'Renamed');
+  assert.equal(saved.subscriptionLimits.providers.opencode.accounts[0].subscriptionPrice, 25);
+  assert.equal(result.providers.opencode.accounts[0].credentialState, 'unchecked');
 });

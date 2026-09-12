@@ -126,3 +126,28 @@ npx @kimi.builders/usage@latest daemon restart
 That refreshes the absolute package/runtime path recorded by the user-level OS
 scheduler. It does not delete local history, the community connection, or
 remote data.
+
+## Rollback and compatibility
+
+Before publishing, record the current npm `latest` version, the reviewed release
+commit, and a known-good package artifact. Confirm private vulnerability reporting
+and the supported Windows/macOS/Linux CI jobs are enabled. Dependency auditing,
+provider authentication and npm provenance still require explicit online release
+checks; a local fixture run is not evidence that they succeeded.
+
+If a release regresses, have an authorized maintainer restore the recorded stable
+version's `latest` dist-tag and deprecate the affected version with a concise
+upgrade/downgrade instruction. Prefer dist-tag rollback and a fixed new patch over
+unpublishing. Never overwrite or reuse an existing version. Review the restored
+version via an isolated install and then verify the public tag and provenance.
+
+Stop/uninstall the affected daemon before downgrading, install the recorded stable
+version, then deliberately restart the daemon to update its absolute runtime path.
+Preserve local source logs, configuration, installation salt, checkpoints, quota
+history, and `preferences.json`; do not delete them to force a rollback. Back up
+these owner-only files locally before any schema migration. Old dashboards may
+ignore the new preference file. JSON consumers may need to adapt to the added
+version-2 fact fields; the dashboard does not provide JSON re-import. Community
+sync remains protocol v2. Never reset checkpoints or trigger a full
+community replay as an automatic downgrade step. If compatibility cannot be
+proven, keep sync stopped until the migration/reconciliation is reviewed.

@@ -1,3 +1,4 @@
+import { checkThirdPartyLicenses } from './third-party-licenses.mjs';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,6 +15,7 @@ function fail(message) {
 }
 
 try {
+  checkThirdPartyLicenses();
   const lifecycle = ['preinstall', 'install', 'postinstall', 'prepare'];
   for (const name of lifecycle) if (manifest.scripts?.[name]) fail(`unexpected lifecycle script ${name}`);
   if (Object.keys(manifest.dependencies || {}).length) fail('Collector package must not gain runtime dependencies silently');
@@ -31,7 +33,8 @@ try {
   if (!report) fail('npm pack returned no report');
 
   const required = new Set([
-    'package.json', 'README.md', 'LICENSE', 'NOTICE', 'bin/kbu-usage.js',
+    'package.json', 'README.md', 'LICENSE', 'NOTICE', 'THIRD_PARTY_LICENSES.txt',
+    'dashboard/dist/client/THIRD_PARTY_LICENSES.txt', 'bin/kbu-usage.js',
     'dashboard/dist/client/index.html',
     `docs/RELEASE_NOTES_${manifest.version}.md`,
     `docs/RELEASE_NOTES_${manifest.version}.en.md`,

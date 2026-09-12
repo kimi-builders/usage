@@ -17,6 +17,7 @@ import { loadLocalDashboardData } from './dashboard-data.js';
 import {
   createCopilotDeviceController, getPublicLimitSettings, loadSubscriptionLimits, saveLimitSettings,
 } from '../limits/service.js';
+import { createPreferencesStore } from './preferences.js';
 import { createDashboardControl } from './dashboard-control.js';
 import {
   priceCatalogStatus, resetPriceCatalog, updatePriceCatalog,
@@ -119,6 +120,7 @@ function readJson(request, maxBytes = 32 * 1024) {
 
 function browserError(error) {
   const declared = {
+    invalid_preferences: [400, 'Local preferences are invalid or too large.'],
     invalid_json: [400, 'Request body must be valid JSON.'],
     request_too_large: [413, 'Request body is too large.'],
     not_connected: [409, 'This device is not connected to community sync.'],
@@ -228,7 +230,8 @@ export async function startLocalDashboardServer({
   authRedirectOrigin = null,
   dataLoader = loadLocalDashboardData,
   limitsLoader = loadSubscriptionLimits,
-  limitSettingsLoader = getPublicLimitSettings,
+  limitSettingsLoader = (options) => getPublicLimitSettings(undefined, options),
+  preferencesStore = createPreferencesStore(),
   limitSettingsSaver = saveLimitSettings,
   copilotDeviceControl = null,
   syncStatusLoader = getLocalSyncStatus,
@@ -298,9 +301,23 @@ export async function startLocalDashboardServer({
         return;
       }
 
+      if (url.pathname === '/api/preferences') {
+        if (request.method === 'GET' || request.method === 'HEAD') {
+          sendJson(request, response, preferencesStore.load());
+        } else if (request.method === 'POST') {
+          if (!String(request.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
+            send(response, 415, 'Content-Type must be application/json.');
+            return;
+          }
+          const payload = await readJson(request, 512 * 1024);
+          sendJson(request, response, preferencesStore.save(payload.values, { onlyMissing: payload.onlyMissing === true }));
+        } else send(response, 405, 'Method not allowed.', { Allow: 'GET, HEAD, POST' });
+        return;
+      }
+
       if (url.pathname === '/api/limits/settings') {
         if (request.method === 'GET' || request.method === 'HEAD') {
-          sendJson(request, response, limitSettingsLoader());
+          sendJson(request, response, limitSettingsLoader({ detectCredentials: url.searchParams.get('detect') === '1' }));
           return;
         }
         if (request.method === 'POST') {
@@ -347,7 +364,14 @@ export async function startLocalDashboardServer({
           }
           const payload = await readJson(request);
           const result = await dashboardControl.act(payload);
-          if (['save-sources', 'prepare-onboarding', 'complete-onboarding'].includes(payload.action)) activeData = null;
+          if (['save-sources', 'prepare-onboarding', 'complete-onboarding', 'configure-source'].includes(payload.action)) {
+            const policies = Object.fromEntries((result.sources || []).map((source) => [source.id, source.mode]));
+            const sameScanScope = activeData?.sourcePolicies && Object.keys(policies).length
+              && Object.keys({ ...activeData.sourcePolicies, ...policies }).every((id) =>
+                (activeData.sourcePolicies[id] !== 'off') === (policies[id] !== 'off'));
+            if (payload.action === 'complete-onboarding' && sameScanScope) activeData = { ...activeData, sourcePolicies: policies };
+            else activeData = null;
+          }
           sendJson(request, response, result);
           return;
         }

@@ -71,3 +71,21 @@ test('dashboard community status uses the same connection predicate as sync', ()
   assert.equal(missingSalt.community.connected, false);
   assert.equal(missingKey.community.connected, false);
 });
+
+test('private fact export preserves TTL counters, activity slices and installation-derived IDs', () => {
+  const input = structuredClone(snapshot);
+  Object.assign(input.data.buckets[0], { cacheWriteInputTokens: 12, cacheWrite5mInputTokens: 5, cacheWrite1hInputTokens: 7 });
+  input.data.sessions[0].activityHours[0].secret = 'PRIVATE_SECRET';
+  const options = { config: null, device: {}, agentVersions: {} };
+  const result = createDashboardData(input, options);
+  assert.equal(result.factSchemaVersion, 2);
+  assert.equal(result.buckets[0].cacheWrite5mInputTokens, 5);
+  assert.equal(result.buckets[0].cacheWrite1hInputTokens, 7);
+  assert.deepEqual(result.sessions[0].activityHours, snapshot.data.sessions[0].activityHours);
+  assert.deepEqual(result.sessions[0].userPromptHours, snapshot.data.sessions[0].userPromptHours);
+  assert.match(result.sessions[0].localSessionId, /^[a-f0-9]{64}$/);
+  assert.equal(result.sessions[0].localSessionId, createDashboardData(input, options).sessions[0].localSessionId);
+  input.data.sessions[0].sessionHash = 'b'.repeat(64);
+  assert.notEqual(result.sessions[0].localSessionId, createDashboardData(input, options).sessions[0].localSessionId);
+  assert.doesNotMatch(JSON.stringify(result), /PRIVATE_SECRET/);
+});

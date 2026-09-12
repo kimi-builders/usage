@@ -1,5 +1,6 @@
+import { jsonlRecords } from './jsonl-records.js';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { aggregateToBuckets, extractSessions } from './index.js';
 
@@ -18,9 +19,8 @@ import { aggregateToBuckets, extractSessions } from './index.js';
  * 'user'; info/error/warning records are system noise and skipped.
  *
  * Tokens live in msg.tokens.{input,output,cached,thoughts} where `input`
- * INCLUDES cached and `output` INCLUDES thoughts — both are subtracted to
- * fit our mutually-exclusive contract. Legacy records that stored the raw
- * Gemini API usageMetadata shape are mapped the same way.
+ * INCLUDES cached. `output` (candidatesTokenCount) and `thoughts` are separate
+ * counters. Only cached input is subtracted for the exclusive contract.
  */
 
 // Resolved lazily (not at import time) so importing the registry never
@@ -41,7 +41,7 @@ function tokenCount(value) {
   return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
-function findSessionFiles(baseDir) {
+function findSessionFiles(baseDir, warn) {
   const results = [];
   if (!existsSync(baseDir)) return results;
 
@@ -49,6 +49,7 @@ function findSessionFiles(baseDir) {
   try {
     projectDirs = readdirSync(baseDir, { withFileTypes: true });
   } catch {
+    warn('cannot read a project directory; healthy records retained');
     return results;
   }
 
@@ -57,7 +58,8 @@ function findSessionFiles(baseDir) {
     let entries;
     try {
       entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
+    } catch (error) {
+      if (error?.code !== 'ENOENT') warn('cannot read a session directory; healthy records retained');
       return;
     }
     for (const entry of entries) {
@@ -75,41 +77,30 @@ function findSessionFiles(baseDir) {
 }
 
 // Read a session file into a uniform { messages, directories } shape.
-function readRecords(filePath) {
-  let raw;
-  try {
-    raw = readFileSync(filePath, 'utf-8');
-  } catch {
-    return null;
-  }
-
+async function readRecords(filePath, warn) {
   if (filePath.endsWith('.jsonl')) {
     const messages = [];
     let directories = null;
-    for (const line of raw.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      let obj;
-      try {
-        obj = JSON.parse(trimmed);
-      } catch {
-        continue;
-      }
-      // The metadata line carries directories; message lines carry a `type`.
+    for await (const obj of jsonlRecords(filePath, warn)) {
       if (!directories && Array.isArray(obj.directories)) directories = obj.directories;
-      if (typeof obj.type === 'string' || typeof obj.role === 'string') messages.push(obj);
+      if (typeof obj.type === 'string' || typeof obj.role === 'string') messages.push({ type: obj.type, role: obj.role, timestamp: obj.timestamp, createTime: obj.createTime, model: obj.model, tokens: extractTokens(obj) });
     }
     return { messages, directories };
   }
 
   let data;
   try {
-    data = JSON.parse(raw);
+    data = JSON.parse(readFileSync(filePath, 'utf8'));
+    if (!data || typeof data !== 'object' || !Array.isArray(data.messages || data.history || [])) throw new Error();
   } catch {
+    warn('invalid or unreadable JSON session; healthy files retained');
     return null;
   }
   return {
-    messages: data.messages || data.history || [],
+    messages: (data.messages || data.history || []).flatMap((msg) => {
+      if (!msg || typeof msg !== 'object' || Array.isArray(msg)) { warn('invalid message type; healthy records retained'); return []; }
+      return [{ type: msg.type, role: msg.role, timestamp: msg.timestamp, createTime: msg.createTime, model: msg.model, tokens: extractTokens(msg) }];
+    }),
     directories: Array.isArray(data.directories) ? data.directories : null,
   };
 }
@@ -122,14 +113,14 @@ function classifyRole(msg) {
 }
 
 // msg.tokens / usageMetadata → our mutually-exclusive 5-field contract
-// (cached out of input, thoughts out of output; negatives clamped).
+// (cached out of input; candidate output excludes thoughts already).
 function extractTokens(msg) {
   const t = msg.tokens;
   if (t) {
     const cached = tokenCount(t.cached);
     const thoughts = tokenCount(t.thoughts);
     const inputTokens = Math.max(0, tokenCount(t.input) - cached);
-    const outputTokens = Math.max(0, tokenCount(t.output) - thoughts);
+    const outputTokens = tokenCount(t.output);
     if (!inputTokens && !cached && !outputTokens && !thoughts) return null;
     return {
       inputTokens,
@@ -144,7 +135,7 @@ function extractTokens(msg) {
     const cached = tokenCount(u.cachedContentTokenCount);
     const thoughts = tokenCount(u.thoughtsTokenCount);
     const inputTokens = Math.max(0, tokenCount(u.promptTokenCount ?? u.input_tokens) - cached);
-    const outputTokens = Math.max(0, tokenCount(u.candidatesTokenCount ?? u.output_tokens) - thoughts);
+    const outputTokens = tokenCount(u.candidatesTokenCount ?? u.output_tokens);
     if (!inputTokens && !cached && !outputTokens && !thoughts) return null;
     return {
       inputTokens,
@@ -160,18 +151,20 @@ function extractTokens(msg) {
 function projectFromDirectories(directories) {
   const first = Array.isArray(directories) ? directories[0] : null;
   if (!first) return 'unknown';
-  return basename(String(first).replace(/[\\/]+$/, '')) || 'unknown';
+  return String(first).split(/[\\/]/).filter(Boolean).at(-1) || 'unknown';
 }
 
 export async function parse({ sessionSalt } = {}) {
   const tmpDir = resolveTmpDir();
   if (!existsSync(tmpDir)) return null;
 
+  const warnings = [];
+  const warn = (message) => { if (warnings.length < 20) warnings.push(`gemini-cli: ${message}`); };
   const entries = [];
   const sessionEvents = [];
 
-  for (const filePath of findSessionFiles(tmpDir)) {
-    const record = readRecords(filePath);
+  for (const filePath of findSessionFiles(tmpDir, warn)) {
+    const record = await readRecords(filePath, warn);
     if (!record) continue;
 
     const project = projectFromDirectories(record.directories);
@@ -190,7 +183,7 @@ export async function parse({ sessionSalt } = {}) {
       sessionEvents.push({ sessionId: filePath, source: 'gemini-cli', project, timestamp: ts, role });
 
       if (role !== 'assistant') continue;
-      const tokens = extractTokens(msg);
+      const tokens = msg.tokens;
       if (!tokens) continue;
 
       entries.push({
@@ -206,5 +199,6 @@ export async function parse({ sessionSalt } = {}) {
   return {
     buckets: aggregateToBuckets(entries),
     sessions: extractSessions(sessionEvents, sessionSalt),
+    ...(warnings.length ? { skipped: true, warnings } : {}),
   };
 }

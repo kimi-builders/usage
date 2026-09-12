@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { jsonlRecords } from './jsonl-records.js';
+import { existsSync, readdirSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { aggregateToBuckets, extractSessions } from './index.js';
 
@@ -15,7 +16,7 @@ function jsonlFiles(dir, context) {
   try {
     children = readdirSync(dir, { withFileTypes: true });
   } catch (error) {
-    warn(context, `${context.source}: cannot read a session directory: ${error.message}`);
+    warn(context, `${context.source}: cannot read a session directory`);
     return [];
   }
   return children.flatMap((child) => {
@@ -49,21 +50,9 @@ export async function parsePiSessions({ source, roots, sessionSalt }) {
 
   for (const sessionsDir of roots) {
     for (const filePath of jsonlFiles(sessionsDir, context)) {
-      let content;
-      try {
-        content = readFileSync(filePath, 'utf8');
-      } catch (error) {
-        warn(context, `${source}: cannot read a session file: ${error.message}`);
-        continue;
-      }
-
       let sessionId = basename(filePath, '.jsonl');
       let project = projectFromPath(filePath, sessionsDir);
-      for (const line of content.split('\n')) {
-        if (!line.trim()) continue;
-        let record;
-        try { record = JSON.parse(line); } catch { continue; }
-
+      for await (const record of jsonlRecords(filePath, (message) => warn(context, `${source}: ${message}`))) {
         if (record.type === 'session') {
           if (record.id) sessionId = String(record.id);
           if (record.cwd) project = piProjectFromCwd(record.cwd);

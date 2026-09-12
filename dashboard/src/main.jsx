@@ -1,13 +1,9 @@
+import { preferences } from './preferences.js';
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.jsx";
 import { normalizeVibe } from "./visual-preferences.js";
 import "./styles.css";
-
-const savedTheme = localStorage.getItem("kbu.theme");
-document.documentElement.dataset.vibe = normalizeVibe(localStorage.getItem("kbu.vibe"));
-document.documentElement.dataset.theme = savedTheme
-  || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
 
 class DashboardErrorBoundary extends React.Component {
   constructor(props) {
@@ -38,6 +34,12 @@ class DashboardErrorBoundary extends React.Component {
   }
 }
 
+preferences.initialize().then(() => {
+const savedTheme = preferences.getItem("kbu.theme");
+document.documentElement.dataset.vibe = normalizeVibe(preferences.getItem("kbu.vibe"));
+document.documentElement.dataset.theme = savedTheme
+  || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <DashboardErrorBoundary>
@@ -45,3 +47,7 @@ createRoot(document.getElementById("root")).render(
     </DashboardErrorBoundary>
   </React.StrictMode>,
 );
+
+}).catch(() => {
+  createRoot(document.getElementById('root')).render(<main className="state-page"><h1>无法读取本机偏好 / Could not load local preferences</h1><p>请确认本地服务仍在运行后重试。 / Check that the local service is running, then retry.</p><button type="button" onClick={() => window.location.reload()}>重新加载 / Reload</button></main>);
+});

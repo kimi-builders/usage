@@ -1,4 +1,5 @@
 import { tokenTotal } from './analytics.js';
+import { knownDimension, measurementCoverage } from './attribution.js';
 import { compactNumber, displayMoney, percent, sourceLabel } from './format.js';
 import { ToolGlyph } from './tool-glyphs.js';
 
@@ -50,9 +51,9 @@ export function UsageAttributionSummary({ report, zh, currency }) {
   const totalTokens = report.totals.totalTokens || 0;
   if (totalTokens <= 0) return null;
 
-  const sourceOf = (bucket) => bucket.source || '';
-  const modelOf = (bucket) => bucket.modelCanonical || bucket.model || '';
-  const projectOf = (bucket) => bucket.project || '';
+  const sourceOf = (bucket) => knownDimension(bucket.source);
+  const modelOf = (bucket) => knownDimension(bucket.modelCanonical) || knownDimension(bucket.model);
+  const projectOf = (bucket) => knownDimension(bucket.project);
   const agents = grouped(buckets, [sourceOf]);
   const models = grouped(buckets, [modelOf]);
   const projects = grouped(buckets, [projectOf]);
@@ -63,9 +64,10 @@ export function UsageAttributionSummary({ report, zh, currency }) {
   const agentCoverage = coverage(buckets, (bucket) => Boolean(sourceOf(bucket)), totalTokens);
   const modelCoverage = coverage(buckets, (bucket) => Boolean(modelOf(bucket)), totalTokens);
   const projectCoverage = coverage(buckets, (bucket) => Boolean(projectOf(bucket)), totalTokens);
-  const exactCoverage = clamp(1 - ((report.totals.assumedTokens || 0) / totalTokens));
+  const exactCoverage = measurementCoverage(buckets);
   const tokensPerRequest = report.totals.requestCount > 0 ? totalTokens / report.totals.requestCount : 0;
-  const tokensPerMinute = report.activeSeconds > 0 ? totalTokens / (report.activeSeconds / 60) : 0;
+  const tokensPerMinute = report.activityScopeMatches && report.activeSeconds > 0
+    ? totalTokens / (report.activeSeconds / 60) : null;
   const costPerMillionMicros = totalTokens > 0 ? report.totals.costMicros * 1_000_000 / totalTokens : 0;
   const inputSide = report.totals.inputTokens + report.totals.cacheWriteInputTokens + report.totals.cacheReadInputTokens;
   const cacheShare = inputSide > 0 ? report.totals.cacheReadInputTokens / inputSide : null;
@@ -116,7 +118,7 @@ export function UsageAttributionSummary({ report, zh, currency }) {
       <div className="efficiency-grid">
         <EfficiencyCard label={zh ? '每请求 Token' : 'Tokens per request'} value={compactNumber(tokensPerRequest, zh ? 'zh' : 'en')} note={zh ? '总 Token ÷ 请求数' : 'total tokens ÷ requests'} accent/>
         <EfficiencyCard label={zh ? '每百万 Token 估费' : 'Cost per 1M tokens'} value={displayMoney(costPerMillionMicros, currency)} note={zh ? '标准 API 等价估算' : 'standard API-equivalent estimate'}/>
-        <EfficiencyCard label={zh ? '每活跃分钟 Token' : 'Tokens per active minute'} value={compactNumber(tokensPerMinute, zh ? 'zh' : 'en')} note={zh ? '本地吞吐效率参考' : 'local throughput reference'}/>
+        <EfficiencyCard label={zh ? '每活跃分钟 Token' : 'Tokens per active minute'} value={tokensPerMinute == null ? '—' : compactNumber(tokensPerMinute, zh ? 'zh' : 'en')} note={tokensPerMinute == null ? (zh ? '当前范围无法准确归因时长' : 'Active time cannot be attributed to these filters') : (zh ? '本地吞吐效率参考' : 'local throughput reference')}/>
         <EfficiencyCard label={zh ? '缓存读取占比' : 'Cache read share'} value={cacheShare == null ? '—' : percent(cacheShare)} note={zh ? '输入侧口径' : 'input-side basis'}/>
       </div>
     </div>

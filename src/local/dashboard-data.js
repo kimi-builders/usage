@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { detectAgentVersions } from '../agent-info.js';
 import { COLLECTOR_VERSION } from '../client-meta.js';
 import { loadConfig } from '../config.js';
@@ -75,6 +76,8 @@ export function createDashboardData(snapshot, {
       bucketStart: bucket.bucketStart,
       inputTokens: bucket.inputTokens,
       cacheWriteInputTokens: bucket.cacheWriteInputTokens,
+      cacheWrite5mInputTokens: bucket.cacheWrite5mInputTokens || 0,
+      cacheWrite1hInputTokens: bucket.cacheWrite1hInputTokens || 0,
       cacheReadInputTokens: bucket.cacheReadInputTokens,
       outputTokens: bucket.outputTokens,
       reasoningOutputTokens: bucket.reasoningOutputTokens,
@@ -85,6 +88,9 @@ export function createDashboardData(snapshot, {
     };
   });
   const sessions = snapshot.data.sessions.map((session) => ({
+    localSessionId: session.sessionHash ? createHash('sha256').update(`local-export:${session.source}:${session.sessionHash}`).digest('hex') : null,
+    userPromptHours: session.userPromptHours?.slice(),
+    activityHours: session.activityHours?.map(({ hourStart, activeSeconds, engagedSeconds, messageCount, userMessageCount }) => ({ hourStart, activeSeconds, engagedSeconds, messageCount, userMessageCount })),
     source: session.source,
     project: session.project || null,
     agentVersion: session.agentVersion || null,
@@ -97,6 +103,7 @@ export function createDashboardData(snapshot, {
   }));
   return {
     schemaVersion: 1,
+    factSchemaVersion: 2,
     generatedAt: snapshot.generatedAt,
     locality: snapshot.locality,
     device: { ...device, collector: { name: '@kimi.builders/usage', version: COLLECTOR_VERSION } },
@@ -119,6 +126,8 @@ export function createDashboardData(snapshot, {
         effectiveTo: price.effectiveTo,
         input: price.input,
         cacheWrite: price.cacheWrite,
+        cacheWrite5m: price.cacheWrite5m,
+        cacheWrite1h: price.cacheWrite1h,
         cacheRead: price.cacheRead,
         output: price.output,
         reasoning: price.reasoning,

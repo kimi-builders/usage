@@ -56,3 +56,17 @@ npx @kimi.builders/usage@latest daemon restart
 
 Upgrading does not delete local history, community connections, provider credentials,
 or remote data. No database migration is required.
+
+## Pre-release review corrections
+
+- Count Gemini candidate output separately from thoughts; remove duplicate subtraction.
+- Isolate damaged Pi, WorkBuddy, and ZCode records with partial-scan diagnostics; accept migrated Windows project paths in ZCode.
+- Retain both partial endpoint hours in rolling 24H charts; omit efficiency ratios when model, project, effort, or agent-version filters cannot match activity scope.
+- Derive measurement confidence from `measurement`, separately from pricing assumptions; exclude unknown attribution values.
+- Store budgets and preferences locally across dashboard ports, with explicit save-failure feedback.
+- Probe local credentials only after explicit login detection; document reading logs, extracting fields, and discarding conversation text.
+- Local JSON `factSchemaVersion: 2` adds cache TTL counters, session hour slices, and independent salted identifiers; community protocol remains v2.
+- Reuse first-scan results when scope is unchanged. Preserve allowlisted source-location environment variables in daemon descriptors and reject control characters.
+- Bundle complete third-party license texts and reject missing or stale texts in the package audit.
+
+- Large histories: stream Kimi, Pi, and Gemini JSONL with bounded records; retain only needed Codex context fields and discard duplicate copies early. A full scan still reads history; checkpoints deduplicate sync and are not file-offset caches.

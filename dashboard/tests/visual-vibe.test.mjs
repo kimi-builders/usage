@@ -22,7 +22,7 @@ test('vibe poster override zeroes the radius and shadow tokens', async () => {
 
 test('vibe bootstraps before first paint and defaults to poster', async () => {
   const main = await read('../src/main.jsx');
-  assert.match(main, /dataset\.vibe\s*=\s*normalizeVibe\(localStorage\.getItem\("kbu\.vibe"\)\)/);
+  assert.match(main, /dataset\.vibe\s*=\s*normalizeVibe\(preferences\.getItem\("kbu\.vibe"\)\)/);
   assert.equal(normalizeVibe('poster'), 'poster');
   assert.equal(normalizeVibe('soft'), 'soft');
   assert.equal(normalizeVibe('legacy-value'), 'poster');
@@ -36,7 +36,7 @@ test('topbar and mobile drawer both expose the vibe toggle with persistence', as
   assert.match(app, /\{zh \? '切换气质' : 'Style'\}/);
   const toggles = app.match(/setVibe\(vibe === 'poster' \? 'soft' : 'poster'\)/g) ?? [];
   assert.equal(toggles.length, 2, 'expected vibe toggles in both topbar and drawer');
-  assert.match(app, /localStorage\.setItem\('kbu\.vibe', vibe\)/);
+  assert.match(app, /preferences\.setItem\('kbu\.vibe', vibe\)/);
 });
 
 test('active filters render as grouped chips with per-dimension labels', async () => {

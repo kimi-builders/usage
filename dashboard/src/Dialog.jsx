@@ -23,7 +23,8 @@ export function Dialog({ open, onClose, title, subtitle, children, wide = false,
       const items = focusables();
       if (!items.length) return;
       const first = items[0]; const last = items.at(-1);
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      if (!dialogRef.current?.contains(document.activeElement)) { event.preventDefault(); (event.shiftKey ? last : first).focus(); }
+      else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     const frame = window.requestAnimationFrame(() => focusables()[0]?.focus());

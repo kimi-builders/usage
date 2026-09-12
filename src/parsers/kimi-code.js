@@ -1,3 +1,4 @@
+import { jsonlRecords } from './jsonl-records.js';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
@@ -141,7 +142,7 @@ function findKimiCodeWireFiles(baseDir) {
   return results;
 }
 
-function parseKimiCode(sessionSalt) {
+async function parseKimiCode(sessionSalt, warn) {
   const wireFiles = findKimiCodeWireFiles(KIMI_CODE_SESSIONS_DIR);
   if (wireFiles.length === 0) return null;
 
@@ -150,20 +151,9 @@ function parseKimiCode(sessionSalt) {
   const sessionEvents = [];
 
   for (const { wireFile, sessionDir, bucketProject } of wireFiles) {
-    let content;
-    try {
-      content = readFileSync(wireFile, 'utf-8');
-    } catch {
-      continue;
-    }
-
     const project = sessionIndex.get(sessionDir) || bucketProject || 'unknown';
 
-    for (const line of content.split('\n')) {
-      if (!line.trim()) continue;
-      let evt;
-      try { evt = JSON.parse(line); } catch { continue; }
-
+    for await (const evt of jsonlRecords(wireFile, warn)) {
       const type = evt.type;
       // Top-level `time` is integer milliseconds since epoch. Validate it:
       // JSON numbers can overflow to Infinity (e.g. 1e400 parses fine), and
@@ -317,7 +307,7 @@ function loadLegacyModelFromConfig() {
 
 const LEGACY_USER_EVENT_TYPES = new Set(['TurnBegin', 'UserMessage', 'user_message', 'Input']);
 
-function parseLegacyKimi(sessionSalt) {
+async function parseLegacyKimi(sessionSalt, warn) {
   const wireFiles = findLegacyWireFiles(KIMI_SESSIONS_DIR);
   if (wireFiles.length === 0) return { buckets: [], sessions: [] };
 
@@ -328,22 +318,11 @@ function parseLegacyKimi(sessionSalt) {
   const seenMessageIds = new Set();
 
   for (const { filePath, workDirHash } of wireFiles) {
-    let content;
-    try {
-      content = readFileSync(filePath, 'utf-8');
-    } catch {
-      continue;
-    }
-
     const project = projectMap.get(workDirHash) || workDirHash;
     let currentModel = defaultModel;
     let lastTimestamp = null;
 
-    for (const line of content.split('\n')) {
-      if (!line.trim()) continue;
-      let raw;
-      try { raw = JSON.parse(line); } catch { continue; }
-
+    for await (const raw of jsonlRecords(filePath, warn)) {
       const envelope = raw.message || raw;
       const type = envelope.type || raw.type;
       const payload = envelope.payload || raw.payload;
@@ -416,10 +395,13 @@ export async function parse({ sessionSalt } = {}) {
   // Always parse both stores and merge (see the header comment): legacy usage
   // is never carried into ~/.kimi-code by `kimi migrate`, so a migrated user's
   // history exists only in ~/.kimi.
-  const current = parseKimiCode(sessionSalt);
-  const legacy = parseLegacyKimi(sessionSalt);
+  const warnings = [];
+  const warn = (message) => { if (warnings.length < 20) warnings.push(`kimi-code: ${message}`); };
+  const current = await parseKimiCode(sessionSalt, warn);
+  const legacy = await parseLegacyKimi(sessionSalt, warn);
   return {
     buckets: [...(current?.buckets ?? []), ...legacy.buckets],
     sessions: [...(current?.sessions ?? []), ...legacy.sessions],
+    ...(warnings.length ? { skipped: true, warnings } : {}),
   };
 }

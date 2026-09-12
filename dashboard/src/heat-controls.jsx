@@ -1,3 +1,4 @@
+import { preferences } from './preferences.js';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 /* Shared heatmap mode vocabulary: 聚合 (window aggregate) vs 单周 (one natural
@@ -5,12 +6,12 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
    usage-rhythm panel. Mode persists per surface via the given storage key. */
 
 export function storedHeatMode(storageKey) {
-  const value = localStorage.getItem(storageKey);
+  const value = preferences.getItem(storageKey);
   return value === 'week' ? 'week' : 'aggregate';
 }
 
 export function storeHeatMode(storageKey, mode) {
-  localStorage.setItem(storageKey, mode === 'week' ? 'week' : 'aggregate');
+  preferences.setItem(storageKey, mode === 'week' ? 'week' : 'aggregate');
 }
 
 export function HeatModeTabs({ mode, onChange, zh, label }) {

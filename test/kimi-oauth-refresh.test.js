@@ -116,7 +116,7 @@ test('reports an expired but refreshable Kimi Code login as detected', (t) => {
       'kimi-code': { enabled: true, authMode: 'local' },
     } }),
   }, {
-    environment: isolatedEnvironment,
+    detectCredentials: true, environment: isolatedEnvironment,
     keychainAvailable: false,
     hasSecret: () => false,
     run: () => ({ status: 1, stdout: '' }),

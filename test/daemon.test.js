@@ -138,3 +138,35 @@ test('daemon status sanitizes legacy persisted raw errors before exposing them',
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('daemon preserves explicit source locations and excludes credential environment variables', async () => {
+  const { runtimeEnvironment } = await import('../src/daemon.js');
+  const selected = runtimeEnvironment({
+    CODEX_HOME: '/custom/codex', CLAUDE_CONFIG_DIR: '/custom/claude', PI_CODING_AGENT_DIR: '/custom/pi',
+    KBU_USAGE_PI_SESSION_DIRS: '', XDG_DATA_HOME: '/custom/data', KBU_USAGE_ZCODE_DB: '/custom/zcode.sqlite',
+    OPENAI_API_KEY: 'PRIVATE_SECRET', KBU_USAGE_API_KEY: 'PRIVATE_SECRET',
+  });
+  assert.equal(selected.CODEX_HOME, '/custom/codex');
+  assert.equal(selected.CLAUDE_CONFIG_DIR, '/custom/claude');
+  assert.equal(selected.PI_CODING_AGENT_DIR, '/custom/pi');
+  assert.equal(selected.KBU_USAGE_PI_SESSION_DIRS, '');
+  assert.equal(selected.XDG_DATA_HOME, '/custom/data');
+  assert.equal(Object.keys(selected).length, 6);
+  assert.doesNotMatch(JSON.stringify(selected), /PRIVATE_SECRET|API_KEY/);
+  assert.throws(() => runtimeEnvironment({ CODEX_HOME: 'path\ncommand' }), /control character/);
+});
+
+test('native daemon descriptors safely carry relocated directories on all supported OS families', () => {
+  const environment = { CODEX_HOME: '/work/A&B%!/codex', KBU_USAGE_PI_SESSION_DIRS: '', OPENAI_API_KEY: 'PRIVATE_SECRET' };
+  const common = { home: '/tmp/daemon-home', configDir: '/tmp/daemon-config', environment };
+  const mac = renderDaemonFiles({ ...common, platform: 'darwin' }).files[0].content;
+  assert.match(mac, /A&amp;B%!/);
+  const linux = renderDaemonFiles({ ...common, platform: 'linux' }).files[0].content;
+  assert.match(linux, /CODEX_HOME=\/work\/A&B%%!\/codex/);
+  const windows = renderDaemonFiles({ ...common, platform: 'win32' }).files[0].content;
+  assert.match(windows, /setlocal DisableDelayedExpansion/);
+  assert.match(windows, /set "CODEX_HOME=\/work\/A&B%%!\/codex"/);
+  assert.match(windows, /set "KBU_USAGE_PI_SESSION_DIRS="/);
+  assert.doesNotMatch(mac + linux + windows, /PRIVATE_SECRET|API_KEY/);
+  assert.throws(() => renderDaemonFiles({ ...common, platform: 'win32', environment: { CODEX_HOME: 'x" & command' } }), /double quote/);
+});

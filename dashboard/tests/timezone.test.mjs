@@ -33,7 +33,7 @@ test('local calendar streaks remain consecutive across daylight-saving changes',
   assert.equal(result.status, 0, result.stderr || result.stdout);
 });
 
-test('rolling 24H keeps 24 elapsed-hour slots across spring-forward with local labels', () => {
+test('rolling 24H retains both partial endpoint hours across spring-forward with local labels', () => {
   const script = `
     import assert from 'node:assert/strict';
     import { analyze } from ${JSON.stringify(analyticsUrl)};
@@ -42,8 +42,8 @@ test('rolling 24H keeps 24 elapsed-hour slots across spring-forward with local l
       device: { terminal: { name: 'Terminal' }, os: { name: 'macOS' } },
       buckets: [], sessions: [], activityHours: [],
     }, { range: '24h' });
-    assert.equal(report.series.length, 24);
-    assert.equal(report.series[0].label, '03-07 12:00');
+    assert.equal(report.series.length, 25);
+    assert.equal(report.series[0].label, '03-07 11:00');
     assert.equal(report.series.at(-1).label, '03-08 12:00');
     assert.equal(report.series.some((slot) => slot.label === '03-08 02:00'), false);
     for (let index = 1; index < report.series.length; index += 1) {

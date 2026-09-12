@@ -142,3 +142,17 @@ test('Pi keeps explicit extra roots when PI_CODING_AGENT_DIR belongs to Oh My Pi
     else process.env.PI_CODING_AGENT_DIR = previousAgent;
   }
 });
+
+test('Pi retains healthy records around null, malformed, and truncated lines', async () => {
+  const dir = join(root, 'damaged');
+  writeSession(dir);
+  const { appendFileSync } = await import('node:fs');
+  appendFileSync(join(dir, 'session.jsonl'), 'null\n[1,2]\n{bad}\n{"unfinished":');
+  process.env.KBU_USAGE_PI_SESSION_DIRS = dir;
+  const result = await parse({ sessionSalt: SALT });
+  assert.equal(result.skipped, true);
+  assert.equal(result.buckets[0].requestCount, 1);
+  assert.equal(result.sessions[0].messageCount, 2);
+  assert.equal(result.warnings.length, 4);
+  assert.doesNotMatch(JSON.stringify(result.warnings), /PRIVATE|damaged|unfinished/);
+});

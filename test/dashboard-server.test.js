@@ -380,3 +380,36 @@ test('development API can authorize then redirect to a loopback Vite server with
     await local.close();
   }
 });
+
+test('finishing onboarding reuses validated snapshot only when the local scan scope is unchanged', async () => {
+  let scans = 0;
+  let policies = { codex: 'local', 'pi-coding-agent': 'off' };
+  const local = await startLocalDashboardServer({
+    launchBrowser: false, serveStatic: false,
+    dataLoader: async () => ({ sourcePolicies: { ...policies }, buckets: [], sessions: [], scans: ++scans }),
+    control: {
+      state: async () => ({ onboardingRequired: true }),
+      act: async (payload) => {
+        policies = payload.sourcePolicies;
+        return { sources: Object.entries(policies).map(([id, mode]) => ({ id, mode })) };
+      },
+    },
+  });
+  try {
+    const url = new URL(local.url);
+    const auth = await fetch(url, { redirect: 'manual' });
+    const headers = { Cookie: auth.headers.get('set-cookie').split(';')[0], 'Content-Type': 'application/json' };
+    const read = () => fetch(`${url.origin}/api/snapshot`, { headers }).then((r) => r.json());
+    assert.equal(scans, 0);
+    assert.equal((await read()).scans, 1);
+    const finish = (sourcePolicies) => fetch(`${url.origin}/api/control`, {
+      method: 'POST', headers, body: JSON.stringify({ action: 'complete-onboarding', sourcePolicies }),
+    });
+    await finish({ codex: 'private', 'pi-coding-agent': 'off' });
+    const retained = await read();
+    assert.equal(retained.scans, 1);
+    assert.equal(retained.sourcePolicies.codex, 'private');
+    await finish({ codex: 'local', 'pi-coding-agent': 'local' });
+    assert.equal((await read()).scans, 2);
+  } finally { await local.close(); }
+});

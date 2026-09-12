@@ -18,7 +18,8 @@
     "audit:dependencies": "npm audit --omit=dev --audit-level=high && npm --prefix dashboard audit --omit=dev --audit-level=high",
     "audit:package": "node scripts/audit-package.mjs",
     "release:check": "npm run test:collector && npm run dashboard:build && npm run dashboard:test && npm run check:markdown && npm run audit:dependencies && npm run audit:package",
-    "prepublishOnly": "npm run release:check"
+    "prepublishOnly": "npm run release:check",
+    "check:licenses": "node scripts/third-party-licenses.mjs --check"
   },
   "bin": {
     "kbu-usage": "bin/kbu-usage.js"
@@ -45,7 +46,8 @@
     "SUPPORT.en.md",
     "README.en.md",
     "LICENSE",
-    "NOTICE"
+    "NOTICE",
+    "THIRD_PARTY_LICENSES.txt"
   ],
   "engines": {
     "node": ">=20"

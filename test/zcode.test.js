@@ -47,3 +47,24 @@ test('ZCode reads SQLite usage as exclusive fields and keeps provider/model fact
   assert.equal(result.sessions[0].sessionHash.length, 64);
   assert.equal(JSON.stringify(result).includes('/private/work'), false);
 });
+
+test('ZCode isolates invalid JSON and extracts Windows project basenames on every OS', async (t) => {
+  if (!DatabaseSync) return t.skip('node:sqlite unavailable');
+  const path = join(root, 'damaged.sqlite');
+  const db = new DatabaseSync(path);
+  try {
+    db.exec('CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT); CREATE TABLE message (session_id TEXT, time_created INTEGER, data TEXT)');
+    db.prepare('INSERT INTO session VALUES (?, ?)').run('s', 'C:\\Users\\private\\work\\demo');
+    const insert = db.prepare('INSERT INTO message VALUES (?, ?, ?)');
+    for (const data of ['{bad}', 'null', '[1]', JSON.stringify({ role: 'assistant', modelID: 'glm-5', tokens: { input: 50, output: 10 } })]) {
+      insert.run('s', Date.parse('2026-08-10T10:00:06Z'), data);
+    }
+  } finally { db.close(); }
+  process.env.KBU_USAGE_ZCODE_DB = path;
+  const result = await parse({ sessionSalt: SALT });
+  assert.equal(result.skipped, true);
+  assert.equal(result.buckets.length, 1);
+  assert.equal(result.buckets[0].project, 'demo');
+  assert.equal(result.buckets[0].requestCount, 1);
+  assert.doesNotMatch(JSON.stringify(result), /private|C:\\/);
+});

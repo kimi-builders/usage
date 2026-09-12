@@ -7,7 +7,7 @@ import { ProviderIcon } from './SubscriptionLimits.jsx';
 import { moveEnabledProvider, reorderEnabledProviders } from './provider-order.js';
 import {
   ENTITLEMENT_TYPES, entitlementBadge, entitlementLabel, entitlementNote,
-  hasEnteredSecrets, idSegment, isValidOpenCodeWorkspaceId, localizedCount,
+  credentialState, hasEnteredSecrets, hasOpenCodeCredential, idSegment, isValidOpenCodeWorkspaceId, localizedCount,
   quotaErrorMessage, quotaProviderCatalogCopy, regionalProviderPatch, regionalDraftDetection, quotaSaveFailures,
 } from './subscription-limits-utils.js';
 
@@ -76,7 +76,7 @@ function removeConnectedAccount(providerId, account, item, updateProvider, setCl
     enabled: providerId === 'opencode' && !accounts.length ? false : item.enabled,
     activeAccountId: item.activeAccountId === account.id ? accounts[0]?.id || '' : item.activeAccountId,
   });
-  if (account.hasSecret) {
+  if (credentialState(account) !== 'absent') {
     const key = `${providerId}:${account.id}`;
     setClearAccountSecrets((current) => current.includes(key) ? current : [...current, key]);
   }
@@ -123,12 +123,12 @@ function CopilotConnectionPanel({
     <div className="account-config-heading"><div><b>{zh ? 'GitHub 设备授权' : 'GitHub device authorization'}</b><span>{zh ? '浏览器确认后自动保存，可连接多个 GitHub 账户。' : 'Approve in the browser; multiple GitHub accounts are supported.'}</span></div><button className="provider-connect-button" type="button" onClick={connectCopilot} disabled={deviceBusy || device.status === 'pending'}>{deviceBusy ? <RefreshCw className="spin" size={13}/> : <ExternalLink size={13}/>} {zh ? '连接 GitHub 账户' : 'Connect GitHub account'}</button></div>
     {device.status === 'pending' ? <div className="copilot-device-state" role="status"><span>{zh ? '在 GitHub 页面输入验证码' : 'Enter this code on GitHub'}</span><strong>{device.userCode}</strong><a href={device.verificationUri} target="_blank" rel="noreferrer">{zh ? '打开授权页' : 'Open authorization'}<ExternalLink size={11}/></a><small>{zh ? '授权完成后这里会自动确认，不需要粘贴 Token。' : 'This page confirms automatically after approval; no token paste needed.'}</small></div> : null}
     {device.status === 'error' ? <p className="dialog-error" role="alert">{zh ? device.message : 'GitHub authorization failed. Try again.'}</p> : null}
-    <div className="limit-account-list">{item.accounts.map((account) => <div key={account.id}><span><b>@{account.label}</b><small>{account.hasSecret ? (zh ? '设备授权有效' : 'Device authorization saved') : (zh ? '凭据待连接' : 'Needs authorization')}</small></span><button type="button" onClick={() => removeConnectedAccount('copilot', account, item, updateProvider, setClearAccountSecrets)} aria-label={zh ? `移除 ${account.label}` : `Remove ${account.label}`}><X size={13}/></button></div>)}{!item.accounts.length ? <p>{zh ? '还没有通过设备授权连接的 GitHub 账户。' : 'No GitHub account has been connected yet.'}</p> : null}</div>
+    <div className="limit-account-list">{item.accounts.map((account) => <div key={account.id}><span><b>@{account.label}</b><small>{account.hasSecret ? (zh ? '设备授权已保存' : 'Device authorization saved') : credentialState(account) === 'unchecked' ? (zh ? '凭据尚未检测' : 'Credential not checked') : (zh ? '凭据待连接' : 'Needs authorization')}</small></span><button type="button" onClick={() => removeConnectedAccount('copilot', account, item, updateProvider, setClearAccountSecrets)} aria-label={zh ? `移除 ${account.label}` : `Remove ${account.label}`}><X size={13}/></button></div>)}{!item.accounts.length ? <p>{zh ? '还没有通过设备授权连接的 GitHub 账户。' : 'No GitHub account has been connected yet.'}</p> : null}</div>
   </div>;
 }
 
 function OpenCodeGoConnectionPanel({
-  item, provider, updateProvider, accountSecrets, setAccountSecrets,
+  item, provider, savedAccounts, updateProvider, accountSecrets, setAccountSecrets,
   clearAccountSecrets, setClearAccountSecrets, enableMaster, zh,
 }) {
   const active = item.accounts.find((account) => account.id === item.activeAccountId) || item.accounts[0] || null;
@@ -141,7 +141,7 @@ function OpenCodeGoConnectionPanel({
     if (kind === 'label' && !account.label.trim()) {
       return zh ? '请填写便于区分的账户名称。' : 'Enter a name that identifies this account.';
     }
-    if (kind === 'credential' && !(accountSecrets.opencode?.[accountId] || '').trim() && !account.hasSecret) {
+    if (kind === 'credential' && !hasOpenCodeCredential(account, savedAccounts.find((entry) => entry.id === accountId), accountSecrets.opencode?.[accountId], clearAccountSecrets.includes(`opencode:${accountId}`))) {
       return account.connectionType === 'api-key'
         ? (zh ? '需要粘贴该账户的 API Key。' : 'Paste this account’s API key.')
         : (zh ? '需要粘贴该账户的 Cookie。' : 'Paste this account’s Cookie.');
@@ -157,9 +157,9 @@ function OpenCodeGoConnectionPanel({
   const setConnectionType = (account, connectionType) => {
     if (account.connectionType === connectionType) return;
     const credentialKey = `opencode:${account.id}`;
-    updateAccount(account.id, { connectionType, hasSecret: false });
+    updateAccount(account.id, { connectionType, hasSecret: false, credentialState: 'absent' });
     setAccountSecrets((current) => ({ ...current, opencode: { ...current.opencode, [account.id]: '' } }));
-    if (account.hasSecret) setClearAccountSecrets((current) => current.includes(credentialKey)
+    if (credentialState(account) !== 'absent') setClearAccountSecrets((current) => current.includes(credentialKey)
       ? current : [...current, credentialKey]);
     setTouched((current) => ({ ...current, [`credential:${account.id}`]: false, [`workspace:${account.id}`]: false }));
   };
@@ -170,7 +170,7 @@ function OpenCodeGoConnectionPanel({
       enabled: true,
       accounts: [...item.accounts, {
         id, label: '',
-        connectionType: 'workspace', workspaceId: '', externalIdentifier: '', hasSecret: false,
+        connectionType: 'workspace', workspaceId: '', externalIdentifier: '', hasSecret: false, credentialState: 'absent',
         entitlementType: 'unknown', subscriptionPrice: null,
         subscriptionCurrency: 'usd', billingCycle: 'monthly', renewsAt: '',
       }],
@@ -190,7 +190,7 @@ function OpenCodeGoConnectionPanel({
           <label className="opencode-session-select"><input type="radio" name="opencode-active-account" checked={active?.id === account.id} onChange={() => updateProvider('opencode', { activeAccountId: account.id })}/><span className="sr-only">{zh ? `选择账户 ${index + 1}` : `Select account ${index + 1}`}</span></label>
           <label className="opencode-account-label"><span>{zh ? '账户名称' : 'Account name'}</span><input aria-invalid={labelError ? 'true' : undefined} value={account.label} onChange={(event) => updateAccount(account.id, { label: event.target.value })} onBlur={() => setTouched((current) => ({ ...current, [`label:${account.id}`]: true }))} placeholder={zh ? '个人 / 工作' : 'Personal / work'}/>{labelError ? <small className="field-error">{labelError}</small> : null}</label>
           <label className="opencode-connection-type"><span>{zh ? '连接方式' : 'Connection method'}</span><select value={account.connectionType || 'workspace'} onChange={(event) => setConnectionType(account, event.target.value)}><option value="workspace">Cookie + Workspace</option><option value="api-key">API Key</option></select><small>{zh ? '切换方式需重新填写凭据，避免误用旧凭据。' : 'Switching methods requires a fresh credential to prevent reuse of the wrong secret.'}</small></label>
-          <label className="opencode-cookie-field"><span>{account.connectionType === 'api-key' ? 'API Key' : 'Cookie'}</span><input type="password" autoComplete="off" spellCheck="false" aria-invalid={credentialError ? 'true' : undefined} value={accountSecrets.opencode?.[account.id] || ''} onChange={(event) => setAccountSecrets((current) => ({ ...current, opencode: { ...current.opencode, [account.id]: event.target.value } }))} onBlur={() => setTouched((current) => ({ ...current, [`credential:${account.id}`]: true }))} placeholder={account.hasSecret ? (zh ? '已安全保存 · 留空保持' : 'Saved securely · leave blank to keep') : account.connectionType === 'api-key' ? 'opencode_…' : 'auth=…'}/><small className={credentialError ? 'field-error' : undefined}>{credentialError || (account.connectionType === 'api-key' ? (zh ? '只发送给 OpenCode Go 官方用量接口。' : 'Sent only to the official OpenCode Go usage API.') : (zh ? '支持 Cookie 请求头或复制的 cURL。' : 'Accepts a Cookie header or copied cURL.'))}</small>{clearAccountSecrets.includes(credentialKey) ? <small className="account-secret-warning">{zh ? '保存后会替换或清除原凭据' : 'The previous credential will be replaced or removed on save'}</small> : null}</label>
+          <label className="opencode-cookie-field"><span>{account.connectionType === 'api-key' ? 'API Key' : 'Cookie'}</span><input type="password" autoComplete="off" spellCheck="false" aria-invalid={credentialError ? 'true' : undefined} value={accountSecrets.opencode?.[account.id] || ''} onChange={(event) => setAccountSecrets((current) => ({ ...current, opencode: { ...current.opencode, [account.id]: event.target.value } }))} onBlur={() => setTouched((current) => ({ ...current, [`credential:${account.id}`]: true }))} placeholder={account.hasSecret ? (zh ? '已安全保存 · 留空保持' : 'Saved securely · leave blank to keep') : credentialState(account) === 'unchecked' ? (zh ? '尚未检测 · 留空保留原凭据' : 'Not checked · leave blank to keep existing') : account.connectionType === 'api-key' ? 'opencode_…' : 'auth=…'}/><small className={credentialError ? 'field-error' : undefined}>{credentialError || (account.connectionType === 'api-key' ? (zh ? '只发送给 OpenCode Go 官方用量接口。' : 'Sent only to the official OpenCode Go usage API.') : (zh ? '支持 Cookie 请求头或复制的 cURL。' : 'Accepts a Cookie header or copied cURL.'))}</small>{clearAccountSecrets.includes(credentialKey) ? <small className="account-secret-warning">{zh ? '保存后会替换或清除原凭据' : 'The previous credential will be replaced or removed on save'}</small> : null}</label>
           {account.connectionType !== 'api-key' ? <label className="opencode-workspace-field"><span>Workspace ID</span><input aria-invalid={workspaceError ? 'true' : undefined} value={account.workspaceId || ''} onChange={(event) => updateAccount(account.id, { workspaceId: event.target.value })} onBlur={() => setTouched((current) => ({ ...current, [`workspace:${account.id}`]: true }))} placeholder="wrk_…"/><small className={workspaceError ? 'field-error' : undefined}>{workspaceError || (zh ? '与上面的 Cookie 属于同一个 OpenCode Go 账户。' : 'Must belong to the same OpenCode Go account as the Cookie above.')}</small></label> : null}
           <button className="remove-account-btn" type="button" onClick={() => removeConnectedAccount('opencode', account, item, updateProvider, setClearAccountSecrets)}><X size={12}/>{zh ? '移除' : 'Remove'}</button>
           <EntitlementFields className="account-entitlement" item={account} onChange={(patch) => updateAccount(account.id, patch)} zh={zh}/>
@@ -204,7 +204,8 @@ function StandardProviderConfig({
 }) {
   const selectedSite = provider.sites?.[item.site];
   provider = { ...provider, dashboardUrl: selectedSite?.dashboardUrl || provider.dashboardUrl,
-    hasSecret: provider.siteSecrets?.[item.site] ?? provider.hasSecret };
+    hasSecret: provider.siteSecrets ? provider.siteSecrets[item.site] : provider.hasSecret,
+    credentialState: provider.siteCredentialStates?.[item.site] ?? credentialState(provider) };
   const secretPlaceholder = provider.sites && provider.id !== 'alibaba-coding'
     ? (zh ? '粘贴此地区的套餐 API Key' : 'Paste this region’s plan API key')
     : (zh ? '粘贴 Cookie、Token 或 cURL 片段' : 'Paste cookie, token, or cURL snippet');
@@ -221,7 +222,7 @@ function StandardProviderConfig({
     <SetupSteps provider={provider} zh={zh}/>
     <div className="provider-auth-fields">
       {item.authMode === 'environment' ? <label><span>{zh ? '环境变量名（凭据内容不要填在这里）' : 'Environment variable name—not the secret itself'}</span><input value={item.environmentVariable} onChange={(event) => updateProvider(provider.id, { environmentVariable: event.target.value })} placeholder={provider.defaultEnvironmentVariable || 'TOKEN'}/><small>{zh ? `在启动看板前设置 ${item.environmentVariable || provider.defaultEnvironmentVariable}，保存后会自动验证。` : 'Set this variable before starting the dashboard; saving will verify it.'}</small></label> : null}
-      {item.authMode === 'keychain' ? <label><span>{secretLabel(provider, zh)}</span><input type="password" autoComplete="off" spellCheck="false" value={secrets[provider.id] || ''} onChange={(event) => setSecrets((current) => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.hasSecret ? (zh ? '已安全保存 · 留空保持不变' : 'Saved securely · leave blank to keep') : secretPlaceholder} disabled={!provider.supportsKeychain}/><small>{zh ? '只会提交给 127.0.0.1 本地服务，并保存到系统钥匙串。' : 'Sent only to the local 127.0.0.1 service and stored in Keychain.'}</small>{provider.hasSecret ? <button type="button" onClick={() => setClearSecrets((current) => current.includes(provider.id) ? current.filter((id) => id !== provider.id) : [...current, provider.id])}>{clearSecrets.includes(provider.id) ? (zh ? '撤销清除' : 'Keep secret') : (zh ? '清除已保存凭据' : 'Clear saved secret')}</button> : null}</label> : null}
+      {item.authMode === 'keychain' ? <label><span>{secretLabel(provider, zh)}</span><input type="password" autoComplete="off" spellCheck="false" value={secrets[provider.id] || ''} onChange={(event) => setSecrets((current) => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.hasSecret ? (zh ? '已安全保存 · 留空保持不变' : 'Saved securely · leave blank to keep') : credentialState(provider) === 'unchecked' ? (zh ? '尚未检测 · 留空保留原凭据' : 'Not checked · leave blank to keep existing') : secretPlaceholder} disabled={!provider.supportsKeychain}/><small>{zh ? '只会提交给 127.0.0.1 本地服务，并保存到系统钥匙串。' : 'Sent only to the local 127.0.0.1 service and stored in Keychain.'}</small>{provider.supportsKeychain && credentialState(provider) !== 'absent' ? <button type="button" onClick={() => setClearSecrets((current) => current.includes(provider.id) ? current.filter((id) => id !== provider.id) : [...current, provider.id])}>{clearSecrets.includes(provider.id) ? (zh ? '撤销清除' : 'Keep secret') : (zh ? '清除本机凭据（如有）' : 'Clear local secret if saved')}</button> : null}</label> : null}
       {provider.extraFields?.includes('workspaceId') ? <label><span>{zh ? 'Workspace ID 或账单页链接（可选）' : 'Workspace ID or billing URL (optional)'}</span><input value={item.workspaceId} onChange={(event) => updateProvider(provider.id, { workspaceId: event.target.value })} placeholder="https://opencode.ai/workspace/wrk_…/billing"/></label> : null}
       {!provider.sites && provider.extraFields?.includes('site') ? <label><span>{zh ? 'Qoder 站点' : 'Qoder site'}</span><select value={item.site} onChange={(event) => updateProvider(provider.id, { site: event.target.value })}><option value="international">qoder.com · {zh ? '国际站' : 'International'}</option><option value="china">qoder.com.cn · {zh ? '中国站' : 'China'}</option></select></label> : null}
       {provider.extraFields?.includes('customPath') ? <label><span>{zh ? 'IDE 配置目录（通常留空）' : 'IDE config directory (usually blank)'}</span><input value={item.customPath} onChange={(event) => updateProvider(provider.id, { customPath: event.target.value })} placeholder="~/Library/Application Support/JetBrains/WebStorm2026.2"/></label> : null}
@@ -258,7 +259,7 @@ function EntitlementBlock({ provider, item, updateProvider, zh }) {
   return <EntitlementFields item={item} onChange={(patch) => updateProvider(provider.id, patch)} zh={zh}/>;
 }
 
-export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilotDeviceAction, saving, zh }) {
+export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilotDeviceAction, onDetect, detecting, detectionError, saving, zh }) {
   const dialogRef = useRef(null);
   const bodyRef = useRef(null);
   const [draft, setDraft] = useState(settings);
@@ -269,14 +270,14 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
   const [message, setMessage] = useState('');
   const [messageTone, setMessageTone] = useState('info');
   const [validationErrors, setValidationErrors] = useState([]);
-  const [view, setView] = useState('detected');
+  const [view, setView] = useState('all');
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState('');
   const [draggingId, setDraggingId] = useState('');
   const [dragOverId, setDragOverId] = useState('');
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [activeAnchor, setActiveAnchor] = useState('providers');
-  useEffect(() => { if (open) { setDraft(settings); setSecrets({}); setClearSecrets([]); setAccountSecrets({}); setClearAccountSecrets([]); setMessage(''); setValidationErrors([]); setView('detected'); setQuery(''); setExpanded(''); setDraggingId(''); setDragOverId(''); setConfirmDiscard(false); setActiveAnchor('providers'); } }, [open, settings]);
+  useEffect(() => { if (open) { setDraft(settings); setSecrets({}); setClearSecrets([]); setAccountSecrets({}); setClearAccountSecrets([]); setMessage(''); setValidationErrors([]); setView('all'); setQuery(''); setExpanded(''); setDraggingId(''); setDragOverId(''); setConfirmDiscard(false); setActiveAnchor('providers'); } }, [open, settings]);
   /* dirty 守卫(20260816):草稿偏离已保存设置(或新输入过凭据)时,
      关闭动作先出确认条,再放弃;提交成功照常直接关闭 */
   const dirty = JSON.stringify(draft) !== JSON.stringify(settings)
@@ -343,7 +344,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
       const incompleteOpenCode = openCode.accounts.filter((account) => (
         !account.label.trim()
         || (account.connectionType !== 'api-key' && !isValidOpenCodeWorkspaceId(account.workspaceId))
-        || (!account.hasSecret && !(accountSecrets.opencode?.[account.id] || '').trim())
+        || !hasOpenCodeCredential(account, settings.providers.opencode.accounts.find((entry) => entry.id === account.id), accountSecrets.opencode?.[account.id], clearAccountSecrets.includes(`opencode:${account.id}`))
       ));
       if (incompleteOpenCode.length) throw new Error(zh
         ? 'OpenCode Go 每个账户都需要名称，并完整配置 API Key 或 Cookie + 有效的 wrk_… Workspace ID。'
@@ -371,6 +372,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
     }
   };
   const catalog = draft.catalog.map((provider) => quotaProviderCatalogCopy(provider, zh));
+  const detectionChecked = catalog.some((provider) => provider.detection?.state && provider.detection.state !== 'unchecked');
   const ready = catalog.filter((provider) => ['detected', 'configured'].includes(provider.detection?.state));
   const enabledCount = Object.values(draft.providers).filter((provider) => provider.enabled).length;
   const settingsTabs = [
@@ -399,8 +401,8 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
     setMessageTone('info');
     setMessage(zh ? 'GitHub 账户已连接，正在刷新账户列表与额度。' : 'GitHub account connected. Refreshing accounts and quotas.');
   };
-  return <div className="dialog-layer" role="presentation"><section ref={dialogRef} className="dialog dialog--limit-settings" role="dialog" aria-modal="true" aria-label={zh ? '账户权益与额度设置' : 'Account benefit and quota settings'}><header><div><h2>{zh ? '连接并标注账户权益' : 'Connect and classify account benefits'}</h2><p>{zh ? '先自动检测账户，再标注付费、免费、活动或单位权益。额度读取失败不影响本机 Token 分析。' : 'Detect accounts first, then classify them as paid, free, promotional, or organization-provided. Quota failures never block local Token analytics.'}</p></div><button autoFocus className="icon-btn" type="button" onClick={requestClose} aria-label={zh ? '关闭账户权益设置' : 'Close account benefit settings'}><X size={18}/></button></header>
-    <div className="limit-settings-body" ref={bodyRef}><section className="limit-setup-summary"><div className="limit-setup-score"><Sparkles size={18}/><div><b>{zh ? `自动检测到 ${ready.length} 个平台` : `${localizedCount(ready.length, false, '', 'provider', 'providers')} detected`}</b><span>{zh ? '无需复制 Token，推荐直接启用已检测平台。' : 'No token copying needed for detected providers.'}</span></div></div><button type="button" onClick={enableDetected} disabled={!ready.length}><Check size={14}/>{zh ? '一键启用已检测' : 'Enable detected'}</button><div className="limit-master-inline"><span>{zh ? `${enabledCount} 个已选择` : `${enabledCount} selected`}</span><Toggle checked={draft.enabled} onChange={(enabled) => setDraft((current) => ({ ...current, enabled }))} label={draft.enabled ? (zh ? '总开关已开启' : 'Master on') : (zh ? '总开关已关闭' : 'Master off')}/></div></section>
+  return <div className="dialog-layer" role="presentation"><section ref={dialogRef} className="dialog dialog--limit-settings" role="dialog" aria-modal="true" aria-label={zh ? '账户权益与额度设置' : 'Account benefit and quota settings'}><header><div><h2>{zh ? '连接并标注账户权益' : 'Connect and classify account benefits'}</h2><p>{zh ? '可主动检测本机登录，再标注付费、免费、活动或单位权益。额度读取失败不影响本机 Token 分析。' : 'Optionally detect local logins, then classify them as paid, free, promotional, or organization-provided. Quota failures never block local Token analytics.'}</p></div><button autoFocus className="icon-btn" type="button" onClick={requestClose} aria-label={zh ? '关闭账户权益设置' : 'Close account benefit settings'}><X size={18}/></button></header>
+    <div className="limit-settings-body" ref={bodyRef}><section className="limit-setup-summary"><p>{zh ? '点击检测会读取本机登录文件和系统钥匙串，仅用于确认可用凭据；不会请求供应商额度。' : 'Detection reads local login files and the system keychain to check credentials. It does not request provider quotas.'}</p><button type="button" onClick={onDetect} disabled={detecting || dirty}>{zh ? (detecting ? '检测中…' : '检测本机登录') : (detecting ? 'Detecting…' : 'Detect local logins')}</button>{detectionError ? <p role="alert">{detectionError}</p> : null}</section><section className="limit-setup-summary"><div className="limit-setup-score"><Sparkles size={18}/><div><b>{!detectionChecked ? (zh ? '尚未检测本机登录' : 'Local logins have not been checked') : (zh ? `检测到 ${ready.length} 个平台` : `${localizedCount(ready.length, false, '', 'provider', 'providers')} detected`)}</b><span>{zh ? '无需复制 Token，推荐直接启用已检测平台。' : 'No token copying needed for detected providers.'}</span></div></div><button type="button" onClick={enableDetected} disabled={!ready.length}><Check size={14}/>{zh ? '一键启用已检测' : 'Enable detected'}</button><div className="limit-master-inline"><span>{zh ? `${enabledCount} 个已选择` : `${enabledCount} selected`}</span><Toggle checked={draft.enabled} onChange={(enabled) => setDraft((current) => ({ ...current, enabled }))} label={draft.enabled ? (zh ? '总开关已开启' : 'Master on') : (zh ? '总开关已关闭' : 'Master off')}/></div></section>
       <section className="limit-provider-toolbar"><div role="tablist" aria-orientation="horizontal" aria-label={zh ? '筛选账户平台' : 'Filter account providers'}>{settingsTabs.map(([id, label], index) => <button type="button" role="tab" id={settingsProviderTabId(id)} aria-controls={SETTINGS_PROVIDER_PANEL_ID} aria-selected={view === id} tabIndex={view === id ? 0 : -1} className={view === id ? 'active' : ''} onClick={() => setView(id)} onKeyDown={(event) => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? settingsTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + settingsTabs.length) % settingsTabs.length; setView(settingsTabs[nextIndex][0]); event.currentTarget.parentElement?.querySelectorAll('[role="tab"]')[nextIndex]?.focus(); }} key={id}>{label}</button>)}</div><label><Search size={13}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={zh ? '搜索平台' : 'Search providers'}/></label></section>
       <nav className="limit-section-nav" aria-label={zh ? '设置分区' : 'Settings sections'}>
         {[['providers', zh ? '① 连接平台' : '① Connect'], ['order', zh ? '② 显示顺序' : '② Order']].map(([id, label]) => <a key={id} href={`#limit-sec-${id}`} className={activeAnchor === id ? 'active' : ''} aria-current={activeAnchor === id ? 'location' : undefined} onClick={(event) => { event.preventDefault(); bodyRef.current?.querySelector(`#limit-sec-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{label}</a>)}
@@ -418,7 +420,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
             const id = accountIdentifier();
             patch.accounts = [{
               id, label: '',
-              connectionType: 'workspace', workspaceId: '', externalIdentifier: '', hasSecret: false,
+              connectionType: 'workspace', workspaceId: '', externalIdentifier: '', hasSecret: false, credentialState: 'absent',
               entitlementType: 'unknown', subscriptionPrice: null,
               subscriptionCurrency: 'usd', billingCycle: 'monthly', renewsAt: '',
             }];
@@ -438,7 +440,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
           <div className={`provider-detection ${detectionClass(provider.detection?.state)}`}>{['detected', 'configured'].includes(provider.detection?.state) ? <Check size={12}/> : <CircleAlert size={12}/>}<span>{provider.detection?.label}</span>{provider.detection?.detail ? <small>{provider.detection.detail}</small> : null}</div>
           {unavailable ? <div className="provider-unavailable-copy"><p>{provider.localHint}</p>{provider.dashboardUrl ? <a href={provider.dashboardUrl} target="_blank" rel="noreferrer">{zh ? '打开官方页面' : 'Open official site'}<ExternalLink size={11}/></a> : null}</div> : null}
           {isExpanded && !unavailable ? <div className="provider-config-panel">
-            {provider.id === 'copilot' ? <CopilotConnectionPanel item={item} updateProvider={updateProvider} setClearAccountSecrets={setClearAccountSecrets} enableMaster={() => setDraft((current) => ({ ...current, enabled: true }))} onCopilotDeviceAction={onCopilotDeviceAction} onCopilotConnected={handleCopilotConnected} zh={zh}/> : provider.id === 'opencode' ? <OpenCodeGoConnectionPanel item={item} provider={provider} updateProvider={updateProvider} accountSecrets={accountSecrets} setAccountSecrets={setAccountSecrets} clearAccountSecrets={clearAccountSecrets} setClearAccountSecrets={setClearAccountSecrets} enableMaster={() => setDraft((current) => ({ ...current, enabled: true }))} zh={zh}/> : <StandardProviderConfig provider={provider} item={item} updateProvider={updateProvider} secrets={secrets} setSecrets={setSecrets} clearSecrets={clearSecrets} setClearSecrets={setClearSecrets} zh={zh}/>}
+            {provider.id === 'copilot' ? <CopilotConnectionPanel item={item} updateProvider={updateProvider} setClearAccountSecrets={setClearAccountSecrets} enableMaster={() => setDraft((current) => ({ ...current, enabled: true }))} onCopilotDeviceAction={onCopilotDeviceAction} onCopilotConnected={handleCopilotConnected} zh={zh}/> : provider.id === 'opencode' ? <OpenCodeGoConnectionPanel item={item} provider={provider} savedAccounts={settings.providers.opencode.accounts} updateProvider={updateProvider} accountSecrets={accountSecrets} setAccountSecrets={setAccountSecrets} clearAccountSecrets={clearAccountSecrets} setClearAccountSecrets={setClearAccountSecrets} enableMaster={() => setDraft((current) => ({ ...current, enabled: true }))} zh={zh}/> : <StandardProviderConfig provider={provider} item={item} updateProvider={updateProvider} secrets={secrets} setSecrets={setSecrets} clearSecrets={clearSecrets} setClearSecrets={setClearSecrets} zh={zh}/>}
             {item.enabled && provider.id !== 'opencode' ? <EntitlementBlock provider={provider} item={item} updateProvider={updateProvider} zh={zh}/> : null}
           </div> : null}
         </article>;

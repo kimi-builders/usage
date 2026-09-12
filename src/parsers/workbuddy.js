@@ -59,8 +59,12 @@ async function readJsonl(filePath, size, onRecord, context) {
     for await (const line of lines) {
       if (!line.trim()) continue;
       let record;
-      try { record = JSON.parse(line); } catch { continue; }
-      if (record && typeof record === 'object') onRecord(record);
+      try { record = JSON.parse(line); } catch {
+        warn(context, 'WorkBuddy: invalid or incomplete JSON record; healthy records retained');
+        continue;
+      }
+      if (record && typeof record === 'object' && !Array.isArray(record)) onRecord(record);
+      else warn(context, 'WorkBuddy: invalid record type; healthy records retained');
     }
   } catch {
     warn(context, 'WorkBuddy: cannot read a session file');

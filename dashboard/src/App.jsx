@@ -1,3 +1,4 @@
+import { preferences } from './preferences.js';
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Activity, BarChart3, Cloud, CloudUpload, Command, Database, Download, ExternalLink, FileText,
@@ -37,13 +38,13 @@ const ShareDialog = deferredDialog('ShareDialog');
 
 const COPY = {
   zh: {
-    title: '用量中心', subtitle: 'Kimi-first，多 Agent 兼容。这里只读取 Token、时间与计数，不读取对话内容、完整路径或供应商凭据。',
+    title: '用量中心', subtitle: 'Kimi-first，多 Agent 兼容。从已选本机日志提取 Token、时间与计数；看板不保留正文、完整路径或供应商凭据。',
     method: '计算说明', export: '导出', share: '分享用量', refresh: '重新扫描', sync: '同步数据', local: '本机分析', lastSync: '最近扫描',
     cost: 'API 等价价值', tokens: '总 Token', hit: '缓存命中率', peak: '峰值 TOKEN', active: '活跃时长', engaged: '投入时长', sessions: '会话数',
     messages: '总消息数', userMessages: '用户消息', avg: '平均耗时', requests: '请求数', lifetime: '累计 TOKEN', reasoning: '推理', good: '良好',
   },
   en: {
-    title: 'Usage Center', subtitle: 'Kimi-first, multi-agent ready. Only token, timing, and count metrics are read—never conversations, full paths, or provider credentials.',
+    title: 'Usage Center', subtitle: 'Kimi-first, multi-agent ready. Extracts token, timing, and count metrics from selected local logs. The dashboard retains no conversation text, full paths, or provider credentials.',
     method: 'Calculation notes', export: 'Export', share: 'Share usage', refresh: 'Rescan', sync: 'Sync data', local: 'On-device', lastSync: 'Last scanned',
     cost: 'API-equivalent value', tokens: 'Total tokens', hit: 'Cache hit rate', peak: 'Peak tokens', active: 'Active time', engaged: 'Engaged time', sessions: 'Sessions',
     messages: 'Messages', userMessages: 'User messages', avg: 'Avg active', requests: 'Requests', lifetime: 'Lifetime tokens', reasoning: 'Reasoning', good: 'Good',
@@ -146,15 +147,23 @@ export function App() {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [theme, setTheme] = useState(() => localStorage.getItem('kbu.theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
-  const [vibe, setVibe] = useState(() => normalizeVibe(localStorage.getItem('kbu.vibe')));
-  useEffect(() => { document.documentElement.dataset.vibe = vibe; localStorage.setItem('kbu.vibe', vibe); }, [vibe]);
-  const initialLocale = useRef(localStorage.getItem('kbu.locale'));
+  const [preferenceError, setPreferenceError] = useState(() => preferences.error);
+  useEffect(() => {
+    const failed = () => setPreferenceError(true);
+    const saved = () => setPreferenceError(false);
+    window.addEventListener('kbu-preference-error', failed);
+    window.addEventListener('kbu-preference-saved', saved);
+    return () => { window.removeEventListener('kbu-preference-error', failed); window.removeEventListener('kbu-preference-saved', saved); };
+  }, []);
+  const [theme, setTheme] = useState(() => preferences.getItem('kbu.theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
+  const [vibe, setVibe] = useState(() => normalizeVibe(preferences.getItem('kbu.vibe')));
+  useEffect(() => { document.documentElement.dataset.vibe = vibe; preferences.setItem('kbu.vibe', vibe); }, [vibe]);
+  const initialLocale = useRef(preferences.getItem('kbu.locale'));
   const [locale, setLocale] = useState(() => initialLocale.current || 'zh');
   const [localeReady, setLocaleReady] = useState(false);
   const compactValue = (value) => compactNumber(value, locale);
-  const [currency, setCurrency] = useState(() => localStorage.getItem('kbu.currency.v1') === 'cny' ? 'cny' : 'usd');
-  useEffect(() => { localStorage.setItem('kbu.currency.v1', currency); }, [currency]);
+  const [currency, setCurrency] = useState(() => preferences.getItem('kbu.currency.v1') === 'cny' ? 'cny' : 'usd');
+  useEffect(() => { preferences.setItem('kbu.currency.v1', currency); }, [currency]);
   const changeCurrency = useCallback((value) => setCurrency(value === 'cny' ? 'cny' : 'usd'), []);
   const [trendMetric, setTrendMetric] = useState('tokens');
   const [heatMetric, setHeatMetric] = useState('tokens');
@@ -251,10 +260,10 @@ export function App() {
     finally { setLimitLoading(false); }
   };
 
-  const loadLimitSettings = async () => {
+  const loadLimitSettings = async ({ detectCredentials = false } = {}) => {
     setLimitSettingsLoading(true); setLimitSettingsError('');
     try {
-      const response = await fetch('/api/limits/settings', { credentials: 'same-origin', cache: 'no-store' });
+      const response = await fetch(`/api/limits/settings${detectCredentials ? '?detect=1' : ''}`, { credentials: 'same-origin', cache: 'no-store' });
       if (!response.ok) throw new Error(`Limit settings request failed (${response.status})`);
       const next = await response.json(); setLimitSettings(next); return next;
     } catch (reason) {
@@ -311,10 +320,10 @@ export function App() {
     })();
     return () => { cancelled = true; };
   }, []);
-  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('kbu.theme', theme); }, [theme]);
+  useEffect(() => { document.documentElement.dataset.theme = theme; preferences.setItem('kbu.theme', theme); }, [theme]);
   useEffect(() => {
     document.documentElement.lang = zh ? 'zh-CN' : 'en';
-    localStorage.setItem('kbu.locale', locale);
+    preferences.setItem('kbu.locale', locale);
     if (localeReady) controlAction({ action: 'save-locale', locale }).catch(() => {});
   }, [controlAction, locale, localeReady, zh]);
   useEffect(() => {
@@ -449,10 +458,10 @@ export function App() {
   const budgetInsight = useMemo(() => data ? analyzeBudget(data, budget, insightNow) : null, [data, budget, insightNow]);
   const spikeInsight = useMemo(() => data ? analyzeSpikes(data, insightNow) : null, [data, insightNow]);
   const milestoneInsight = useMemo(() => data ? analyzeMilestones(data, insightNow) : null, [data, insightNow]);
-  const saveBudget = useCallback((value) => setBudget(storeBudget(value)), []);
+  const saveBudget = useCallback(async (value) => setBudget(await storeBudget(value)), []);
 
   if (!control && !error) return <Loading zh={zh}/>;
-  if (control && onboardingActive) return <Onboarding control={control} zh={zh} onLocale={() => setLocale(zh ? 'en' : 'zh')} onControlAction={controlAction} onScan={(refresh) => load(refresh, { throwOnError: true })} onSyncAction={syncAction} onFinish={async () => { const next = await loadControl(); await load(true, { throwOnError: true }); setOnboardingActive(false); await Promise.all([loadLimitSettings(), loadLimits()]); return next; }}/>;
+  if (control && onboardingActive) return <Onboarding control={control} zh={zh} onLocale={() => setLocale(zh ? 'en' : 'zh')} onControlAction={controlAction} onScan={(refresh) => load(refresh, { throwOnError: true })} onSyncAction={syncAction} onFinish={async () => { const next = await loadControl(); await load(false, { throwOnError: true }); setOnboardingActive(false); await Promise.all([loadLimitSettings(), loadLimits()]); return next; }}/>;
   if (!data && !error) return <Loading zh={zh}/>;
   if (!data && error) return <ErrorState zh={zh} error={error} retry={() => load()}/>;
 
@@ -485,12 +494,12 @@ export function App() {
   }[communityStatus] || (zh ? '连接状态' : 'Connection');
 
   return <DialogLocaleProvider zh={zh}><div className="app-shell" id="top">
-    <header className="global-topbar"><div className="mobile-brand-wrap"><button ref={menuButtonRef} className="mobile-menu-button" type="button" aria-label={zh ? '打开导航菜单' : 'Open navigation menu'} aria-expanded={drawer} aria-controls="mobile-dashboard-drawer" onClick={() => setDrawer(true)}><Menu size={20}/></button><a className="brand" href="#top" onClick={(event) => navigateSection(event, '#top')}><img src="/brand/logo-tile.svg" alt=""/><span>kimi<span>.</span>builders</span><small>LOCAL</small></a></div><div className="global-actions"><span className="local-pill"><ShieldCheck size={12}/>{t.local}</span><button className={`connection-pill ${communityStatus}`} type="button" onClick={openSync} aria-label={`${zh ? '社区连接状态' : 'Community connection status'}：${connectionLabel}`} title={zh ? '管理社区连接与同步' : 'Manage community connection and sync'}><Cloud size={13}/><span>{connectionLabel}</span></button><button className="icon-btn" type="button" onClick={openLimitSettings} aria-label={zh ? '权益设置' : 'Benefit settings'} title={zh ? '权益设置' : 'Benefit settings'}><Settings2 size={16}/></button><button className="icon-btn" type="button" onClick={() => setLocale(zh ? 'en' : 'zh')} aria-label={zh ? '切换为英文' : 'Switch to Chinese'} title="Language">{zh ? '文' : 'En'}</button><button className="icon-btn" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={zh ? '切换主题' : 'Switch theme'} title="Theme">{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}</button><button className="icon-btn" type="button" onClick={() => setVibe(vibe === 'poster' ? 'soft' : 'poster')} aria-label={zh ? '切换视觉气质' : 'Switch visual style'} title={zh ? '切换视觉气质(工程棱角/圆润经典)' : 'Switch visual style (sharp / classic)'}>{vibe === 'poster' ? <Circle size={16}/> : <Square size={16}/>}</button></div></header>
+    <div role="alert" hidden={!preferenceError} className="onboarding-error">{zh ? '本机偏好保存失败，请保持本地服务运行后重试。' : 'Local preferences could not be saved. Keep the local service running and retry.'}</div><header className="global-topbar"><div className="mobile-brand-wrap"><button ref={menuButtonRef} className="mobile-menu-button" type="button" aria-label={zh ? '打开导航菜单' : 'Open navigation menu'} aria-expanded={drawer} aria-controls="mobile-dashboard-drawer" onClick={() => setDrawer(true)}><Menu size={20}/></button><a className="brand" href="#top" onClick={(event) => navigateSection(event, '#top')}><img src="/brand/logo-tile.svg" alt=""/><span>kimi<span>.</span>builders</span><small>LOCAL</small></a></div><div className="global-actions"><span className="local-pill"><ShieldCheck size={12}/>{t.local}</span><button className={`connection-pill ${communityStatus}`} type="button" onClick={openSync} aria-label={`${zh ? '社区连接状态：' : 'Community connection status: '}${connectionLabel}`} title={zh ? '管理社区连接与同步' : 'Manage community connection and sync'}><Cloud size={13}/><span>{connectionLabel}</span></button><button className="icon-btn" type="button" onClick={openLimitSettings} aria-label={zh ? '权益设置' : 'Benefit settings'} title={zh ? '权益设置' : 'Benefit settings'}><Settings2 size={16}/></button><button className="icon-btn" type="button" onClick={() => setLocale(zh ? 'en' : 'zh')} aria-label={zh ? '切换为英文' : 'Switch to Chinese'} title="Language">{zh ? '文' : 'En'}</button><button className="icon-btn" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={zh ? '切换主题' : 'Switch theme'} title="Theme">{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}</button><button className="icon-btn" type="button" onClick={() => setVibe(vibe === 'poster' ? 'soft' : 'poster')} aria-label={zh ? '切换视觉气质' : 'Switch visual style'} title={zh ? '切换视觉气质(工程棱角/圆润经典)' : 'Switch visual style (sharp / classic)'}>{vibe === 'poster' ? <Circle size={16}/> : <Square size={16}/>}</button></div></header>
     <DesktopNav zh={zh} communityUrl={data.community.url} activeSection={activeSection} onNavigate={navigateSection} onSettings={openLimitSettings}/><MobileDrawer open={drawer} onClose={closeDrawer} zh={zh} communityUrl={data.community.url} theme={theme} setTheme={setTheme} vibe={vibe} setVibe={setVibe} setLocale={setLocale} activeSection={activeSection} onNavigate={navigateSection} onSettings={openLimitSettings} onSync={openSync}/><MobileNav zh={zh} activeSection={activeSection} onNavigate={navigateSection}/>
     <main className="page-content">
       {error ? <PageState className="snapshot-error-banner" compact kind="error" title={zh ? '重新扫描失败，仍显示上一次快照' : 'Rescan failed; showing the previous snapshot'} body={zh ? `${error}。当前页面保留 ${new Date(data.generatedAt).toLocaleString('zh-CN')} 生成的数据，重试成功前请按过期快照理解。` : `${error}. This page still shows data generated ${new Date(data.generatedAt).toLocaleString('en-US')}; treat it as stale until a retry succeeds.`} action={<Button variant="primary" onClick={() => load(true)} disabled={refreshing}><RefreshCw className={refreshing ? 'spin' : ''} size={14}/>{zh ? '重试扫描' : 'Retry scan'}</Button>}/>: null}
       {subscriptionPage ? <>
-      <section className="page-heading subscription-page-heading"><div><h1><Gauge size={22}/>{zh ? '权益中心' : 'Benefit Center'}</h1><p>{zh ? '看清少数付费核心和多项免费/活动权益分别承载了多少工作；官方额度不可读时仍保留本机 Token 与价值分析。' : 'See how paid core subscriptions and free or promotional benefits each carry your workload. Local Token and value analysis remain available when official quota is hidden.'}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{zh ? '凭据只留本机' : 'Credentials stay local'}</span><i/><span>{zh ? '不读取对话内容' : 'No conversation content'}</span></div></div><div className="page-actions"><Button onClick={(event) => navigateSection(event, '#top')}><BarChart3 size={14}/>{zh ? '用量中心' : 'Usage Center'}</Button><Button onClick={openLimitSettings}><Settings2 size={14}/>{zh ? '权益设置' : 'Benefit settings'}</Button><Button variant="primary" onClick={() => loadLimits(true)} disabled={limitLoading}><RefreshCw className={limitLoading ? 'spin' : ''} size={14}/>{zh ? '刷新额度' : 'Refresh quotas'}</Button></div></section>
+      <section className="page-heading subscription-page-heading"><div><h1><Gauge size={22}/>{zh ? '权益中心' : 'Benefit Center'}</h1><p>{zh ? '看清少数付费核心和多项免费/活动权益分别承载了多少工作；官方额度不可读时仍保留本机 Token 与价值分析。' : 'See how paid core subscriptions and free or promotional benefits each carry your workload. Local Token and value analysis remain available when official quota is hidden.'}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{zh ? '凭据只留本机' : 'Credentials stay local'}</span><i/><span>{zh ? '不保留对话正文' : 'No retained conversation text'}</span></div></div><div className="page-actions"><Button onClick={(event) => navigateSection(event, '#top')}><BarChart3 size={14}/>{zh ? '用量中心' : 'Usage Center'}</Button><Button onClick={openLimitSettings}><Settings2 size={14}/>{zh ? '权益设置' : 'Benefit settings'}</Button><Button variant="primary" onClick={() => loadLimits(true)} disabled={limitLoading}><RefreshCw className={limitLoading ? 'spin' : ''} size={14}/>{zh ? '刷新额度' : 'Refresh quotas'}</Button></div></section>
       <SubscriptionCenter view={subscriptionView} onViewChange={(view) => navigateSection({ preventDefault() {} }, view === 'overview' ? '#subscriptions' : `#subscription-${view}`)} data={limitData} usageData={data} settings={limitSettings} loading={limitLoading} error={limitError} onRefresh={loadLimits} onSettings={openLimitSettings} onRefreshIntervalChange={limitSettings ? async (minutes) => { if (limitSettings.refreshMinutes === minutes) return; await saveLimitPreferences({ settings: { ...limitSettings, refreshMinutes: minutes }, secrets: {}, clearSecrets: [], accountSecrets: {}, clearAccountSecrets: [] }); } : undefined} zh={zh} currency={currency}/>
       </> : sourcesPage ? <>
       <section className="page-heading sources-page-heading"><div><h1><Database size={22}/>{zh ? '本机与数据源' : 'Device & data sources'}</h1><p>{zh ? '集中管理每个 Agent 的本机扫描与社区同步范围，并查看 Collector、终端、系统和解析健康度。' : 'Manage per-agent local scan and community sync scopes, then review Collector, terminal, OS, and parsing health.'}</p><div className="privacy-line"><ShieldCheck size={13}/><span>{zh ? '扫描范围由你选择' : 'You choose scan scope'}</span><i/><span>{zh ? '诊断信息已脱敏' : 'Diagnostics are redacted'}</span></div></div><div className="page-actions"><Button onClick={() => setDialog('method')}><Info size={14}/>{t.method}</Button><Button onClick={() => load(true)} disabled={refreshing}><RefreshCw className={refreshing ? 'spin' : ''} size={14}/>{t.refresh}</Button><Button variant="primary" onClick={() => setDialog('sync')}><CloudUpload size={14}/>{t.sync}</Button></div></section>
@@ -513,7 +522,7 @@ export function App() {
         </HeroCard>
       </section>
 
-      <section className="stats-grid"><Stat zh={zh} label={t.peak} value={compactValue(report.peakTokens)} sub={lastSeries?.label}/><Stat zh={zh} label={t.active} value={duration(report.activeSeconds, zh)} previousValue={duration(previous?.activeSeconds || 0, zh)} change={delta(report.activeSeconds, previous?.activeSeconds)} onHelp={() => setDialog('method')}/><Stat zh={zh} label={t.engaged} value={duration(report.engagedSeconds, zh)} previousValue={duration(previous?.engagedSeconds || 0, zh)} change={delta(report.engagedSeconds, previous?.engagedSeconds)} sub={zh ? '单次空闲最多计 30 分钟' : 'idle gaps capped at 30m'}/><Stat zh={zh} label={t.sessions} value={integer(report.sessions.length)} previousValue={integer(previous?.sessions || 0)} change={delta(report.sessions.length, previous?.sessions)}/><Stat zh={zh} label={t.messages} value={compactValue(report.messageCount)} previousValue={compactValue(previous?.messageCount || 0)} change={delta(report.messageCount, previous?.messageCount)}/><Stat zh={zh} label={t.userMessages} value={compactValue(report.userMessageCount)} previousValue={compactValue(previous?.userMessageCount || 0)} change={delta(report.userMessageCount, previous?.userMessageCount)}/><Stat zh={zh} label={t.avg} value={`${report.avgRequestSeconds.toFixed(1)}s`} sub={zh ? '≈ 活跃时长 ÷ 请求数' : '≈ active time ÷ requests'}/><Stat zh={zh} label={t.requests} value={compactValue(report.totals.requestCount)}/><Stat zh={zh} label={t.lifetime} value={compactValue(report.lifetimeTotals.totalTokens)} sub={zh ? '全部本地历史 · 保留维度筛选' : 'all local history · filters apply'}/><Stat zh={zh} label={t.reasoning} value={compactValue(report.totals.reasoningOutputTokens)} sub={report.topReasoning || (zh ? '未记录强度' : 'Effort not recorded')}/></section>
+      <section className="stats-grid"><Stat zh={zh} label={t.peak} value={compactValue(report.peakTokens)} sub={lastSeries?.label}/><Stat zh={zh} label={t.active} value={duration(report.activeSeconds, zh)} previousValue={duration(previous?.activeSeconds || 0, zh)} change={delta(report.activeSeconds, previous?.activeSeconds)} onHelp={() => setDialog('method')}/><Stat zh={zh} label={t.engaged} value={duration(report.engagedSeconds, zh)} previousValue={duration(previous?.engagedSeconds || 0, zh)} change={delta(report.engagedSeconds, previous?.engagedSeconds)} sub={zh ? '单次空闲最多计 30 分钟' : 'idle gaps capped at 30m'}/><Stat zh={zh} label={t.sessions} value={integer(report.sessions.length)} previousValue={integer(previous?.sessions || 0)} change={delta(report.sessions.length, previous?.sessions)}/><Stat zh={zh} label={t.messages} value={compactValue(report.messageCount)} previousValue={compactValue(previous?.messageCount || 0)} change={delta(report.messageCount, previous?.messageCount)}/><Stat zh={zh} label={t.userMessages} value={compactValue(report.userMessageCount)} previousValue={compactValue(previous?.userMessageCount || 0)} change={delta(report.userMessageCount, previous?.userMessageCount)}/><Stat zh={zh} label={t.avg} value={report.avgRequestSeconds == null ? '—' : `${report.avgRequestSeconds.toFixed(1)}s`} sub={!report.activityScopeMatches ? (zh ? '当前筛选无法准确归因时长' : 'Activity cannot be attributed to these filters') : (zh ? '≈ 活跃时长 ÷ 请求数' : '≈ active time ÷ requests')}/><Stat zh={zh} label={t.requests} value={compactValue(report.totals.requestCount)}/><Stat zh={zh} label={t.lifetime} value={compactValue(report.lifetimeTotals.totalTokens)} sub={zh ? '全部本地历史 · 保留维度筛选' : 'all local history · filters apply'}/><Stat zh={zh} label={t.reasoning} value={compactValue(report.totals.reasoningOutputTokens)} sub={report.topReasoning || (zh ? '未记录强度' : 'Effort not recorded')}/></section>
       <UsageInsightSummary budget={budgetInsight} milestones={milestoneInsight} spikes={spikeInsight} zh={zh} currency={currency} onEditBudget={() => setDialog('budget')}/>
       <UsageAttributionSummary report={report} zh={zh} currency={currency}/>
       <SubscriptionPulse data={limitData} usageData={data} settings={limitSettings} loading={limitLoading} error={limitError} onRetry={() => loadLimits(true)} onOpen={(event) => navigateSection(event, '#subscriptions')} onSettings={openLimitSettings} zh={zh}/>
@@ -526,6 +535,6 @@ export function App() {
 
       <footer className="page-footer"><span>kimi.builders / usage · LOCAL</span><p>{zh ? '数据属于你。分析在本机，社区同步永远可选。' : 'Your data. Local analysis. Community sync is always optional.'}</p><a href={data.community.url} target="_blank" rel="noreferrer">{zh ? '社区版' : 'Community'}<ExternalLink size={12}/></a></footer>
     </main>
-    <MethodDialog open={dialog === 'method'} onClose={closeDialog} zh={zh} data={data} report={report} currency={currency}/><ExportDialog open={dialog === 'export'} onClose={closeDialog} report={report} data={data} filters={filters} zh={zh}/><ShareDialog open={dialog === 'share'} onClose={closeDialog} data={data} filters={filters} initialRange={filters.range} zh={zh}/><BudgetDialog open={dialog === 'budget'} onClose={closeDialog} value={budget} onSave={saveBudget} zh={zh}/>{limitSettings ? <LimitSettingsDialog open={dialog === 'limit-settings'} settings={limitSettings} saving={limitSaving} onSave={saveLimitPreferences} onCopilotDeviceAction={copilotDeviceAction} onClose={closeDialog} zh={zh}/> : <Dialog open={dialog === 'limit-settings'} onClose={closeDialog} title={zh ? '账户权益与额度设置' : 'Account benefit and quota settings'} subtitle={zh ? '设置单独从本地服务读取；额度页面仍可独立工作。' : 'Settings load independently from the local service; quota views remain separate.'}><PageState kind={limitSettingsLoading ? 'loading' : 'error'} title={limitSettingsLoading ? (zh ? '正在读取权益设置' : 'Loading benefit settings') : (zh ? '权益设置读取失败' : 'Could not load benefit settings')} body={limitSettingsLoading ? (zh ? '正在读取本机配置，不会发起供应商请求。' : 'Reading local configuration without contacting providers.') : limitSettingsError || (zh ? '本地服务没有返回设置。' : 'The local service did not return settings.')} action={!limitSettingsLoading ? <Button variant="primary" onClick={loadLimitSettings}><RefreshCw size={14}/>{zh ? '重试读取' : 'Retry'}</Button> : null}/></Dialog>}<SyncDialog open={dialog === 'sync'} onClose={closeDialog} zh={zh} control={control} onControlAction={controlAction} onControlChange={loadControl}/>
+    <MethodDialog open={dialog === 'method'} onClose={closeDialog} zh={zh} data={data} report={report} currency={currency}/><ExportDialog open={dialog === 'export'} onClose={closeDialog} report={report} data={data} filters={filters} zh={zh}/><ShareDialog open={dialog === 'share'} onClose={closeDialog} data={data} filters={filters} initialRange={filters.range} zh={zh}/><BudgetDialog open={dialog === 'budget'} onClose={closeDialog} value={budget} onSave={saveBudget} zh={zh}/>{limitSettings ? <LimitSettingsDialog onDetect={() => loadLimitSettings({ detectCredentials: true })} detecting={limitSettingsLoading} detectionError={limitSettingsError} open={dialog === 'limit-settings'} settings={limitSettings} saving={limitSaving} onSave={saveLimitPreferences} onCopilotDeviceAction={copilotDeviceAction} onClose={closeDialog} zh={zh}/> : <Dialog open={dialog === 'limit-settings'} onClose={closeDialog} title={zh ? '账户权益与额度设置' : 'Account benefit and quota settings'} subtitle={zh ? '设置单独从本地服务读取；额度页面仍可独立工作。' : 'Settings load independently from the local service; quota views remain separate.'}><PageState kind={limitSettingsLoading ? 'loading' : 'error'} title={limitSettingsLoading ? (zh ? '正在读取权益设置' : 'Loading benefit settings') : (zh ? '权益设置读取失败' : 'Could not load benefit settings')} body={limitSettingsLoading ? (zh ? '正在读取本机配置，不会发起供应商请求。' : 'Reading local configuration without contacting providers.') : limitSettingsError || (zh ? '本地服务没有返回设置。' : 'The local service did not return settings.')} action={!limitSettingsLoading ? <Button variant="primary" onClick={loadLimitSettings}><RefreshCw size={14}/>{zh ? '重试读取' : 'Retry'}</Button> : null}/></Dialog>}<SyncDialog open={dialog === 'sync'} onClose={closeDialog} zh={zh} control={control} onControlAction={controlAction} onControlChange={loadControl}/>
   </div></DialogLocaleProvider>;
 }

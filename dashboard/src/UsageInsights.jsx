@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { preferences } from './preferences.js';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Award, CalendarClock, Flame, Pencil, ShieldCheck, Sparkles, Target, X } from 'lucide-react';
 import { compactNumber, displayDollars } from './format.js';
 import { Dialog } from './Dialog.jsx';
@@ -10,7 +11,7 @@ const MILESTONE_STORAGE_KEY = 'kbu.milestones.v1';
 
 function parseJson(key, fallback) {
   try {
-    const value = JSON.parse(localStorage.getItem(key) || 'null');
+    const value = JSON.parse(preferences.getItem(key) || 'null');
     return value ?? fallback;
   } catch {
     return fallback;
@@ -24,7 +25,7 @@ function readList(key) {
 
 function writeList(key, values) {
   const bounded = [...new Set(values)].slice(-120);
-  localStorage.setItem(key, JSON.stringify(bounded));
+  preferences.setItem(key, JSON.stringify(bounded));
   return bounded;
 }
 
@@ -34,13 +35,13 @@ export function readBudget() {
   return { metric: value.metric, target: Number(value.target) };
 }
 
-export function storeBudget(value) {
+export async function storeBudget(value) {
   if (!value) {
-    localStorage.removeItem(BUDGET_STORAGE_KEY);
+    await preferences.removeItem(BUDGET_STORAGE_KEY);
     return null;
   }
   const next = { metric: value.metric, target: Number(value.target), updatedAt: new Date().toISOString() };
-  localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(next));
+  await preferences.setItem(BUDGET_STORAGE_KEY, JSON.stringify(next));
   return next;
 }
 
@@ -67,20 +68,25 @@ export function BudgetDialog({ open, onClose, value, onSave, zh }) {
   const [target, setTarget] = useState(value?.target ? String(value.target) : '');
   useEffect(() => {
     if (!open) return;
+    setError('');
     setMetric(value?.metric || 'tokens');
     setTarget(value?.target ? String(value.target) : '');
   }, [open, value]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const errorRef = useRef(null);
+  useEffect(() => { if (error) errorRef.current?.focus(); }, [error]);
   const parsed = Number(target);
   const valid = Number.isFinite(parsed) && parsed > 0;
-  const save = () => {
-    if (!valid) return;
-    onSave({ metric, target: parsed });
-    onClose();
+  const persist = async (next) => {
+    if (saving) return;
+    setSaving(true); setError('');
+    try { await onSave(next); onClose(); }
+    catch { setError(zh ? '保存失败，请确认本地服务仍在运行后重试。' : 'Save failed. Check the local service and retry.'); }
+    finally { setSaving(false); }
   };
-  const clear = () => {
-    onSave(null);
-    onClose();
-  };
+  const save = () => { if (valid) return persist({ metric, target: parsed }); };
+  const clear = () => persist(null);
   return <Dialog open={open} onClose={onClose} className="dialog--budget" title={zh ? '设置个人月度目标' : 'Set a personal monthly target'} subtitle={zh ? '这是你自己申报的节奏目标，不是供应商额度或账单。' : 'This is your declared pace target—not a provider quota or bill.'}>
     <div className="budget-dialog-body">
       <div className="budget-metric-tabs" role="radiogroup" aria-label={zh ? '目标指标' : 'Target metric'}>
@@ -88,9 +94,9 @@ export function BudgetDialog({ open, onClose, value, onSave, zh }) {
         <button type="button" role="radio" aria-checked={metric === 'cost'} className={metric === 'cost' ? 'active' : ''} onClick={() => setMetric('cost')}>{zh ? 'API USD 估算' : 'API USD estimate'}</button>
       </div>
       <label className="budget-target-field"><span>{metric === 'tokens' ? (zh ? '月度 Token 目标' : 'Monthly Token target') : (zh ? '月度 API 等价价值目标（USD）' : 'Monthly API-equivalent target (USD)')}</span><input autoFocus type="number" min="0" step={metric === 'tokens' ? '1000000' : '.01'} inputMode="decimal" value={target} onChange={(event) => setTarget(event.target.value)} placeholder={metric === 'tokens' ? '50000000000' : '500.00'}/><small>{metric === 'tokens' ? (zh ? '输入完整 Token 数，例如 50,000,000,000。' : 'Enter the full Token count, e.g. 50,000,000,000.') : (zh ? '采用看板的标准 API 价格估算，不代表实际账单。' : 'Uses the dashboard standard API estimate; it is not an actual bill.')}</small></label>
-      <div className="budget-evidence-note"><ShieldCheck size={16}/><p><b>{zh ? '个人目标 · 本机观测' : 'Personal target · locally observed'}</b><span>{zh ? '目标只保存在当前浏览器，并与供应商事实、本机 Token 事实、派生容量估计分别呈现。' : 'The target stays in this browser and remains separate from provider facts, local Token facts, and derived capacity estimates.'}</span></p></div>
+      <div className="budget-evidence-note"><ShieldCheck size={16}/><p><b>{zh ? '个人目标 · 本机观测' : 'Personal target · locally observed'}</b><span>{zh ? '目标只保存在本机配置中，重启看板后仍会保留，并与供应商事实、本机 Token 事实、派生容量估计分别呈现。' : 'The target stays in local configuration across dashboard restarts and remains separate from provider facts, local Token facts, and derived capacity estimates.'}</span></p></div>
     </div>
-    <footer className="dialog-actions">{value ? <button type="button" className="ghost-btn budget-clear" onClick={clear}>{zh ? '清除目标' : 'Clear target'}</button> : null}<button type="button" className="ghost-btn" onClick={onClose}>{zh ? '关闭' : 'Close'}</button><button type="button" className="primary-btn" onClick={save} disabled={!valid}>{zh ? '保存目标' : 'Save target'}</button></footer>
+    <p role="alert" ref={errorRef} tabIndex={-1} className="onboarding-error">{error}</p><footer className="dialog-actions">{value ? <button type="button" className="ghost-btn budget-clear" disabled={saving} onClick={clear}>{zh ? '清除目标' : 'Clear target'}</button> : null}<button type="button" className="ghost-btn" onClick={onClose}>{zh ? '关闭' : 'Close'}</button><button type="button" className="primary-btn" onClick={save} disabled={!valid || saving}>{zh ? '保存目标' : 'Save target'}</button></footer>
   </Dialog>;
 }
 
@@ -131,7 +137,7 @@ export function UsageInsightSummary({ budget, milestones, spikes, zh, currency, 
   return <section className="usage-insight-summary" aria-label={zh ? '个人目标与里程碑' : 'Personal target and milestones'}>
     <article className={`budget-summary-card ${budget?.overPace ? 'is-warning' : ''}`}>
       <header><span><Target size={15}/>{zh ? '本月目标' : 'Monthly target'}</span><em><ShieldCheck size={11}/>{zh ? '个人目标 · 本机观测' : 'Personal · locally observed'}</em></header>
-      {budget?.configured ? <><div className="budget-summary-value"><strong>{metricValue(budget.current, budget.metric, currency, zh)}</strong><span>/ {metricValue(budget.target, budget.metric, currency, zh)}</span></div><div className="insight-progress" role="progressbar" aria-label={zh ? '月度目标进度' : 'Monthly target progress'} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(Math.min(1, budget.progress) * 100)}><i style={{ width: `${Math.min(100, budget.progress * 100)}%` }}/></div><footer><span>{Math.round(budget.progress * 100)}% · {targetLabel}</span><span>{budget.mayProject ? (zh ? `月底约 ${metricValue(budget.projected, budget.metric, currency, zh)}` : `Month end ≈ ${metricValue(budget.projected, budget.metric, currency, zh)}`) : (zh ? '月初不足 3 天，暂不外推' : 'Projection starts after 3 elapsed days')}</span><button type="button" onClick={onEditBudget}><Pencil size={12}/>{zh ? '调整' : 'Edit'}</button></footer></> : <div className="budget-empty"><div><b>{zh ? '给跨 Agent 消耗设一个自己的月度节奏' : 'Set your own monthly pace across agents'}</b><p>{zh ? '目标只存浏览器，不会被当成供应商额度或实际账单。' : 'Saved only in this browser; never treated as provider quota or billing.'}</p></div><button type="button" className="ghost-btn" onClick={onEditBudget}>{zh ? '设定目标' : 'Set target'}</button></div>}
+      {budget?.configured ? <><div className="budget-summary-value"><strong>{metricValue(budget.current, budget.metric, currency, zh)}</strong><span>/ {metricValue(budget.target, budget.metric, currency, zh)}</span></div><div className="insight-progress" role="progressbar" aria-label={zh ? '月度目标进度' : 'Monthly target progress'} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(Math.min(1, budget.progress) * 100)}><i style={{ width: `${Math.min(100, budget.progress * 100)}%` }}/></div><footer><span>{Math.round(budget.progress * 100)}% · {targetLabel}</span><span>{budget.mayProject ? (zh ? `月底约 ${metricValue(budget.projected, budget.metric, currency, zh)}` : `Month end ≈ ${metricValue(budget.projected, budget.metric, currency, zh)}`) : (zh ? '月初不足 3 天，暂不外推' : 'Projection starts after 3 elapsed days')}</span><button type="button" onClick={onEditBudget}><Pencil size={12}/>{zh ? '调整' : 'Edit'}</button></footer></> : <div className="budget-empty"><div><b>{zh ? '给跨 Agent 消耗设一个自己的月度节奏' : 'Set your own monthly pace across agents'}</b><p>{zh ? '目标只保存在本机，重启后保留，不会被当成供应商额度或实际账单。' : 'Saved locally across restarts; never treated as provider quota or billing.'}</p></div><button type="button" className="ghost-btn" onClick={onEditBudget}>{zh ? '设定目标' : 'Set target'}</button></div>}
     </article>
     <article className="milestone-summary-card">
       <header><span><Award size={15}/>{zh ? '构建里程碑' : 'Builder milestones'}</span><em><ShieldCheck size={11}/>{zh ? '本机观测 · 全量历史' : 'Locally observed · all history'}</em></header>

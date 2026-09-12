@@ -1,3 +1,4 @@
+import { preferences } from './preferences.js';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Check, Download, FileJson, FileSpreadsheet, ImagePlus, Info, LoaderCircle, Share2, ShieldCheck, Trash2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
@@ -25,6 +26,7 @@ export function ExportDialog({ open, onClose, report, data, filters, zh }) {
     if (format === 'json') {
       const payload = {
         schemaVersion: 1,
+        factSchemaVersion: data.factSchemaVersion || 1,
         exportedAt: new Date().toISOString(),
         scope: 'all-local-history',
         generatedAt: data.generatedAt,
@@ -108,14 +110,14 @@ async function squareAvatar(file, zh) {
 function AvatarEditor({ avatar, name, busy, onSelect, onRemove, zh }) {
   const inputRef = useRef(null);
   const initials = (name.trim() || 'Local Builder').slice(0, 2).toUpperCase();
-  return <div className="poster-avatar-editor"><span className="share-field-title">{zh ? '海报头像' : 'Poster avatar'}</span><div><span className={`avatar-editor-preview ${avatar ? 'has-image' : ''}`}>{avatar ? <img src={avatar} alt=""/> : initials}</span><div className="avatar-editor-actions"><div><button type="button" className="ghost-btn" onClick={() => inputRef.current?.click()} disabled={busy}>{busy ? <LoaderCircle className="spin" size={14}/> : <ImagePlus size={14}/>} {avatar ? (zh ? '更换头像' : 'Replace') : (zh ? '选择头像' : 'Choose image')}</button>{avatar ? <button type="button" className="avatar-remove" onClick={onRemove} disabled={busy}><Trash2 size={13}/>{zh ? '移除' : 'Remove'}</button> : null}</div><small>{zh ? '自动居中裁成方形，仅保存在当前浏览器。' : 'Center-cropped automatically and stored only in this browser.'}</small></div><input ref={inputRef} className="visually-hidden" tabIndex={-1} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) onSelect(file); }} aria-label={zh ? '选择海报头像图片' : 'Choose poster avatar image'}/></div></div>;
+  return <div className="poster-avatar-editor"><span className="share-field-title">{zh ? '海报头像' : 'Poster avatar'}</span><div><span className={`avatar-editor-preview ${avatar ? 'has-image' : ''}`}>{avatar ? <img src={avatar} alt=""/> : initials}</span><div className="avatar-editor-actions"><div><button type="button" className="ghost-btn" onClick={() => inputRef.current?.click()} disabled={busy}>{busy ? <LoaderCircle className="spin" size={14}/> : <ImagePlus size={14}/>} {avatar ? (zh ? '更换头像' : 'Replace') : (zh ? '选择头像' : 'Choose image')}</button>{avatar ? <button type="button" className="avatar-remove" onClick={onRemove} disabled={busy}><Trash2 size={13}/>{zh ? '移除' : 'Remove'}</button> : null}</div><small>{zh ? '自动居中裁成方形，仅保存在本机，重启后仍保留。' : 'Center-cropped automatically and stored only on this device across restarts.'}</small></div><input ref={inputRef} className="visually-hidden" tabIndex={-1} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) onSelect(file); }} aria-label={zh ? '选择海报头像图片' : 'Choose poster avatar image'}/></div></div>;
 }
 
 export function ShareDialog({ open, onClose, data, filters, initialRange, zh }) {
   const [range, setRange] = useState(initialRange === 'all' ? 'all' : initialRange);
-  const [name, setName] = useState(() => localStorage.getItem('kbu.poster.name') || 'Local Builder');
-  const [handle, setHandle] = useState(() => localStorage.getItem('kbu.poster.handle') || 'local');
-  const [avatar, setAvatar] = useState(() => localStorage.getItem(POSTER_AVATAR_KEY) || '');
+  const [name, setName] = useState(() => preferences.getItem('kbu.poster.name') || 'Local Builder');
+  const [handle, setHandle] = useState(() => preferences.getItem('kbu.poster.handle') || 'local');
+  const [avatar, setAvatar] = useState(() => preferences.getItem(POSTER_AVATAR_KEY) || '');
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarError, setAvatarError] = useState('');
   const [preview, setPreview] = useState(null);
@@ -165,14 +167,14 @@ export function ShareDialog({ open, onClose, data, filters, initialRange, zh }) 
     setAvatarBusy(true); setAvatarError('');
     try {
       const value = await squareAvatar(file, zh);
-      localStorage.setItem(POSTER_AVATAR_KEY, value);
+      await preferences.setItem(POSTER_AVATAR_KEY, value);
       setAvatar(value);
     } catch (reason) {
       setAvatarError(reason?.message || String(reason));
     } finally { setAvatarBusy(false); }
   };
-  const removeAvatar = () => { localStorage.removeItem(POSTER_AVATAR_KEY); setAvatar(''); setAvatarError(''); };
-  const persistIdentity = () => { localStorage.setItem('kbu.poster.name', name.trim() || 'Local Builder'); localStorage.setItem('kbu.poster.handle', handle.trim().replace(/^@/, '') || 'local'); };
+  const removeAvatar = () => { preferences.removeItem(POSTER_AVATAR_KEY); setAvatar(''); setAvatarError(''); };
+  const persistIdentity = () => { preferences.setItem('kbu.poster.name', name.trim() || 'Local Builder'); preferences.setItem('kbu.poster.handle', handle.trim().replace(/^@/, '') || 'local'); };
   const savePreview = (snapshot) => {
     const anchor = document.createElement('a');
     anchor.href = snapshot.url;

@@ -46,6 +46,18 @@ export function isValidOpenCodeWorkspaceId(value) {
   return /^wrk_[A-Za-z0-9_-]+$/.test(String(value || '').trim());
 }
 
+export function credentialState(item) {
+  return item?.credentialState ?? (item?.hasSecret == null ? 'unchecked' : item.hasSecret ? 'present' : 'absent');
+}
+
+export function hasOpenCodeCredential(account, savedAccount, secret, cleared = false) {
+  if (typeof secret === 'string' && secret.trim()) return true;
+  // Only a saved account with the same connection method may keep an unprobed secret.
+  return !cleared && account.id === savedAccount?.id
+    && (account.connectionType || 'workspace') === (savedAccount.connectionType || 'workspace')
+    && credentialState(account) !== 'absent';
+}
+
 export function localizedCompact(value, zh) {
   return compactNumber(value, zh ? 'zh' : 'en');
 }
@@ -332,6 +344,7 @@ function englishDetection(provider) {
     : `${configuredAccounts[1]} OpenCode Go accounts configured`;
   else if (environment) label = `Environment variable ${environment[1]} configured`;
   else if (raw === '已安全保存到 macOS 钥匙串') label = 'Saved securely in macOS Keychain';
+  else if (state === 'unchecked') label = 'Local login has not been checked';
   else if (state === 'detected') label = provider.id === 'jetbrains-ai'
     ? 'JetBrains AI configuration detected'
     : provider.id === 'antigravity' && raw.includes('OAuth')

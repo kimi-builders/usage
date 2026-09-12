@@ -107,7 +107,7 @@ or remove the background daemon unless I explicitly approve that separate step.
 
 | Question | Answer |
 | --- | --- |
-| Does it upload conversations or code? | No. The Token dashboard is local by default and does not read prompts, responses, or file contents. |
+| Does it upload conversations or code? | No. The Collector reads selected log files to extract usage. Conversation text and full paths never enter the dashboard, exports, or community uploads. |
 | Is a community account required? | No. Local usage and subscription analysis work independently. |
 | Which agents are supported? | Seventeen sources are auto-scanned; Cursor CSV is an explicit opt-in. See the matrix below. |
 | Are the costs real bills? | No. They are standard-API estimates with visible pricing coverage and unpriced Tokens. |

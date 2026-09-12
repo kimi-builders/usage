@@ -37,36 +37,36 @@ export const QODER_EDITIONS = {
   },
 };
 
-function expandHome(p) {
+function expandHome(p, home = homedir()) {
   if (!p) return p;
-  return p === '~' ? homedir() : /^~[/\\]/.test(p) ? join(homedir(), p.slice(2)) : p;
+  return p === '~' ? home : /^~[/\\]/.test(p) ? join(home, p.slice(2)) : p;
 }
 
 /** CLI/app transcript root: <configDir>/projects. Honors Qoder's own config-dir env. */
-export function getQoderProjectsDir(edition) {
+export function getQoderProjectsDir(edition, env = process.env, home = homedir()) {
   const e = QODER_EDITIONS[edition];
-  const test = process.env[e.testProjectsEnv]?.trim();
-  if (test) return expandHome(test);
-  const cfg = process.env[e.cliEnv]?.trim();
-  const root = cfg ? expandHome(cfg) : join(homedir(), e.cliDirName);
+  const test = env[e.testProjectsEnv]?.trim();
+  if (test) return expandHome(test, home);
+  const cfg = env[e.cliEnv]?.trim();
+  const root = cfg ? expandHome(cfg, home) : join(home, e.cliDirName);
   return join(root, 'projects');
 }
 
 /** IDE SQLite store. Honors QODER_HOME / QODER_CN_HOME like Qoder's own language server. */
-export function getQoderDbPath(edition) {
+export function getQoderDbPath(edition, env = process.env, homeDir = homedir(), platform = process.platform) {
   const e = QODER_EDITIONS[edition];
-  const test = process.env[e.testDbEnv]?.trim();
-  if (test) return expandHome(test);
-  const home = process.env[e.ideHomeEnv]?.trim();
-  if (home) return join(expandHome(home), 'cache', 'db', 'local.db');
+  const test = env[e.testDbEnv]?.trim();
+  if (test) return expandHome(test, homeDir);
+  const home = env[e.ideHomeEnv]?.trim();
+  if (home) return join(expandHome(home, homeDir), 'cache', 'db', 'local.db');
   let root;
-  if (process.platform === 'darwin') {
-    root = join(homedir(), 'Library', 'Application Support', e.ideDirName);
-  } else if (process.platform === 'win32') {
-    const appData = process.env.APPDATA?.trim() || join(homedir(), 'AppData', 'Roaming');
+  if (platform === 'darwin') {
+    root = join(homeDir, 'Library', 'Application Support', e.ideDirName);
+  } else if (platform === 'win32') {
+    const appData = env.APPDATA?.trim() || join(homeDir, 'AppData', 'Roaming');
     root = join(appData, e.ideDirName);
   } else {
-    const xdg = process.env.XDG_CONFIG_HOME?.trim() || join(homedir(), '.config');
+    const xdg = env.XDG_CONFIG_HOME?.trim() || join(homeDir, '.config');
     root = join(xdg, e.ideDirName);
   }
   return join(root, DB_RELATIVE);

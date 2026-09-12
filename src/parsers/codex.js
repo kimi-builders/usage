@@ -125,9 +125,30 @@ function findRolloutFiles(home) {
 
 // Stream one rollout instead of materializing the whole JSONL as a single
 // string. Real Codex sessions can grow beyond V8's ~512 MB string limit. Keep
-// full payloads only for the three record types used by token/model/session
-// identity logic; ordinary message/tool records retain timestamp + type only.
+// usage payloads only for Token records and allowlisted metadata for identity
+// and model context; ordinary message/tool records retain timestamp + type only.
 // `recordCount` preserves physical-copy winner selection exactly.
+function metadataOnly(record) {
+  const payload = record.payload || {};
+  if (record.type === 'turn_context') return {
+    type: record.type, timestamp: record.timestamp,
+    payload: { model: payload.model, effort: payload.effort },
+  };
+  return {
+    type: record.type, timestamp: record.timestamp,
+    payload: {
+      id: payload.id, timestamp: payload.timestamp, cwd: payload.cwd,
+      git: payload.git ? { repository_url: payload.git.repository_url } : undefined,
+      cli_version: payload.cli_version, model_provider: payload.model_provider,
+      forked_from_id: payload.forked_from_id, parent_thread_id: payload.parent_thread_id,
+      thread_source: payload.thread_source,
+      source: typeof payload.source === 'object' && payload.source !== null
+        ? ('subagent' in payload.source ? { subagent: { thread_spawn: { parent_thread_id: payload.source.subagent?.thread_spawn?.parent_thread_id } } } : {})
+        : payload.source,
+    },
+  };
+}
+
 async function readRollout(file) {
   const records = [];
   let meta = null;
@@ -147,13 +168,13 @@ async function readRollout(file) {
         recordCount += 1;
         if (raw?.type === 'session_meta') {
           if (!meta) {
-            meta = raw;
-            records.push(raw);
+            meta = metadataOnly(raw);
+            records.push(meta);
           }
           continue;
         }
         if (raw?.type === 'turn_context' || isTokenCount(raw)) {
-          records.push(raw);
+          records.push(raw?.type === 'turn_context' ? metadataOnly(raw) : raw);
           continue;
         }
         if (parseTimestampMs(raw?.timestamp) !== null) {
@@ -219,20 +240,16 @@ export async function parse({ sessionSalt, sourceOptions } = {}) {
   // Physical copy dedup: same session id in several files (live + archive
   // overlap) → keep the file with the most parseable records, parse losers
   // not at all. Ties go to the lexicographically smallest path.
-  const rollouts = [];
+  const winners = new Map();
   for (const home of homes) {
     for (const file of findRolloutFiles(home)) {
       const rollout = await readRollout(file);
-      if (rollout) rollouts.push(rollout);
-    }
-  }
-  const winners = new Map();
-  for (const rollout of rollouts) {
-    const current = winners.get(rollout.sessionId);
-    if (!current
-      || rollout.recordCount > current.recordCount
-      || (rollout.recordCount === current.recordCount && rollout.file.path < current.file.path)) {
-      winners.set(rollout.sessionId, rollout);
+      if (!rollout) continue;
+      const current = winners.get(rollout.sessionId);
+      if (!current || rollout.recordCount > current.recordCount
+        || (rollout.recordCount === current.recordCount && rollout.file.path < current.file.path)) {
+        winners.set(rollout.sessionId, rollout);
+      }
     }
   }
   const sessions = Array.from(winners.values());

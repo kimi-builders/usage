@@ -203,17 +203,24 @@ export function getPublicLimitSettings(config = loadConfig(), options = {}) {
   const keychainProviders = new Set(LIMIT_PROVIDER_CATALOG
     .filter((provider) => provider.authModes.includes('keychain')).map((provider) => provider.id));
   const readSecret = options.readSecret || readKeychainSecret;
-  const hasSecret = options.hasSecret
+  const probeSecret = options.hasSecret
     || ((credentialKey) => {
       const providerId = String(credentialKey || '').split(':', 1)[0];
       return keychainProviders.has(providerId) && Boolean(readSecret(credentialKey));
     });
+  // Unknown is not absence: ordinary settings reads must not touch credentials.
+  const checkedSecrets = new Map();
+  const hasSecret = (key) => {
+    if (options.detectCredentials !== true) return null;
+    if (!checkedSecrets.has(key)) checkedSecrets.set(key, Boolean(probeSecret(key)));
+    return checkedSecrets.get(key);
+  };
   const secretStates = Object.fromEntries(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id, hasSecret(regionalCredentialKey(provider.id, settings.providers[provider.id]))]));
   const detections = options.detections || Object.fromEntries(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id,
-    providerDetection(provider, settings.providers[provider.id], {
+    options.detectCredentials === true ? providerDetection(provider, settings.providers[provider.id], {
       environment, hasKeychainSecret: secretStates[provider.id], hasSecret,
       run: options.run, platform: options.platform,
-    }),
+    }) : { state: 'unchecked', label: '尚未检测本机登录' },
   ]));
   return publicLimitSettings(settings, {
     keychainAvailable: options.keychainAvailable ?? keychainAvailable(),

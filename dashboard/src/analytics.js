@@ -219,10 +219,8 @@ function buildSeries(buckets, activityHours, range, start, end) {
   if (!first && observedKeys.length) first = new Date(observedKeys[0]);
   if (!first) first = unitStart(end, unit);
   const last = unitStart(end, unit);
-  // “24H” is 24 elapsed-hour slots including the current partial hour. Flooring both
-  // endpoints of a rolling 24-hour window would otherwise render 25 bars and
-  // calendar-hour stepping would lose a bar during the spring DST transition.
-  if (range === '24h') first = addUnit(last, 'hour', -23);
+  // Preserve both partial endpoint hours of the same rolling window used by totals.
+  // Hour stepping uses elapsed time so DST does not drop or duplicate facts.
   const rows = [];
   for (let cursor = first; cursor <= last; cursor = addUnit(cursor, unit)) {
     const key = cursor.toISOString();
@@ -509,7 +507,9 @@ export function analyze(data, inputFilters) {
     engagedSeconds,
     messageCount,
     userMessageCount,
-    avgRequestSeconds: totals.requestCount > 0 ? activeSeconds / totals.requestCount : 0,
+    activityScopeMatches: !['models', 'efforts', 'projects', 'agentVersions'].some((key) => filters[key]?.length),
+    avgRequestSeconds: ['models', 'efforts', 'projects', 'agentVersions'].some((key) => filters[key]?.length)
+      || !totals.requestCount ? null : activeSeconds / totals.requestCount,
     sourceRows,
     modelRows,
     projectRows,
