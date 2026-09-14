@@ -11,6 +11,7 @@ let server;
 test.before(async () => {
   server = await createServer({
     root: fileURLToPath(new URL('../', import.meta.url)),
+    cacheDir: fileURLToPath(new URL('../node_modules/.vite-usage-poster-test', import.meta.url)),
     logLevel: 'silent',
     optimizeDeps: { noDiscovery: true },
     server: { middlewareMode: true },

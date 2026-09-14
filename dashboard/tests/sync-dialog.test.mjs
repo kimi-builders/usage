@@ -9,6 +9,7 @@ let server; let module;
 test.before(async () => {
   server = await createServer({
     root: fileURLToPath(new URL('../', import.meta.url)), logLevel: 'silent',
+    cacheDir: fileURLToPath(new URL('../node_modules/.vite-sync-dialog-test', import.meta.url)),
     optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true },
   });
   module = await server.ssrLoadModule('/src/SyncDialog.jsx');
