@@ -64,9 +64,16 @@ test('managed runtime survives source/cache removal, stays version-pinned, and r
     for (const platform of ['darwin', 'linux', 'win32']) {
       const rendered = renderDaemonFiles({ platform, home: root, configDir, entry });
       assert.equal(rendered.paths.entry, entry);
-      assert.ok(rendered.files.some(f => f.content.includes(entry)));
+      const renderedEntry = platform === 'linux' ? entry.replaceAll('\\', '\\\\') : entry;
+      assert.ok(rendered.files.some(f => f.content.includes(renderedEntry)));
       assert.ok(rendered.files.every(f => !f.content.includes('@latest') && !f.content.includes('npm cache')));
     }
+
+    const windowsEntry = String.raw`C:\Users\builder\AppData\Local\Kimi Builders\runtime\bin\kbu-usage.js`;
+    const linuxFromWindows = renderDaemonFiles({
+      platform: 'linux', home: root, configDir, entry: windowsEntry,
+    });
+    assert.ok(linuxFromWindows.files.some(f => f.content.includes(windowsEntry.replaceAll('\\', '\\\\'))));
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
