@@ -59,6 +59,11 @@ or remote data. No database migration is required.
 
 ## Pre-release review corrections
 
+- From 2026-09-11, normalize Kimi Code's default `kimi-for-coding` alias to
+  `kimi-k2.8-preview` while preserving the earlier K2.7 Code attribution for
+  history. Add the 1M-context model identity and a clearly provisional API-equivalent
+  estimate of $0.38 cached read, $1.90 input/cache write, and $8.00 output per
+  million Tokens until official pricing is published.
 - Count Gemini candidate output separately from thoughts; remove duplicate subtraction.
 - Isolate damaged Pi, WorkBuddy, and ZCode records with partial-scan diagnostics; accept migrated Windows project paths in ZCode.
 - Retain both partial endpoint hours in rolling 24H charts; omit efficiency ratios when model, project, effort, or agent-version filters cannot match activity scope.

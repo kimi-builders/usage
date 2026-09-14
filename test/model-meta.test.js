@@ -8,7 +8,15 @@ test('Kimi aliases keep their raw identity while gaining a canonical model ID', 
   assert.equal(canonicalModelId({ source: 'kimi-code', model: 'kimi-code/k3-256' }), 'kimi-k3-256k');
   assert.equal(
     canonicalModelId({ source: 'kimi-code', model: 'kimi-code/kimi-for-coding' }),
+    'kimi-k2.8-preview',
+  );
+  assert.equal(
+    canonicalModelId({ source: 'kimi-code', model: 'kimi-code/kimi-for-coding', timestamp: '2026-09-10T23:59:59.999Z' }),
     'kimi-k2.7-code',
+  );
+  assert.equal(
+    canonicalModelId({ source: 'kimi-code', model: 'kimi-code/kimi-for-coding', timestamp: '2026-09-11T00:00:00.000Z' }),
+    'kimi-k2.8-preview',
   );
   assert.equal(
     canonicalModelId({ source: 'opencode', model: 'kimi-for-coding-highspeed', modelProvider: 'kimiforcoding' }),

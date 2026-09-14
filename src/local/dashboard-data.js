@@ -133,6 +133,8 @@ export function createDashboardData(snapshot, {
         reasoning: price.reasoning,
         sourceUrl: price.sourceUrl,
         verifiedAt: price.verifiedAt,
+        provisional: price.provisional === true,
+        note: price.note || null,
       })),
     },
     sources: diagnostic.sources,

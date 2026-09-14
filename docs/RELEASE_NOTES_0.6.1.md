@@ -46,6 +46,10 @@ npx @kimi.builders/usage@latest daemon restart
 
 ## 发布前复核修正
 
+- Kimi Code 自 2026-09-11 起将默认 `kimi-for-coding` 归一化为
+  `kimi-k2.8-preview`，保留此前 K2.7 Code 的历史归属；新增 1M 上下文模型标识与
+  临时 API 等价价（缓存读 $0.38、输入及缓存写 $1.90、输出 $8.00 / 百万 Token），
+  并明确标注价格尚未由官方公布。
 - Gemini 候选输出与推理独立计数，修复输出 Token 被重复扣减。
 - Pi、WorkBuddy、ZCode 隔离损坏记录并报告部分扫描；ZCode 支持跨系统迁移的 Windows 路径。
 - 最近 24H 保留首尾部分小时；模型、项目、推理强度或 Agent 版本筛选下不显示无法同口径归因的效率比值。

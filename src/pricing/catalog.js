@@ -85,6 +85,15 @@ export function validatePriceCatalog(value) {
     if (entry.basis !== 'standard-api' || typeof entry.version !== 'string') {
       throw catalogError(`${entry.pattern} 的计价口径或版本无效。`);
     }
+    if (entry.provisional !== undefined && typeof entry.provisional !== 'boolean') {
+      throw catalogError(`${entry.pattern} 的 provisional 标记无效。`);
+    }
+    if (entry.provisional && (
+      typeof entry.note?.zh !== 'string' || !entry.note.zh
+      || typeof entry.note?.en !== 'string' || !entry.note.en
+    )) {
+      throw catalogError(`${entry.pattern} 的临时价格缺少中英文说明。`);
+    }
     if (entry.sourceUrl) {
       const sourceUrl = new URL(entry.sourceUrl);
       if (sourceUrl.protocol !== 'https:') throw catalogError(`${entry.pattern} 的价格来源必须使用 HTTPS。`);

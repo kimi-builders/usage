@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "matcherVersion": 1,
-  "revision": 4,
-  "catalogVersion": "2026-09-06",
-  "publishedAt": "2026-09-06T00:00:00.000Z",
+  "revision": 5,
+  "catalogVersion": "2026-09-14",
+  "publishedAt": "2026-09-14T00:00:00.000Z",
   "currency": "USD",
   "basis": "standard-api",
   "entries": [
@@ -406,6 +406,31 @@
       "verifiedAt": "2026-08-19",
       "version": "2026-08-19",
       "basis": "standard-api"
+    },
+    {
+      "pattern": "kimi-k2.8-preview",
+      "match": "prefix",
+      "source": null,
+      "contextTier": "",
+      "processingTier": "standard",
+      "effectiveFrom": "2026-09-11T00:00:00.000Z",
+      "effectiveTo": null,
+      "input": "1.9",
+      "cacheWrite": null,
+      "cacheWrite5m": null,
+      "cacheWrite1h": null,
+      "cacheRead": "0.38",
+      "output": "8",
+      "reasoning": null,
+      "sourceUrl": "",
+      "verifiedAt": "2026-09-14",
+      "version": "2026-09-14-provisional",
+      "basis": "standard-api",
+      "provisional": true,
+      "note": {
+        "zh": "官方价格尚未公布；暂按用户提供的缓存读 $0.38、输入 $1.90、输出 $8.00 / 百万 Token 估算；缓存写入沿用 Kimi K3 规则，按普通输入价计算。",
+        "en": "Official pricing is not yet published; temporarily estimated at $0.38 cached read, $1.90 input, and $8.00 output per million tokens. Cache writes follow the Kimi K3 rule and use the regular input rate."
+      }
     },
     {
       "pattern": "kimi-k2.6",
@@ -2290,6 +2315,6 @@
   ],
   "integrity": {
     "algorithm": "sha256",
-    "digest": "92c6e778b1678c1d2a2bce4df2dd083024237e48fcf2d625148f94716b27371b"
+    "digest": "c9f864827d769beba80d5a7b668b1f777680d258e2dee54d118fbc6939038b6d"
   }
 }

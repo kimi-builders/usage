@@ -134,6 +134,8 @@ export function estimateLocalBucketCost(bucket) {
     priceOutput: price.output,
     priceContextTier: price.contextTier || null,
     priceProcessingTier: price.processingTier || null,
+    priceProvisional: price.provisional === true,
+    priceNote: price.note || null,
   };
 }
 

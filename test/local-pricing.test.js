@@ -272,6 +272,31 @@ test('updated Kimi K2.6 and MiniMax M3 prices preserve their historical windows'
   assert.deepEqual([newMiniMax.input, newMiniMax.cacheRead, newMiniMax.output], [0.3, 0.06, 1.2]);
 });
 
+test('Kimi K2.8 Preview uses the disclosed provisional estimate', () => {
+  const price = matchLocalPrice(bucket({
+    source: 'kimi-code',
+    model: 'kimi-k2.8-preview',
+    bucketStart: '2026-09-12T12:00:00.000Z',
+  }));
+  assert.deepEqual(
+    [price?.input, price?.cacheRead, price?.output, price?.provisional],
+    [1.9, 0.38, 8, true],
+  );
+  const estimate = estimateLocalBucketCost(bucket({
+    source: 'kimi-code',
+    model: 'kimi-k2.8-preview',
+    bucketStart: '2026-09-12T12:00:00.000Z',
+    inputTokens: 1_000_000,
+    cacheWriteInputTokens: 1_000_000,
+    cacheReadInputTokens: 1_000_000,
+    outputTokens: 1_000_000,
+  }));
+  assert.equal(estimate.costMicros, 12_180_000);
+  assert.equal(estimate.priceCacheWrite, null);
+  assert.equal(estimate.priceProvisional, true);
+  assert.match(estimate.priceNote.zh, /缓存写入沿用 Kimi K3 规则/);
+});
+
 test('display-style model names normalize to catalog slugs', () => {
   const price = matchLocalPrice(bucket({
     model: 'Qwen3.8 Max',

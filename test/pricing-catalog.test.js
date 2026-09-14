@@ -106,11 +106,17 @@ test('matcher contract covers aliases, context tiers, and processing tiers', () 
   assert.equal(matchLocalPrice({ model: 'deepseek-v4-pro', processingTier: 'peak', bucketStart: at })?.input, 1.32);
 });
 
-test('embedded catalog carries the open-ended Codex auto-review correction', () => {
+test('embedded catalog carries the latest pricing revision and Codex correction', () => {
   resetPriceCatalog();
-  assert.equal(EMBEDDED_PRICE_CATALOG.revision, 4);
-  assert.equal(EMBEDDED_PRICE_CATALOG.catalogVersion, '2026-09-06');
+  assert.equal(EMBEDDED_PRICE_CATALOG.revision, 5);
+  assert.equal(EMBEDDED_PRICE_CATALOG.catalogVersion, '2026-09-14');
   const entry = EMBEDDED_PRICE_CATALOG.entries.find((item) => item.pattern === 'codex-auto-review');
   assert.equal(entry?.effectiveTo, null);
   assert.equal(entry?.version, '2026-08-20');
+  const kimi = EMBEDDED_PRICE_CATALOG.entries.find((item) => item.pattern === 'kimi-k2.8-preview');
+  assert.deepEqual(
+    [kimi?.input, kimi?.cacheRead, kimi?.output, kimi?.provisional],
+    ['1.9', '0.38', '8', true],
+  );
+  assert.ok(kimi?.note?.zh && kimi?.note?.en);
 });
