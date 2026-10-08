@@ -1,4 +1,5 @@
 import { preferences } from './preferences.js';
+import { ProviderBenefitFacts } from './ProviderBenefitFacts.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight, BarChart3, Check, ChevronDown, ChevronRight, CircleAlert, Code2,
@@ -8,7 +9,7 @@ import {
 import { compactNumber, displayDollars, pluralUnit } from './format.js';
 import {
   ENTITLEMENT_TYPES, PROVIDER_TONES, entitlementLabel, entitlementNote, idSegment,
-  localizedCompact, localizedCount, quotaErrorMessage, quotaPageError, quotaProviderNotice,
+  localizedCompact, localizedCount, quotaEmptyPresentation, quotaErrorMessage, quotaPageError, quotaProviderNotice,
   quotaSourceDisplay, quotaWindowDetail, quotaWindowLabel, resetCreditPresentation,
 } from './subscription-limits-utils.js';
 import {
@@ -60,9 +61,11 @@ function AccountPicker({ provider, onChange, zh }) {
     <select value={provider.activeAccountId || ''} onChange={(event) => onChange(event.target.value)}>
       {provider.accounts.map((account) => <option value={account.accountId} key={account.accountId}>
         {account.accountLabel || account.account || account.accountId}
+        {account.status === 'error' ? (zh ? ' · 查询失败' : ' · Query failed') : ''}
+        {account.duplicateOf ? (zh ? ' · 共享额度' : ' · Shared quota') : ''}
       </option>)}
     </select>
-    <small>{zh ? `${provider.accounts.length} 个账户，数据彼此隔离` : `${provider.accounts.length} accounts · isolated data`}</small>
+    <small>{provider.id === 'kimi-code' ? (zh ? `${provider.accounts.length} 个连接；同一账户的 Key 共享额度` : `${provider.accounts.length} connections; keys for one account share quota`) : zh ? `${provider.accounts.length} 个账户，数据彼此隔离` : `${provider.accounts.length} accounts · isolated data`}</small>
   </label>;
 }
 
@@ -231,14 +234,24 @@ function BenefitOverview({ overview, summary, providers, now, zh, error, onOpenA
 }
 
 function WindowRow({ providerId, window, tone, now, zh, localLinked = true }) {
-  const left = remainingPercentForWindow(window);
+  // Monthly-blocked windows keep their raw observation in the data layer; here
+  // they render as blocked (upstream CodexBar binding cap) instead of fresh
+  // capacity, and never promise their own earlier reset time.
+  const blocked = Boolean(window.blockedByMonthly);
+  const left = blocked ? 0 : remainingPercentForWindow(window);
   const used = left == null ? null : 100 - left;
-  const detail = quotaWindowDetail(providerId, window, zh);
+  const detail = blocked ? null : quotaWindowDetail(providerId, window, zh);
   const label = quotaWindowLabel(providerId, window, zh);
+  const blockedNote = zh
+    ? '月度额度已耗尽 · 短窗按封锁展示（派生标记，原始观测保留）'
+    : 'Monthly quota exhausted · shown as blocked (derived marker, raw observation kept)';
+  const blockedReset = blocked ? (window.blockedResetsAt
+    ? resetText(window.blockedResetsAt, now, zh)
+    : (zh ? '月度池重置时间未知，不承诺更早恢复' : 'Monthly pool reset unknown; no earlier recovery promised')) : null;
   return <article className="limit-window">
-    <header><div><b>{label}</b>{detail ? <span>{detail}</span> : null}</div><div><strong>{left == null ? '—' : `${left.toFixed(left % 1 ? 1 : 0)}%`}</strong><small>{zh ? '剩余' : 'left'}</small></div></header>
+    <header><div><b>{label}</b>{blocked ? <span>{blockedNote}</span> : detail ? <span>{detail}</span> : null}</div><div><strong>{left == null ? '—' : `${left.toFixed(left % 1 ? 1 : 0)}%`}</strong><small>{zh ? '剩余' : 'left'}</small></div></header>
     {used == null ? <p className="limit-progress-unavailable"><CircleAlert size={13}/>{zh ? '供应商未返回可验证的额度比例' : 'No verifiable quota ratio was reported'}</p> : usageSegments(used, tone, zh)}
-    <footer><span>{resetText(window.resetsAt, now, zh)}</span>{window.windowSeconds ? <small>{Math.round(window.windowSeconds / 3_600)}h window</small> : null}</footer>
+    <footer><span>{blocked ? blockedReset : resetText(window.resetsAt, now, zh)}</span>{window.windowSeconds ? <small>{Math.round(window.windowSeconds / 3_600)}h window</small> : null}</footer>
     <div className="limit-token-facts">
       <div><span>{zh ? '本机观测用量' : 'LOCAL USAGE OBSERVED'}</span><strong>{localLinked && window.observedFrom ? localizedCompact(window.localTotals.totalTokens, zh) : '—'}</strong></div>
       <div><span>{zh ? '本周期估算容量' : 'EST. CYCLE CAPACITY'}</span><strong>{estimateText(window.estimatedCapacityTokens, zh)}</strong></div>
@@ -408,10 +421,11 @@ function ProviderCard({ provider, zh, currency, onSettings }) {
   const localLinked = provider.localAttributionAvailable !== false;
   const tone = PROVIDER_TONES[provider.id] || 'blue';
   const currentWindows = provider.windows?.filter((window) => !window.stale) || [];
-  const quotaUnavailable = provider.quotaObservation?.state !== 'current';
+  const quotaUnavailable = provider.quotaObservation?.state !== 'current' && !provider.creditBalance;
   const balanceAvailable = provider.balanceObservation?.state === 'current';
+  const emptyState = quotaEmptyPresentation(provider, zh);
   const showResetCredits = provider.id === 'codex' || provider.resetCredits != null;
-  const resetCredit = resetCreditPresentation(provider.resetCredits, zh);
+  const resetCredit = resetCreditPresentation(provider.resetCredits, zh, now);
   return <article className={`limit-card tone-${tone}`}>
     <dl className="limit-provider-summary">
       <div><dt>{zh ? '账户' : 'Account'}</dt><dd>{provider.accountLabel || provider.account || (provider.id === 'deepseek' ? (zh ? 'API 账户' : 'API account') : (zh ? '本机账户' : 'Local account'))}</dd></div>
@@ -425,7 +439,8 @@ function ProviderCard({ provider, zh, currency, onSettings }) {
       <div><dt>{zh ? '来源' : 'Source'}</dt><dd>{quotaSourceDisplay(provider.source, zh)}</dd></div>
       {provider.dashboardUrl ? <div><dt>{zh ? '官方用量中心' : 'OFFICIAL USAGE CENTER'}</dt><dd><a className="provider-official-link" href={provider.dashboardUrl} target="_blank" rel="noreferrer">{zh ? '打开查看' : 'Open usage'}<ExternalLink size={11}/></a></dd></div> : null}
     </dl>
-    {balanceAvailable ? <ProviderBalances provider={provider} zh={zh}/> : quotaUnavailable ? <section className="quota-unavailable-state"><div><Gauge size={22}/><span><b>{provider.quotaObservation?.state === 'historical' ? (zh ? '当前额度不可读，仅保留历史' : 'Current quota unavailable; history retained') : (zh ? '官方额度暂不可观测' : 'Official quota is not observable')}</b><small>{provider.quotaObservation.bestEffort ? (zh ? '该平台或当前账号不一定提供稳定额度数据' : 'This platform or account may not expose stable quota data') : (zh ? '当前没有取得可验证的额度窗口' : 'No verifiable quota window is available')}</small></span></div><p>{provider.status === 'error' ? quotaErrorMessage(provider, zh) : (zh ? '供应商没有返回可验证的额度比例。' : 'The provider did not return a verifiable quota ratio.')} {!localLinked ? (zh ? '这不代表免费、无限或未使用；本机用量尚未关联到此套餐。' : 'This does not mean free, unlimited, or unused; local usage is not linked to this plan.') : zh ? `这不代表免费、无限或未使用；本机 ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} Token 仍参与价值与工作负载分析。` : `This does not mean free, unlimited, or unused; ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} local Tokens still contribute to value and workload analysis.`}</p>{provider.status === 'error' ? <button type="button" className="ghost-btn" onClick={onSettings}>{zh ? '检查连接（可选）' : 'Check connection (optional)'}</button> : null}</section> : <div className="limit-window-list">{currentWindows.map((window) => <WindowRow localLinked={localLinked} providerId={provider.id} window={window} tone={tone} now={now} zh={zh} key={window.id}/>)}</div>}
+    {balanceAvailable ? <ProviderBalances provider={provider} zh={zh}/> : emptyState ? <section className="quota-unavailable-state" role="status"><div><Gauge size={22}/><span><b>{emptyState.title}</b><small>{zh ? '供应商返回的额度状态' : 'Provider-reported quota status'}</small></span></div><p>{emptyState.detail}</p><button type="button" className="ghost-btn" onClick={onSettings}>{zh ? '检查账户连接' : 'Check account connection'}</button></section> : quotaUnavailable ? <section className="quota-unavailable-state"><div><Gauge size={22}/><span><b>{provider.quotaObservation?.state === 'historical' ? (zh ? '当前额度不可读，仅保留历史' : 'Current quota unavailable; history retained') : (zh ? '官方额度暂不可观测' : 'Official quota is not observable')}</b><small>{provider.quotaObservation.bestEffort ? (zh ? '该平台或当前账号不一定提供稳定额度数据' : 'This platform or account may not expose stable quota data') : (zh ? '当前没有取得可验证的额度窗口' : 'No verifiable quota window is available')}</small></span></div><p>{provider.status === 'error' ? quotaErrorMessage(provider, zh) : (zh ? '供应商没有返回可验证的额度比例。' : 'The provider did not return a verifiable quota ratio.')} {!localLinked ? (zh ? '这不代表免费、无限或未使用；本机用量尚未关联到此套餐。' : 'This does not mean free, unlimited, or unused; local usage is not linked to this plan.') : zh ? `这不代表免费、无限或未使用；本机 ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} Token 仍参与价值与工作负载分析。` : `This does not mean free, unlimited, or unused; ${localizedCompact(provider.lifetimeTotals.totalTokens, zh)} local Tokens still contribute to value and workload analysis.`}</p>{provider.status === 'error' ? <button type="button" className="ghost-btn" onClick={onSettings}>{zh ? '检查连接（可选）' : 'Check connection (optional)'}</button> : null}</section> : <div className="limit-window-list">{currentWindows.map((window) => <WindowRow localLinked={localLinked} providerId={provider.id} window={window} tone={tone} now={now} zh={zh} key={window.id}/>)}</div>}
+    <ProviderBenefitFacts provider={provider} now={now} zh={zh}/>
     {provider.windows?.length ? <ModelScenario provider={provider} zh={zh}/> : null}
     {showResetCredits ? <div className="reset-credit" data-state={resetCredit.state}><div><span><b>{zh ? '额度重置券' : 'Limit reset credits'}</b><small>{resetCredit.detail || (provider.resetCredits?.nextExpiry ? resetText(provider.resetCredits.nextExpiry, now, zh) : (zh ? '未返回到期时间' : 'No expiry time reported'))}</small></span></div><strong>{resetCredit.value}</strong></div> : null}
     {provider.notice ? <p className="limit-notice">{quotaProviderNotice(provider.notice, zh)}</p> : null}

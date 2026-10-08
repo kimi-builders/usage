@@ -3,6 +3,11 @@ import { withPlanAccount, planError, planSecret, planSnapshot, quotaNumber, quot
 
 export const GLM_NOTICE = '个人 Coding Plan 官方额度；TOKENS_LIMIT 名称不代表可用原始 Token。MCP 单独展示，不与本机 Token 或其他额度相加。';
 
+// Unknown quota shapes are skipped, never invented. When the response carried
+// shapes this parser does not know (or none at all), say so explicitly instead
+// of silently shrinking the reported plan usage.
+const GLM_UNAVAILABLE_NOTICE = `${GLM_NOTICE}Coding Plan usage 暂不可用：接口包含不受支持的额度形态或未返回可换算的额度；完整套餐用量请查看官方 Usage Dashboard。`;
+
 export function parseGlmQuota(payload, { now = new Date() } = {}) {
   if (payload?.success !== true || payload?.code !== 200) throw planError([401, 403].includes(payload?.code) ? 'unauthorized' : 'invalid_response');
   if (!Array.isArray(payload.data?.limits) || payload.data.limits.length > 64) throw planError();
@@ -32,7 +37,10 @@ export function parseGlmQuota(payload, { now = new Date() } = {}) {
   });
   const data = payload.data;
   return planSnapshot('glm', 'GLM / Z.ai', windows,
-    data.planName || data.plan || data.plan_type || data.packageName || data.level, now, GLM_NOTICE);
+    data.planName || data.plan || data.plan_type || data.packageName || data.level, now,
+    (!data.limits.length || windows.length < data.limits.length)
+      ? GLM_UNAVAILABLE_NOTICE
+      : GLM_NOTICE);
 }
 
 export async function fetchGlmLimits({ settings, environment = process.env, fetcher = fetch } = {}) {

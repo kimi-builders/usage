@@ -33,6 +33,7 @@ export async function collectAll({
   sourceIds,
   sourceOptions = {},
   sourceEntries,
+  includePerformance = false,
 } = {}) {
   const results = [];
   const requested = Array.isArray(sourceIds) ? new Set(sourceIds) : null;
@@ -57,7 +58,7 @@ export async function collectAll({
         });
         continue;
       }
-      const parsed = await source.parse({ sessionSalt, sourceOptions });
+      const parsed = await source.parse({ sessionSalt, sourceOptions, includePerformance });
       results.push({
         source: source.id,
         tier: source.tier,
@@ -65,6 +66,7 @@ export async function collectAll({
         roots,
         buckets: parsed?.buckets ?? [],
         sessions: parsed?.sessions ?? [],
+        ...(includePerformance && source.id === 'codex' ? { turnPerformance: parsed?.turnPerformance ?? [] } : {}),
         ...(parsed?.warnings?.length ? { warnings: parsed.warnings } : {}),
       });
     } catch (error) {
@@ -117,9 +119,11 @@ export async function collectLocalSnapshot({
     sourceIds: sourceIdsFor(config, 'scan', sourceEntries || undefined),
     sourceOptions: config?.sourceOptions,
     sourceEntries,
+    includePerformance: true,
   });
   const accepted = validateCollected(collected);
-  const data = { buckets: accepted.buckets, sessions: accepted.sessions };
+  const data = { buckets: accepted.buckets, sessions: accepted.sessions,
+    turnPerformance: collected.results.flatMap(result => result.turnPerformance || []) };
   const sources = collected.results.map((result) => ({
     source: result.source,
     tier: result.tier,

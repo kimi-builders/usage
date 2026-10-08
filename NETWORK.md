@@ -2,6 +2,25 @@
 
 > [中文](./NETWORK.zh.md)
 
+### Optional WorkBuddy and Claude benefit lookups
+
+When explicitly enabled, WorkBuddy posts only to `https://www.workbuddy.cn/billing/meter/get-user-resource-summary`
+and the same host's `get-user-resource-paid-packages` / `get-user-resource-free-packages` endpoints.
+The manually supplied Cookie and matching User-Agent travel only to that host. The optional cycle
+lookups share a bounded deadline and cannot erase a successfully read Credits balance.
+
+Claude OAuth usage requests may include `?cedar_ember=1` for reset vouchers and promotional cloud
+Credits. These remain separate from subscription quota and personal spending. Manual credentials
+may optionally use JSON `{ "accessToken": "…", "sessionCookie": "sessionKey=…" }`.
+Only with that explicit Cookie do we contact `https://claude.ai/api/account` and
+`https://claude.ai/api/organizations/<verified-org>/subscription_details`; ownership is checked against
+`https://api.anthropic.com/api/oauth/profile` before and after the lookup. Cookie and OAuth headers
+are never sent to each other's host. A mismatch or optional failure leaves dates unavailable.
+There is no browser-cookie import, desktop decryption, credential rotation, or login-file write.
+
+Codex measured turn performance is derived locally with no additional network access and is not
+included in community upload payloads.
+
 There is no telemetry, software-version update check, advertising request, or hidden background
 connection. Local parsing modules do not import the network client. The public pricing catalog is
 downloaded only during the one best-effort `init` check, an explicit `pricing update`, or the
@@ -89,7 +108,9 @@ points; only a fresh provider refresh can append a sanitized observation.
 - Codex: `https://chatgpt.com/backend-api/wham/usage` and the optional
   `wham/rate-limit-reset-credits` companion endpoint;
 - Claude Code: `https://api.anthropic.com/api/oauth/usage`;
-- Kimi Code: `https://api.kimi.com/coding/v1/usages`; when a locally owned CLI
+- Kimi Code: the local login and each Coding API key independently query
+  `https://api.kimi.com/coding/v1/usages`. API keys never call web/OAuth endpoints
+  or fall back to another account. When a locally owned CLI
   access token is near expiry, `https://auth.kimi.com/api/oauth/token` rotates
   it under Kimi Code's cross-process lock and atomically updates the owner-only
   CLI credential file; or

@@ -5,6 +5,8 @@ import { mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 // Isolated fixtures for every source, set before importing sync.js so the
 // developer's real HOME is never scanned.
@@ -267,3 +269,205 @@ for (const damagedTail of [false, true]) {
     }
   });
 }
+
+test('Grok unreadable usage preserves missing checkpoints while healthy sessions still upload', async () => {
+  const previous = process.env.KBU_USAGE_GROK_SESSIONS;
+  const oldState = readFileSync(join(stateDir, 'state.json'));
+  const sessions = join(root, 'grok-partial');
+  const writeSession = (id, inputTokens) => {
+    const directory = join(sessions, encodeURIComponent('/work/demo'), id);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, 'summary.json'), JSON.stringify({ info: { cwd: '/work/demo' }, current_model_id: 'grok-4.6' }));
+    writeFileSync(join(directory, 'updates.jsonl'), JSON.stringify({ timestamp: 1790000010,
+      params: { update: { sessionUpdate: 'turn_completed', ...(inputTokens == null ? {} : { usage: { inputTokens, outputTokens: 10 } }) } } }) + '\n');
+    writeFileSync(join(directory, 'signals.json'), JSON.stringify({ turnCount: 1, modelsUsed: ['grok-4.6'] }));
+  };
+  process.env.KBU_USAGE_GROK_SESSIONS = sessions;
+  saveConfig({ ...syncConfig, sourcePolicies: { grok: 'private' } });
+  try {
+    writeSession('unread', null);
+    writeSession('healthy', 200);
+    const before = readStateFile();
+    const key = 'grok|grok-4.6|demo|2026-01-01T00:00:00.000Z';
+    const sessionKey = `grok|${'b'.repeat(64)}`;
+    before.buckets[key] = 'prior'; before.sessions[sessionKey] = 'prior';
+    writeFileSync(join(stateDir, 'state.json'), JSON.stringify(before));
+    const partial = await runSync({ quiet: true });
+    assert.equal(partial.sources.find(s => s.source === 'grok').status, 'partial');
+    assert.ok(partial.buckets > 0);
+    assert.equal(readStateFile().buckets[key], 'prior');
+    assert.equal(readStateFile().sessions[sessionKey], 'prior');
+    writeSession('unread', 300);
+    const repaired = await runSync({ quiet: true });
+    assert.equal(repaired.sources.find(s => s.source === 'grok').status, 'ok');
+    assert.equal(readStateFile().buckets[key], undefined);
+  } finally {
+    process.env.KBU_USAGE_GROK_SESSIONS = previous;
+    writeFileSync(join(stateDir, 'state.json'), oldState);
+    saveConfig(syncConfig);
+  }
+});
+
+test('MiniMax extra-store failures preserve checkpoints without blocking healthy uploads', async t => {
+  let DatabaseSync;
+  try { ({ DatabaseSync } = await import('node:sqlite')); } catch { return t.skip('node:sqlite unavailable'); }
+  const fixtureHome = join(root, 'mcode-partial');
+  const oldState = readFileSync(join(stateDir, 'state.json'));
+  const relative = join('v2', 'sqlite');
+  const primaryDir = join(fixtureHome, '.minimax', relative);
+  const brokenDir = join(fixtureHome, '.minimax-broken', relative);
+  mkdirSync(primaryDir, { recursive: true }); mkdirSync(brokenDir, { recursive: true });
+  const database = new DatabaseSync(join(primaryDir, 'runtime-state.sqlite'));
+  database.exec(`CREATE TABLE local_runtime_sessions (session_id TEXT PRIMARY KEY, workspace_dir TEXT, project_workspace_dir TEXT);
+    CREATE TABLE local_runtime_token_usage (id INTEGER PRIMARY KEY, session_id TEXT, model TEXT, ts INTEGER,
+      input_tokens INTEGER, output_tokens INTEGER, reasoning_tokens INTEGER, cache_read_tokens INTEGER, cache_write_tokens INTEGER);
+    INSERT INTO local_runtime_sessions VALUES ('healthy', '/work/demo', NULL);
+    INSERT INTO local_runtime_token_usage VALUES (1, 'healthy', 'MiniMax-M3', 1787935277463, 100, 20, 0, 0, 0);`);
+  database.close();
+  const brokenPath = join(brokenDir, 'runtime-state.sqlite');
+  writeFileSync(brokenPath, 'not a database');
+  const env = { ...process.env, HOME: fixtureHome, USERPROFILE: fixtureHome };
+  for (const key of ['KBU_USAGE_MCODE_DB', 'MCODE_HOME', 'MINIMAX_DATA_DIR', 'MAVIS_DATA_DIR']) delete env[key];
+  const run = async () => JSON.parse((await promisify(execFile)(process.execPath, ['--input-type=module', '-e',
+    'import { runSync } from "./src/sync.js"; console.log(JSON.stringify(await runSync({quiet:true})));',
+  ], { cwd: new URL('..', import.meta.url), env })).stdout);
+  saveConfig({ ...syncConfig, sourcePolicies: { mcode: 'private' } });
+  try {
+    const before = readStateFile();
+    const key = 'mcode|MiniMax-M3|demo|2026-01-01T00:00:00.000Z';
+    before.buckets[key] = 'prior';
+    writeFileSync(join(stateDir, 'state.json'), JSON.stringify(before));
+    const partial = await run();
+    assert.equal(partial.sources.find(s => s.source === 'mcode').status, 'partial');
+    assert.ok(partial.buckets > 0);
+    assert.equal(readStateFile().buckets[key], 'prior');
+    // Move only the synthetic broken file out of discovery; no real user data is touched.
+    renameSync(brokenPath, join(root, 'mcode-broken-fixture.saved'));
+    assert.equal((await run()).sources.find(s => s.source === 'mcode').status, 'ok');
+    assert.equal(readStateFile().buckets[key], undefined);
+  } finally {
+    writeFileSync(join(stateDir, 'state.json'), oldState);
+    saveConfig(syncConfig);
+  }
+});
+
+test('OpenCode SQLite failures retain checkpoints and still upload the readable layout', async t => {
+  let DatabaseSync;
+  try { ({ DatabaseSync } = await import('node:sqlite')); } catch { return t.skip('node:sqlite unavailable'); }
+  const previous = process.env.KBU_USAGE_OPENCODE_DIR;
+  const oldState = readFileSync(join(stateDir, 'state.json'));
+  const directory = join(root, 'opencode-partial');
+  mkdirSync(directory, { recursive: true });
+  process.env.KBU_USAGE_OPENCODE_DIR = directory;
+  const path = join(directory, 'opencode.db');
+  const db = new DatabaseSync(path);
+  try {
+    db.exec('CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, data TEXT); CREATE TABLE session_message (id TEXT)');
+    db.prepare('INSERT INTO message VALUES (?, ?, ?)').run('msg_1', 'ses_1', JSON.stringify({
+      role: 'assistant', modelID: 'kimi-k2', time: { created: Date.parse('2026-09-01T10:00:00Z') },
+      tokens: { input: 100, output: 20 },
+    }));
+  } finally { db.close(); }
+  saveConfig({ ...syncConfig, sourcePolicies: { opencode: 'private' } });
+  try {
+    const before = readStateFile();
+    const key = 'opencode|kimi-k2|private|2026-01-01T00:00:00.000Z';
+    const sessionKey = `opencode|${'d'.repeat(64)}`;
+    before.buckets[key] = 'prior'; before.sessions[sessionKey] = 'prior';
+    writeFileSync(join(stateDir, 'state.json'), JSON.stringify(before));
+    const partial = await runSync({ quiet: true });
+    assert.equal(partial.sources.find(s => s.source === 'opencode').status, 'partial');
+    assert.ok(received.at(-1).buckets.some(bucket => bucket.source === 'opencode' && bucket.inputTokens === 100));
+    assert.equal(readStateFile().buckets[key], 'prior');
+    assert.equal(readStateFile().sessions[sessionKey], 'prior');
+
+    const repair = new DatabaseSync(path);
+    try { repair.exec('DROP TABLE session_message'); } finally { repair.close(); }
+    assert.equal((await runSync({ quiet: true })).sources.find(s => s.source === 'opencode').status, 'ok');
+    assert.equal(readStateFile().buckets[key], undefined);
+    const completedState = readStateFile();
+    const healthyKey = Object.keys(completedState.buckets).find(value => value.startsWith('opencode|'));
+    assert.ok(healthyKey);
+    writeFileSync(path, 'synthetic corrupt database');
+    assert.equal((await runSync({ quiet: true })).sources.find(s => s.source === 'opencode').status, 'partial');
+    assert.equal(readStateFile().buckets[healthyKey], completedState.buckets[healthyKey]);
+  } finally {
+    process.env.KBU_USAGE_OPENCODE_DIR = previous;
+    writeFileSync(join(stateDir, 'state.json'), oldState);
+    saveConfig(syncConfig);
+  }
+});
+
+test('invalid Codex durable records preserve prior checkpoints while healthy requests still sync', async () => {
+  const previous = process.env.KBU_USAGE_CODEX_HOME;
+  const oldState = readFileSync(join(stateDir, 'state.json'));
+  const directory = join(root, 'codex-durable-partial');
+  mkdirSync(join(directory, 'sessions'), { recursive: true });
+  process.env.KBU_USAGE_CODEX_HOME = directory;
+  const path = join(directory, 'sessions', 'rollout.jsonl');
+  const timestamp = '2026-10-08T10:00:00Z';
+  const usage = { input_tokens: 100, output_tokens: 20, total_tokens: 120 };
+  writeFileSync(path, [
+    { type: 'session_meta', timestamp, payload: { id: 'fixture-thread' } },
+    { type: 'turn_context', timestamp, payload: { model: 'gpt-5' } },
+    { type: 'token_usage_record', timestamp, payload: { usage: { input_tokens: -1 }, thread_token_usage: usage } },
+    { type: 'token_usage_record', timestamp, payload: { usage, thread_token_usage: usage } },
+  ].map(JSON.stringify).join('\n') + '\n');
+  saveConfig({ ...syncConfig, sourcePolicies: { codex: 'private' } });
+  try {
+    const before = readStateFile();
+    before.buckets[seededCodexBucketKey] = 'prior-durable';
+    before.sessions[seededCodexSessionKey] = 'prior-durable';
+    writeFileSync(join(stateDir, 'state.json'), JSON.stringify(before));
+    const result = await runSync({ quiet: true });
+    assert.equal(result.sources.find((source) => source.source === 'codex').status, 'partial');
+    assert.ok(received.at(-1).buckets.some((bucket) => bucket.source === 'codex' && bucket.inputTokens === 100));
+    assert.equal(readStateFile().buckets[seededCodexBucketKey], 'prior-durable');
+    assert.equal(readStateFile().sessions[seededCodexSessionKey], 'prior-durable');
+  } finally {
+    process.env.KBU_USAGE_CODEX_HOME = previous;
+    writeFileSync(join(stateDir, 'state.json'), oldState);
+    saveConfig(syncConfig);
+  }
+});
+
+test('ambiguous mixed Grok turns protect checkpoints until the ledger can be reconciled', async () => {
+  const previous = process.env.KBU_USAGE_GROK_SESSIONS;
+  const oldState = readFileSync(join(stateDir, 'state.json'));
+  const sessions = join(root, 'grok-mixed-partial');
+  const directory = join(sessions, 'demo', 'session-mixed');
+  mkdirSync(directory, { recursive: true });
+  process.env.KBU_USAGE_GROK_SESSIONS = sessions;
+  const first = { inputTokens: 100, outputTokens: 10 };
+  const second = { inputTokens: 200, outputTokens: 20 };
+  writeFileSync(join(directory, 'summary.json'), JSON.stringify({ current_model_id: 'grok-4.5' }));
+  writeFileSync(join(directory, 'updates.jsonl'), [
+    { timestamp: '2026-09-01T10:00:00Z', params: { update: { sessionUpdate: 'turn_completed', usage: first } } },
+    { timestamp: '2026-09-02T10:00:00Z', params: { update: { sessionUpdate: 'turn_completed' } } },
+  ].map(JSON.stringify).join('\n') + '\n');
+  const ledgerPath = join(directory, 'usage.json');
+  writeFileSync(ledgerPath, JSON.stringify({ session: { inputTokens: 300, outputTokens: 30 } }));
+  saveConfig({ ...syncConfig, sourcePolicies: { grok: 'private' } });
+  try {
+    const before = readStateFile();
+    const key = 'grok|grok-4.5|private|2026-01-01T00:00:00.000Z';
+    const sessionKey = `grok|${'e'.repeat(64)}`;
+    before.buckets[key] = 'prior'; before.sessions[sessionKey] = 'prior';
+    writeFileSync(join(stateDir, 'state.json'), JSON.stringify(before));
+    const partial = await runSync({ quiet: true });
+    assert.equal(partial.sources.find(s => s.source === 'grok').status, 'partial');
+    assert.ok(received.at(-1).buckets.some(bucket => bucket.source === 'grok' && bucket.inputTokens === 100));
+    assert.equal(readStateFile().buckets[key], 'prior');
+    assert.equal(readStateFile().sessions[sessionKey], 'prior');
+    writeFileSync(ledgerPath, JSON.stringify({ turns: [{ turnNumber: 1, ...first }, { turnNumber: 2, ...second }] }));
+    const complete = await runSync({ quiet: true });
+    assert.equal(complete.sources.find(s => s.source === 'grok').status, 'ok');
+    assert.ok(received.at(-1).buckets.some(bucket => bucket.source === 'grok' && bucket.inputTokens === 200));
+    assert.equal(readStateFile().buckets[key], undefined);
+    assert.equal(readStateFile().sessions[sessionKey], undefined);
+  } finally {
+    process.env.KBU_USAGE_GROK_SESSIONS = previous;
+    writeFileSync(join(stateDir, 'state.json'), oldState);
+    saveConfig(syncConfig);
+  }
+});

@@ -29,12 +29,17 @@ export async function parse({ sessionSalt } = {}) {
   if (!path) return null;
   let rows;
   try {
+    // ZCode renamed the assistant message's model keys from `modelID` /
+    // `providerID` to `modelId` / `providerId`; read both spellings so neither
+    // build reports every bucket as `unknown`.
     rows = queryDbJson(path, `SELECT
       m.session_id AS sessionId,
       m.time_created AS created,
       json_extract(m.data, '$.role') AS role,
-      json_extract(m.data, '$.modelID') AS modelId,
-      json_extract(m.data, '$.providerID') AS providerId,
+      json_extract(m.data, '$.modelID') AS modelIdOld,
+      json_extract(m.data, '$.modelId') AS modelIdNew,
+      json_extract(m.data, '$.providerID') AS providerIdOld,
+      json_extract(m.data, '$.providerId') AS providerIdNew,
       json_extract(m.data, '$.tokens') AS tokens,
       json_extract(m.data, '$.path.root') AS pathRoot,
       json_extract(m.data, '$.path.cwd') AS pathCwd,
@@ -70,10 +75,11 @@ export async function parse({ sessionSalt } = {}) {
     const outputTokens = Math.max(0, count(tokens.output) - reasoningOutputTokens);
     if (inputTokens + cacheWriteInputTokens + cacheReadInputTokens
       + outputTokens + reasoningOutputTokens === 0) continue;
+    const providerId = row.providerIdNew || row.providerIdOld;
     entries.push({
       source: 'zcode',
-      model: row.modelId || 'unknown',
-      ...(row.providerId ? { modelProvider: String(row.providerId) } : {}),
+      model: row.modelIdNew || row.modelIdOld || 'unknown',
+      ...(providerId ? { modelProvider: String(providerId) } : {}),
       project,
       timestamp,
       inputTokens,

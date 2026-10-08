@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { asDate, asPercent } from '../http.js';
+import { jetBrainsConfigRoots, jetBrainsLogPath, readJetBrainsLog } from './jetbrains-log.js';
 
 const IDE_PATTERNS = [
   ['IntelliJIdea', 'IntelliJ IDEA'], ['PyCharm', 'PyCharm'], ['WebStorm', 'WebStorm'],
@@ -25,44 +26,38 @@ function optionValue(xml, name) {
     || null;
 }
 
-function configRoots(platform = process.platform) {
-  if (platform === 'darwin') return [
-    join(homedir(), 'Library', 'Application Support', 'JetBrains'),
-    join(homedir(), 'Library', 'Application Support', 'Google'),
-  ];
-  return [
-    join(homedir(), '.config', 'JetBrains'), join(homedir(), '.local', 'share', 'JetBrains'),
-    join(homedir(), '.config', 'Google'),
-  ];
-}
-
-function candidateFromDirectory(root, directory) {
+function candidateFromDirectory(root, directory, includeMissing = false) {
   const match = IDE_PATTERNS.find(([prefix]) => directory.toLowerCase().startsWith(prefix.toLowerCase()));
   if (!match) return null;
   const [prefix, label] = match;
   const basePath = join(root, directory);
   const path = join(basePath, 'options', 'AIAssistantQuotaManager2.xml');
-  if (!existsSync(path)) return null;
-  return { label, version: directory.slice(prefix.length) || 'Unknown', basePath, path, mtime: statSync(path).mtimeMs };
+  const exists = existsSync(path);
+  if (!exists && !includeMissing) return null;
+  return { label, version: directory.slice(prefix.length) || 'Unknown', basePath, path, mtime: exists ? statSync(path).mtimeMs : null };
 }
 
-export function detectJetBrainsQuotaFile(customPath = '') {
+function quotaCandidates(customPath, options) {
   if (customPath.trim()) {
-    const basePath = resolve(customPath.replace(/^~(?=$|\/)/, homedir()));
+    const basePath = resolve(customPath.replace(/^~(?=$|\/)/, options.home || homedir()));
     const path = join(basePath, 'options', 'AIAssistantQuotaManager2.xml');
-    return existsSync(path) ? { label: 'JetBrains IDE', version: null, basePath, path, mtime: statSync(path).mtimeMs } : null;
+    return [{ label: 'JetBrains IDE', version: null, basePath, path, mtime: existsSync(path) ? statSync(path).mtimeMs : null }];
   }
   const candidates = [];
-  for (const root of configRoots()) {
+  for (const root of jetBrainsConfigRoots(options)) {
     if (!existsSync(root)) continue;
     for (const directory of readdirSync(root)) {
       try {
-        const candidate = candidateFromDirectory(root, directory);
+        const candidate = candidateFromDirectory(root, directory, true);
         if (candidate) candidates.push(candidate);
       } catch { /* a concurrently removed IDE directory is harmless */ }
     }
   }
-  return candidates.sort((a, b) => b.mtime - a.mtime)[0] || null;
+  return candidates.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+}
+
+export function detectJetBrainsQuotaFile(customPath = '', options = {}) {
+  return quotaCandidates(customPath, options).find((candidate) => candidate.mtime != null) || null;
 }
 
 export function parseJetBrainsQuota(xml, ide = null, { now = new Date() } = {}) {
@@ -81,11 +76,25 @@ export function parseJetBrainsQuota(xml, ide = null, { now = new Date() } = {}) 
   const rawRefill = optionValue(xml, 'nextRefill');
   let refill = null;
   try { refill = rawRefill ? JSON.parse(htmlDecode(rawRefill)) : null; } catch { /* optional */ }
-  const used = Number(quota.current) || 0;
-  const limit = Number(quota.maximum) || 0;
-  const available = Number(quota.tariffQuota?.available);
-  const remaining = Number.isFinite(available) && limit > 0 ? available : Math.max(0, limit - used);
-  const usedPercent = limit > 0 ? asPercent(used / limit * 100) : 0;
+  return quotaSnapshot(quota, refill, ide, now);
+}
+
+function balance(value) {
+  const number = (raw) => (typeof raw === 'number' || typeof raw === 'string' && raw.trim())
+    && Number.isFinite(Number(raw)) && Number(raw) >= 0 ? Number(raw) : null;
+  const used = number(value?.current);
+  const limit = number(value?.maximum);
+  return used != null && limit > 0 ? { used, limit } : null;
+}
+
+function quotaSnapshot(quota, refill, ide, now) {
+  // Never divide monthly consumption by monthly + purchased credits, nor
+  // combine a total limit with the monthly `available` field.
+  const monthly = balance(quota.tariffQuota);
+  const values = monthly || balance(quota);
+  if (!values) throw Object.assign(new Error('JetBrains AI 没有有效的额度计数。 / No valid JetBrains AI quota counters.'), { code: 'invalid_response' });
+  const { used, limit } = values;
+  const usedPercent = asPercent(used / limit * 100);
   const resetsAt = asDate(refill?.next || quota.until);
   return {
     id: 'jetbrains-ai', label: 'JetBrains AI', status: 'ok', account: null,
@@ -93,20 +102,34 @@ export function parseJetBrainsQuota(xml, ide = null, { now = new Date() } = {}) 
     source: ide ? `${ide.label}${ide.version ? ` ${ide.version}` : ''}` : 'JetBrains IDE',
     updatedAt: now.toISOString(),
     windows: [{
-      id: 'credits', label: '当前 Credits', usedPercent,
-      remainingPercent: limit > 0 ? asPercent(remaining / limit * 100) : 100,
+      id: 'credits', label: monthly ? '月度 Credits' : '当前 Credits', usedPercent,
+      remainingPercent: 100 - usedPercent,
       resetsAt, value: used, limit, unit: 'credits',
     }],
     notice: '纯本地读取 JetBrains AI Assistant 配置，不会连接 JetBrains 网络服务。',
   };
 }
 
-export async function fetchJetBrainsLimits({ settings } = {}) {
-  const ide = detectJetBrainsQuotaFile(settings?.customPath || '');
+export async function fetchJetBrainsLimits({ settings, ...options } = {}) {
+  const candidates = quotaCandidates(settings?.customPath || '', options);
+  const ide = candidates.find((candidate) => candidate.mtime != null);
   if (!ide) {
+    const newest = candidates.map((candidate) => ({
+      ide: candidate, entry: readJetBrainsLog(jetBrainsLogPath(candidate.basePath, options)),
+    })).filter(({ entry }) => entry).sort((a, b) => b.entry.timestamp - a.entry.timestamp)[0];
+    if (newest) return quotaSnapshot(newest.entry.quota, newest.entry.refill, newest.ide, newest.entry.timestamp);
     const error = new Error('未找到 JetBrains AI Assistant 额度文件；请先在 IDE 中启用 AI Assistant。');
     error.code = 'not_configured';
     throw error;
   }
-  return parseJetBrainsQuota(readFileSync(ide.path, 'utf8'), ide);
+  const entry = readJetBrainsLog(jetBrainsLogPath(ide.basePath, options));
+  let snapshot;
+  try {
+    snapshot = parseJetBrainsQuota(readFileSync(ide.path, 'utf8'), ide, { now: new Date(ide.mtime) });
+  } catch (error) {
+    if (!entry) throw error;
+  }
+  return entry && (!snapshot || entry.timestamp.getTime() > ide.mtime)
+    ? quotaSnapshot(entry.quota, entry.refill, ide, entry.timestamp)
+    : snapshot;
 }

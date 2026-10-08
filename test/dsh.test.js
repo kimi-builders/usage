@@ -585,7 +585,38 @@ function identifiedTurn(prefix, inputTokens = 100, time = 1700000100000) {
   return [user, assistant];
 }
 
-for (const version of [1, 2, 3]) {
+test('DSH V4 reads the repaired successor beside its frozen V3 predecessor', async () => {
+  await withDshSessions(async (sessions) => {
+    // DSH repairs an interrupted turn by publishing a verified V4 successor
+    // beside the unchanged V3 log (docs/persistence-changes/2026-09-16-session-
+    // format-v4.md). Both generations stay on disk: the V3 file freezes at the
+    // migration point while the V4 file keeps growing, so V4 must win even when
+    // the frozen V3 copy is the larger file.
+    writeSession(sessions, 'project', 'repaired', [
+      versionedHeader('repaired', 3),
+      ...withSeq(identifiedTurn('first', 100)),
+      { type: 'assistant/chunk', data: { padding: 'x'.repeat(2000) } },
+    ], true, 3);
+    writeSession(sessions, 'project', 'repaired', [
+      versionedHeader('repaired', 4),
+      ...withSeq(identifiedTurn('first', 100)),
+      // The repair inserts turn/end for the interrupted turn and renumbers the
+      // events after it; the continuation turn is appended behind the repair.
+      { type: 'turn/end', seq: 2, time: 1700000130000, data: { turn: 1, reason: { kind: 'interrupted' } } },
+      ...withSeq(identifiedTurn('second', 300, 1700000200000), 3),
+    ], true, 4);
+    const result = await parse();
+    assert.equal(result.skipped, undefined);
+    assert.equal(result.buckets.length, 1);
+    // The retained first turn is counted once; the V4 continuation adds 300.
+    assert.equal(result.buckets[0].inputTokens, 400);
+    assert.equal(result.buckets[0].cacheReadInputTokens, 400);
+    assert.equal(result.sessions.length, 1);
+    assert.equal(result.sessions[0].messageCount, 4);
+  });
+});
+
+for (const version of [1, 2, 3, 4]) {
   for (const plain of [true, false]) {
     test(`DSH reads V${version} ${plain ? 'plain' : 'multi-frame zstd'} logs`, { skip: !plain && !hasBuiltinZstd }, async () => {
       await withDshSessions(async (sessions) => {
@@ -608,7 +639,7 @@ for (const version of [1, 2, 3]) {
 test('DSH selects the newest generation once, ignores temporary names, and follows live appends', async () => {
   await withDshSessions(async (sessions) => {
     const historical = withSeq(identifiedTurn('old'));
-    for (const version of [0, 1, 2, 3]) {
+    for (const version of [0, 1, 2, 3, 4]) {
       const dir = writeSession(sessions, 'project', 'same-id', [
         versionedHeader('same-id', version), ...historical,
       ], true, version);
@@ -621,9 +652,9 @@ test('DSH selects the newest generation once, ignores temporary names, and follo
     assert.equal(before.buckets[0].inputTokens, 100);
     assert.equal(before.sessions.length, 1);
     writeSession(sessions, 'project', 'same-id', [
-      versionedHeader('same-id', 3), ...historical,
+      versionedHeader('same-id', 4), ...historical,
       ...withSeq(identifiedTurn('new', 300, 1700000200000), 2),
-    ], true, 3);
+    ], true, 4);
     const after = await parse();
     assert.equal(after.skipped, undefined);
     assert.equal(after.buckets[0].inputTokens, 400);
@@ -648,7 +679,7 @@ test('DSH prefers the newest format across copied project dirs even when the old
   });
 });
 
-for (const version of [1, 2, 3]) {
+for (const version of [1, 2, 3, 4]) {
   test(`DSH V${version} skips only the proven inherited prefix, retaining resumed local turns`, async () => {
     await withDshSessions(async (sessions) => {
       const inherited = withSeq(identifiedTurn('parent', 100));
@@ -697,7 +728,7 @@ test('DSH V3 uses the last inherited marker for a fork of an already seeded sess
   });
 });
 
-for (const [parentVersion, childVersion] of [[2, 3], [3, 2], [1, 3]]) {
+for (const [parentVersion, childVersion] of [[2, 3], [3, 2], [1, 3], [3, 4], [4, 3]]) {
   test(`DSH matches inherited message ids across V${parentVersion}/V${childVersion} sequence renumbering`, async () => {
     await withDshSessions(async (sessions) => {
       const inherited = identifiedTurn('parent', 100);

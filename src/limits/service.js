@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { loadConfig, saveConfig } from '../config.js';
+import { createSessionSalt, loadConfig, saveConfig } from '../config.js';
 import {
   defaultLimitSettings, LIMIT_PROVIDER_CATALOG, normalizeLimitSettings, publicLimitSettings,
 } from './catalog.js';
@@ -22,9 +22,10 @@ import { detectAntigravityLocalRuntime } from './providers/antigravity-local.js'
 import { fetchJetBrainsLimits } from './providers/jetbrains.js';
 import { fetchKimiLimits } from './providers/kimi.js';
 import { fetchKiroLimits, loadKiroCredentials } from './providers/kiro.js';
-import { fetchOpenCodeGoLimits } from './providers/opencode.js';
+import { fetchOpenCodeGoLimits, readLocalGoKey } from './providers/opencode.js';
 import { fetchQoderLimits } from './providers/qoder.js';
 import { fetchWarpLimits } from './providers/warp.js';
+import { fetchWorkBuddyLimits, parseWorkBuddyCredential } from './providers/workbuddy.js';
 import { fetchGlmLimits } from './providers/glm.js';
 import { fetchMiniMaxLimits } from './providers/minimax.js';
 import { fetchAlibabaCodingLimits } from './providers/alibaba-coding.js';
@@ -34,6 +35,7 @@ import { assertProviderContract } from './contract.js';
 import { safeLocalPathDisplay } from '../safe-display.js';
 
 const FETCHERS = {
+  workbuddy: fetchWorkBuddyLimits,
   glm: fetchGlmLimits,
   minimax: fetchMiniMaxLimits,
   'alibaba-coding': fetchAlibabaCodingLimits,
@@ -56,21 +58,64 @@ let cacheKey = '';
 let cacheExpiresAt = 0;
 let inFlight = null;
 
+// 仅 Cursor HTTP 403（常见于地域封锁）冷却；其他供应商保留各自的认证恢复流程。
+// 手动刷新、账户/设置变更与 clearLimitCache 立即解除；状态只存在于本进程内存，不持久化、不进导出。
+const FORBIDDEN_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const forbiddenCooldowns = new Map();
+
+function cooldownScope(providerId, accountId = '') {
+  return accountId ? `${providerId}:${accountId}` : providerId;
+}
+
+function forbiddenCooldownError() {
+  return Object.assign(new Error('供应商拒绝了额度请求，可能因账号或所在地区受限。'), { code: 'forbidden' });
+}
+
+function forbiddenCooldownActive(providerId, accountId, at) {
+  const key = cooldownScope(providerId, accountId);
+  const entry = forbiddenCooldowns.get(key);
+  if (!entry) return false;
+  if (at < entry.attemptedAt || at >= entry.retryAfter) {
+    forbiddenCooldowns.delete(key);
+    return false;
+  }
+  return true;
+}
+
+function recordForbiddenCooldown(providerId, accountId, ttlMs, at) {
+  if (providerId !== 'cursor') return;
+  forbiddenCooldowns.set(cooldownScope(providerId, accountId), {
+    attemptedAt: at,
+    retryAfter: at + Math.max(ttlMs || 0, FORBIDDEN_COOLDOWN_MS),
+  });
+}
+
+function classifyProviderError(providerId, error) {
+  // Cursor's verified 403 policy must not change other providers' auth flows.
+  if (providerId === 'cursor' && error?.status === 403) {
+    return Object.assign(new Error('Cursor quota access was denied.'), { code: 'forbidden', status: 403 });
+  }
+  return error;
+}
+
 function providerError(provider, error) {
   const knownCodes = new Set([
-    'not_configured', 'unauthorized', 'timeout', 'network_error', 'provider_error',
+    'not_configured', 'unauthorized', 'forbidden', 'timeout', 'network_error', 'provider_error',
     'invalid_response', 'blocked_endpoint', 'workspace_unavailable',
   ]);
   return {
     id: provider.id,
     label: provider.label,
     status: 'error',
-    ...(REGIONAL_PLAN_IDS.includes(provider.id) && /^[a-f0-9]{32}$/.test(error?.accountId || '') ? { accountId: error.accountId } : {}),
+    ...([...REGIONAL_PLAN_IDS, 'workbuddy'].includes(provider.id) && /^[a-f0-9]{32}$/.test(error?.accountId || '')
+      || provider.id === 'opencode' && /^local_[a-f0-9]{32}$/.test(error?.accountId || '')
+      ? { accountId: error.accountId } : {}),
     error: {
       code: knownCodes.has(error?.code) ? error.code : 'provider_error',
       message: {
         not_configured: `${provider.label} 尚未配置，或未检测到可用登录。`,
         unauthorized: `${provider.label} 登录已失效，或无权读取额度。`,
+        forbidden: `${provider.label} 额度访问被拒绝（可能因所在地区受限），已暂停自动重试；手动刷新可立即重试。`,
         timeout: `${provider.label} 额度查询超时，请稍后重试。`,
         network_error: `${provider.label} 暂时无法连接，请检查网络后重试。`,
         invalid_response: `${provider.label} 返回了无法验证的额度数据。`,
@@ -100,6 +145,12 @@ function accountSettings(providerId, settings, account) {
     ...settings,
     authMode: 'keychain',
     credentialKey: providerAccountCredentialKey(providerId, account.id),
+    ...(providerId === 'kimi-code' ? {
+      authMode: account.authMode,
+      connectionType: account.connectionType,
+      environmentVariable: account.environmentVariable,
+      credentialKey: account.legacyCredential ? 'kimi-code' : providerAccountCredentialKey(providerId, account.id),
+    } : {}),
     accountId: account.id,
     accountLabel: account.label,
     ...(providerId === 'opencode' ? {
@@ -119,6 +170,12 @@ function detected(state, label, detail = '') {
 
 function detectLocalProvider(providerId, providerSettings, environment, options = {}) {
   try {
+    if (providerId === 'opencode' && providerSettings.authMode === 'local'
+        && !providerSettings.accounts?.length && !providerSettings.workspaceId) {
+      const value = readLocalGoKey(environment);
+      return value.status === 'ok' ? detected('detected', '已检测到 OpenCode Go 本机登录')
+        : detected('not_detected', '未检测到 OpenCode Go 本机登录', '请先登录 OpenCode，或添加手动账户');
+    }
     if (providerId === 'codex') {
       const value = loadCodexCredentials(environment);
       return value.found && value.fresh ? detected('detected', '已检测到 Codex 登录')
@@ -134,7 +191,8 @@ function detectLocalProvider(providerId, providerSettings, environment, options 
     if (providerId === 'kimi-code') {
       const value = loadKimiCredentials(environment);
       return value.found && (value.fresh || value.refreshable) ? detected('detected', '已检测到 Kimi Code 登录')
-        : value.found ? detected('expired', 'Kimi 登录已过期') : detected('needs_login', '请先登录 Kimi Code');
+        : value.found ? detected('expired', 'Kimi 登录已过期', '运行 kimi 重新登录，下次查询自动重读，无需重启')
+          : detected('needs_login', '请先登录 Kimi Code', '运行 kimi 并完成登录');
     }
     if (providerId === 'cursor') {
       const value = loadCursorCredentials(environment);
@@ -178,8 +236,17 @@ function detectLocalProvider(providerId, providerSettings, environment, options 
 function providerDetection(provider, settings, { environment, hasKeychainSecret, hasSecret, run, platform }) {
   if (provider.quotaSupport === 'unavailable') return detected('unavailable', '订阅额度暂不可查');
   const local = detectLocalProvider(provider.id, settings, environment, { run, platform });
+  if (provider.id === 'kimi-code') {
+    const accounts = settings.accounts || [];
+    if (accounts.length === 1 && accounts[0].connectionType === 'local') return local;
+    const ready = accounts.filter(account => account.connectionType === 'local' ? local?.state === 'detected'
+      : account.authMode === 'environment' ? Boolean(environmentSecret(account.environmentVariable, environment))
+        : hasSecret(account.legacyCredential ? provider.id : providerAccountCredentialKey(provider.id, account.id))).length;
+    return detected(ready ? 'configured' : 'manual', `${ready}/${accounts.length} 个 Kimi 账户已配置`, '本机登录与 API Key 分开查询；不会切换 CLI 登录');
+  }
   if (local?.state === 'detected') return local;
   if (provider.id === 'opencode') {
+    if (local) return local;
     if (settings.accounts?.length) {
       const ready = settings.accounts.filter((account) => (
         Boolean(account.label && (account.connectionType === 'api-key' || account.workspaceId))
@@ -235,6 +302,12 @@ export function saveLimitSettings(payload, {
   save = saveConfig,
 } = {}) {
   const incoming = payload?.settings || payload;
+  const kimiDraft = incoming?.providers?.['kimi-code']?.accounts;
+  if (kimiDraft != null && (!Array.isArray(kimiDraft) || kimiDraft.length > 20
+    || kimiDraft.filter(account => account?.connectionType === 'local').length > 1
+    || new Set(kimiDraft.map(account => account?.id)).size !== kimiDraft.length)) {
+    throw new Error('Kimi 最多支持 20 个连接、1 个本机登录，每个连接需要独立 ID。');
+  }
   const current = getLimitSettings(config);
   const mergedProviders = Object.fromEntries(LIMIT_PROVIDER_CATALOG.map((provider) => {
     const candidate = incoming?.providers?.[provider.id];
@@ -255,26 +328,52 @@ export function saveLimitSettings(payload, {
   const clearSecrets = new Set(Array.isArray(payload?.clearSecrets) ? payload.clearSecrets : []);
   const clearAccountSecrets = new Set(Array.isArray(payload?.clearAccountSecrets)
     ? payload.clearAccountSecrets : []);
+  // Validate the whole Kimi draft before changing any stored credential.
+  const kimi = settings.providers['kimi-code'];
+  if (kimi.enabled && !kimi.accounts.length) throw new Error('Kimi Code 已启用，请添加至少一个账户。');
+  for (const account of kimi.accounts) {
+    if (!account.label) throw new Error('请填写每个 Kimi 账户的名称。');
+    if (account.connectionType === 'local') continue;
+    if (account.authMode === 'environment') {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(account.environmentVariable)) throw new Error('请填写有效的 Kimi 账户环境变量名。');
+      continue;
+    }
+    const prior = current.providers['kimi-code'].accounts.find(item => item.id === account.id);
+    const secret = accountSecrets['kimi-code']?.[account.id];
+    const unchanged = prior?.connectionType === account.connectionType && prior.authMode === account.authMode
+      && prior.legacyCredential === account.legacyCredential;
+    if (!(typeof secret === 'string' && secret.trim()) && !unchanged) throw new Error('新增或更换 Kimi 连接方式时，请重新填写该账户的凭据。');
+    if (secret && (secret.length > 32_768 || /[\s\x00-\x1f]/.test(secret.trim()))) throw new Error('Kimi 凭据格式无效，请只粘贴 API Key 或登录令牌。');
+  }
   for (const provider of LIMIT_PROVIDER_CATALOG) {
     const credentialKey = regionalCredentialKey(provider.id, settings.providers[provider.id]);
     if (clearSecrets.has(provider.id)) deleteSecret(credentialKey);
     if (typeof secrets[provider.id] === 'string' && secrets[provider.id].trim()) {
       if (!provider.authModes.includes('keychain')) throw new Error(`${provider.label} 不支持手动钥匙串凭据。`);
+      if (provider.id === 'workbuddy') parseWorkBuddyCredential(secrets[provider.id]);
       writeSecret(credentialKey, secrets[provider.id]);
     }
     const priorAccounts = new Set(current.providers[provider.id]?.accounts?.map((account) => account.id) || []);
     const nextAccounts = new Set(settings.providers[provider.id]?.accounts?.map((account) => account.id) || []);
     for (const accountId of priorAccounts) {
-      if (!nextAccounts.has(accountId)) deleteSecret(providerAccountCredentialKey(provider.id, accountId));
+      const prior = current.providers[provider.id].accounts.find(account => account.id === accountId);
+      if (!nextAccounts.has(accountId)) deleteSecret(provider.id === 'kimi-code' && prior.legacyCredential ? provider.id : providerAccountCredentialKey(provider.id, accountId));
     }
     for (const account of settings.providers[provider.id]?.accounts || []) {
-      const key = providerAccountCredentialKey(provider.id, account.id);
+      const key = provider.id === 'kimi-code' && account.legacyCredential ? provider.id : providerAccountCredentialKey(provider.id, account.id);
+      if (provider.id === 'kimi-code') {
+        const prior = current.providers[provider.id].accounts.find(item => item.id === account.id);
+        if (prior && (prior.connectionType !== account.connectionType || prior.legacyCredential !== account.legacyCredential)) {
+          deleteSecret(prior.legacyCredential ? provider.id : providerAccountCredentialKey(provider.id, account.id));
+        }
+      }
       if (clearAccountSecrets.has(key)) deleteSecret(key);
       const secret = accountSecrets?.[provider.id]?.[account.id];
       if (typeof secret === 'string' && secret.trim()) writeSecret(key, secret);
     }
   }
-  save({ ...config, subscriptionLimits: settings });
+  save({ ...config, subscriptionLimits: settings,
+    ...(kimi.enabled && !config.sessionSalt && !config.quotaIdentitySalt ? { quotaIdentitySalt: createSessionSalt() } : {}) });
   clearLimitCache();
   return getPublicLimitSettings({ ...config, subscriptionLimits: settings });
 }
@@ -375,6 +474,7 @@ export function clearLimitCache() {
   cachedResult = null;
   cacheKey = '';
   cacheExpiresAt = 0;
+  forbiddenCooldowns.clear();
 }
 
 async function fetchEnabled(settings, options = {}) {
@@ -382,11 +482,14 @@ async function fetchEnabled(settings, options = {}) {
   const enabled = settings.providerOrder
     .map((id) => catalogById.get(id))
     .filter((provider) => provider && settings.providers[provider.id]?.enabled);
+  const at = (options.now || Date.now)();
+  const cooldownTtlMs = settings.refreshMinutes * 60_000;
   const providers = await Promise.all(enabled.map(async (provider) => {
     const fetchProvider = options.fetchers?.[provider.id] || FETCHERS[provider.id];
     try {
       if (!fetchProvider) throw Object.assign(new Error(`${provider.label} 暂不支持订阅额度查询。`), { code: 'not_configured' });
       const configuredAccounts = settings.providers[provider.id]?.accounts || [];
+      if (provider.id === 'kimi-code' && !configuredAccounts.length) throw Object.assign(new Error('No Kimi accounts'), { code: 'not_configured' });
       if (provider.accountMode && configuredAccounts.length) {
         const accounts = await Promise.all(configuredAccounts.map(async (account) => {
           try {
@@ -397,17 +500,34 @@ async function fetchEnabled(settings, options = {}) {
               error.code = 'not_configured';
               throw error;
             }
+            if (forbiddenCooldownActive(provider.id, account.id, at)) {
+              return accountResult(provider, account, providerError(provider, forbiddenCooldownError()));
+            }
+            forbiddenCooldowns.delete(cooldownScope(provider.id, account.id));
             const result = await fetchProvider({
               settings: accountSettings(provider.id, settings.providers[provider.id], account),
               environment: options.environment || process.env,
               fetcher: options.fetcher || fetch,
               run: options.run, platform: options.platform, localRequester: options.localRequester,
+              identitySalt: options.identitySalt,
             });
             return accountResult(provider, account, assertProviderContract(provider.id, result));
           } catch (error) {
+            error = classifyProviderError(provider.id, error);
+            if (error?.code === 'forbidden') recordForbiddenCooldown(provider.id, account.id, cooldownTtlMs, at);
             return accountResult(provider, account, providerError(provider, error));
           }
         }));
+        if (provider.id === 'kimi-code') {
+          const owners = new Map();
+          for (const account of accounts) {
+            // Matching opaque scope proves either the same returned owner or
+            // the exact same credential; distinct unverified keys stay apart.
+            if (!account.historyAccountId) continue;
+            if (owners.has(account.historyAccountId)) account.duplicateOf = owners.get(account.historyAccountId);
+            else owners.set(account.historyAccountId, account.accountId);
+          }
+        }
         const activeId = settings.providers[provider.id].activeAccountId;
         const active = accounts.find((account) => account.accountId === activeId) || accounts[0];
         return {
@@ -419,19 +539,28 @@ async function fetchEnabled(settings, options = {}) {
           quotaCoverage: provider.quotaCoverage || 'supported',
         };
       }
+      if (forbiddenCooldownActive(provider.id, '', at)) {
+        return providerError(provider, forbiddenCooldownError());
+      }
+      forbiddenCooldowns.delete(cooldownScope(provider.id));
       const result = await fetchProvider({
         settings: settings.providers[provider.id],
         environment: options.environment || process.env,
         fetcher: options.fetcher || fetch,
         run: options.run, platform: options.platform, localRequester: options.localRequester,
+        identitySalt: options.identitySalt,
       });
       return {
         ...assertProviderContract(provider.id, result),
-        ...(REGIONAL_PLAN_IDS.includes(provider.id) && /^[a-f0-9]{32}$/.test(result.accountId || '') ? { accountId: result.accountId } : {}),
+        ...([...REGIONAL_PLAN_IDS, 'workbuddy'].includes(provider.id) && /^[a-f0-9]{32}$/.test(result.accountId || '')
+          || provider.id === 'opencode' && /^local_[a-f0-9]{32}$/.test(result.accountId || '')
+          ? { accountId: result.accountId } : {}),
         label: provider.label,
         quotaCoverage: provider.quotaCoverage || 'supported',
       };
     } catch (error) {
+      error = classifyProviderError(provider.id, error);
+      if (error?.code === 'forbidden') recordForbiddenCooldown(provider.id, '', cooldownTtlMs, at);
       return providerError(provider, error);
     }
   }));
@@ -477,15 +606,18 @@ export async function loadSubscriptionLimits({ force = false, config = loadConfi
       },
     };
   }
+  const clock = options.now || Date.now;
+  // 手动刷新立即解除 403 冷却（设置保存与 clearLimitCache 走同一条解除路径）。
+  if (force) forbiddenCooldowns.clear();
   const nextKey = JSON.stringify(settings);
-  if (!force && cachedResult && cacheKey === nextKey && Date.now() < cacheExpiresAt) return cachedResult;
+  if (!force && cachedResult && cacheKey === nextKey && clock() < cacheExpiresAt) return cachedResult;
   if (!force && inFlight) return inFlight;
-  inFlight = fetchEnabled(settings, options)
+  inFlight = fetchEnabled(settings, { ...options, identitySalt: config?.quotaIdentitySalt || config?.sessionSalt || options.identitySalt })
     .then((result) => {
       try { historyRecorder(result); } catch { /* Quota display must survive history I/O failures. */ }
       cachedResult = { ...result, history: history() };
       cacheKey = nextKey;
-      cacheExpiresAt = Date.now() + settings.refreshMinutes * 60_000;
+      cacheExpiresAt = clock() + settings.refreshMinutes * 60_000;
       return cachedResult;
     })
     .finally(() => { inFlight = null; });

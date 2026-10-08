@@ -5,6 +5,7 @@ import { asDate, asPercent, requestJson } from '../http.js';
 import { fetchAntigravityLocalQuota } from './antigravity-local.js';
 
 const LOAD_CODE_ASSIST_URL = 'https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist';
+const SUMMARY_URL = 'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary';
 const MODELS_URL = 'https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels';
 const QUOTA_URL = 'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -117,7 +118,7 @@ export function parseAntigravityQuota(payload, identity = {}, { now = new Date()
     account: identity.email || null, plan: identity.plan || null,
     source: identity.source || 'Antigravity OAuth', updatedAt: now.toISOString(), windows,
     notice: exactWindows.length
-      ? '本机服务返回 Gemini 与 Claude/GPT 的 5 小时和每周额度池。'
+      ? '额度接口返回 Gemini 与 Claude/GPT 的 5 小时和每周额度池。'
       : '同一模型家族显示剩余比例最低的文本模型额度，避免高估可用量。',
   };
 }
@@ -210,8 +211,32 @@ export async function fetchAntigravityLimits({
       metadata: { ideType: 'ANTIGRAVITY', platform: 'PLATFORM_UNSPECIFIED', pluginType: 'GEMINI' },
     }, fetcher,
   });
+  // An unsupported consumer OAuth client can still receive a placeholder
+  // summary (every bucket at 100%). Do not publish it as verified quota.
+  if (!credentials.projectId && !projectFromCodeAssist(codeAssist) && !codeAssist?.currentTier
+    && Array.isArray(codeAssist?.ineligibleTiers)
+    && codeAssist.ineligibleTiers.some((tier) => tier?.reasonCode === 'GOOGLE_TOS_NOT_SUPPORTED_BY_CLIENT')) {
+    const error = new Error('当前 Antigravity 登录客户端不支持读取该账号额度，请重新登录后重试。 / This Antigravity sign-in cannot read this account’s quota. Sign in again.');
+    error.code = 'unauthorized';
+    throw error;
+  }
+  const identity = {
+    email: credentials.claims?.email,
+    plan: planFromCodeAssist(codeAssist),
+    source: settings.authMode === 'local' ? '~/.codexbar/antigravity/oauth_creds.json' : 'Antigravity OAuth JSON',
+  };
   const projectId = credentials.projectId || projectFromCodeAssist(codeAssist);
   const body = projectId ? { project: projectId } : {};
+  // Match the agy CLI: prefer the grouped model-family quota summary (covers
+  // the weekly-only Starter tier) and return early on known quotas; anything
+  // else falls back to the per-model endpoint chain below.
+  const summary = await requestJson(SUMMARY_URL, {
+    method: 'POST', headers: authHeaders, body, fetcher,
+  }).catch((error) => {
+    if (error?.code === 'unauthorized' && error?.status === 401) throw error;
+    return null;
+  });
+  if (summary && summaryWindows(summary).length) return parseAntigravityQuota(summary, identity);
   let quota = await requestJson(MODELS_URL, {
     method: 'POST', headers: authHeaders, body, fetcher,
   }).catch(() => null);
@@ -233,9 +258,5 @@ export async function fetchAntigravityLimits({
     error.code = 'invalid_response';
     throw error;
   }
-  return parseAntigravityQuota(quota, {
-    email: credentials.claims?.email,
-    plan: planFromCodeAssist(codeAssist),
-    source: settings.authMode === 'local' ? '~/.codexbar/antigravity/oauth_creds.json' : 'Antigravity OAuth JSON',
-  });
+  return parseAntigravityQuota(quota, identity);
 }

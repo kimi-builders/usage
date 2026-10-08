@@ -41,6 +41,12 @@ function authLabel(mode, zh) {
 }
 
 function SetupSteps({ provider, zh }) {
+  if (provider?.id === 'workbuddy') return <div className="provider-setup-steps"><b>{zh ? '连接 WorkBuddy 官网' : 'Connect the WorkBuddy website'}</b><ol>
+    <li><a href={provider.dashboardUrl} target="_blank" rel="noreferrer">{zh ? '登录官网并打开套餐用量页' : 'Sign in and open plan usage'}<ExternalLink size={11}/></a></li>
+    <li>{zh ? '开发者工具 → 网络，刷新页面，找到 get-user-resource-summary 请求。' : 'In DevTools → Network, refresh and select get-user-resource-summary.'}</li>
+    <li>{zh ? '复制同一请求中的 Cookie 与 User-Agent 到下方。会话过期或更换浏览器后，两项一起更新。' : 'Copy Cookie and User-Agent from that same request. Replace both when the session expires or the browser changes.'}</li>
+  </ol><p>{zh ? '使用环境变量时，值为 {"cookie":"…","userAgent":"…"} JSON。不会导入浏览器凭据。' : 'For an environment variable, use JSON: {"cookie":"…","userAgent":"…"}. Browser credentials are never imported.'}</p></div>;
+  if (provider?.id === 'claude-code') return <div className="provider-setup-steps"><b>{zh ? '额外权益来自官方响应，不做推测' : 'Additional benefits use official evidence only'}</b><p>{zh ? '自动登录可读取重置券与赠送云额度（若账号支持）。续费/到期日需要额外验证：手动模式可提供 OAuth Access Token 和同一账户 claude.ai 的 Cookie。两者身份不一致或无法验证时，不显示日期。' : 'Local login can read reset vouchers and promotional cloud credits when supported. Renewal/expiry dates require extra verification: manual mode accepts an OAuth access token and a claude.ai Cookie for the same account. Dates stay unavailable if ownership cannot be verified.'}</p><p>{zh ? '环境变量支持原 Token，或 {"accessToken":"…","sessionCookie":"sessionKey=…"}。Cookie 可选，不会自动读取浏览器，也不会修改 Claude 登录。' : 'The environment variable accepts a plain token or {"accessToken":"…","sessionCookie":"sessionKey=…"}. Cookie is optional; browser sessions are never imported and Claude login is never modified.'}</p></div>;
   if (provider?.sites && provider.id !== 'alibaba-coding') return <div className="provider-setup-steps"><b>{zh ? '连接个人套餐' : 'Connect a personal plan'}</b><ol>
     <li>{zh ? '先选择与你购买套餐一致的地区。' : 'Select the region where you purchased the plan.'}</li>
     <li><a href={provider.dashboardUrl} target="_blank" rel="noreferrer">{zh ? '打开官方用量页并创建/复制套餐 API Key' : 'Open official usage and create/copy a plan API key'}<ExternalLink size={11}/></a></li>
@@ -168,6 +174,7 @@ function OpenCodeGoConnectionPanel({
     enableMaster();
     updateProvider('opencode', {
       enabled: true,
+      authMode: 'keychain',
       accounts: [...item.accounts, {
         id, label: '',
         connectionType: 'workspace', workspaceId: '', externalIdentifier: '', hasSecret: false, credentialState: 'absent',
@@ -178,6 +185,7 @@ function OpenCodeGoConnectionPanel({
     });
   };
   return <div className="account-provider-config">
+    {!item.accounts.length ? <div className="provider-setup-steps"><b>{zh ? '本机 OpenCode 登录' : 'Local OpenCode login'}</b><p>{zh ? '只读查询当前本机登录的 Go 额度。切换本机登录后，额度历史按账号分开；也可添加手动账户。' : 'Read Go quotas for the current local login. Switching logins keeps quota histories separate; you can also add a manual account.'}</p><button type="button" className="provider-connect-button" aria-pressed={item.authMode === 'local'} onClick={() => { enableMaster(); updateProvider('opencode', { enabled: true, authMode: 'local', workspaceId: '' }); }}>{zh ? (item.authMode === 'local' ? '已选择本机登录' : '使用本机登录') : (item.authMode === 'local' ? 'Local login selected' : 'Use local login')}</button></div> : null}
     <div className="account-config-heading"><div><b>{zh ? 'OpenCode Go 账户' : 'OpenCode Go accounts'}</b><span>{zh ? '每个账户独立选择 API Key 或 Cookie + Workspace；额度和订阅信息不会共享。' : 'Each account independently uses an API key or Cookie + Workspace; quotas and subscription details are never shared.'}</span></div><button className="provider-connect-button" type="button" onClick={addOpenCodeAccount}><span aria-hidden="true">＋</span>{zh ? '添加账户' : 'Add account'}</button></div>
     <SetupSteps provider={provider} zh={zh}/>
     <div className="opencode-account-list" role="radiogroup" aria-label={zh ? 'OpenCode Go 账户' : 'OpenCode Go accounts'}>{item.accounts.map((account, index) => {
@@ -196,6 +204,50 @@ function OpenCodeGoConnectionPanel({
           <EntitlementFields className="account-entitlement" item={account} onChange={(patch) => updateAccount(account.id, patch)} zh={zh}/>
         </fieldset>;
       })}{!item.accounts.length ? <p>{zh ? '添加账户后，为该账户选择一种连接方式并完整填写。' : 'Add an account, choose one connection method, and complete its fields.'}</p> : null}</div>
+  </div>;
+}
+
+function CredentialTupleFields({ provider, value, onChange, zh }) {
+  const workbuddy = provider.id === 'workbuddy';
+  let tuple = {};
+  try { tuple = JSON.parse(value || '{}'); } catch { if (!workbuddy) tuple = { accessToken: value }; }
+  if (!tuple || typeof tuple !== 'object') tuple = {};
+  const fields = workbuddy ? [['cookie', 'Cookie'], ['userAgent', 'User-Agent']]
+    : [['accessToken', 'OAuth Access Token'], ['sessionCookie', zh ? '官网 Cookie（可选）' : 'Website Cookie (optional)']];
+  const update = (key, content) => {
+    const next = { ...tuple, [key]: content };
+    onChange(fields.some(([field]) => next[field]?.trim()) ? JSON.stringify(next) : '');
+  };
+  return <div className="benefit-credential-tuple">{fields.map(([key, label]) => <label key={key}><span>{label}</span><input type="password" autoComplete="off" spellCheck="false" aria-label={`${provider.label} ${label}`} value={tuple[key] || ''} onChange={event => update(key, event.target.value)} disabled={!provider.supportsKeychain} placeholder={zh ? '全部留空保持已保存凭据' : 'Leave all blank to keep saved credentials'}/></label>)}<small>{zh ? '此处不回显已保存凭据。更换时请重新填写整套；仅发送到本地服务并存入钥匙串。' : 'Saved secrets are never displayed. Re-enter the whole tuple to replace it; it is sent only to the local service and stored in Keychain.'}</small></div>;
+}
+
+function KimiConnectionPanel({ provider, item, updateProvider, accountSecrets, setAccountSecrets, zh }) {
+  const updateAccount = (id, patch) => updateProvider('kimi-code', { accounts: item.accounts.map(account => account.id === id ? { ...account, ...patch } : account) });
+  const clearDraftSecret = id => setAccountSecrets(current => ({ ...current, 'kimi-code': { ...current['kimi-code'], [id]: '' } }));
+  const add = connectionType => {
+    const id = accountIdentifier();
+    const account = { id, label: '', connectionType, authMode: connectionType === 'local' ? 'local' : provider.supportsKeychain ? 'keychain' : 'environment',
+      environmentVariable: '', legacyCredential: false, hasSecret: false, credentialState: 'absent',
+      entitlementType: 'unknown', subscriptionPrice: null, subscriptionCurrency: 'usd', billingCycle: 'monthly', renewsAt: '' };
+    updateProvider('kimi-code', { accountsInitialized: true, accounts: [...item.accounts, account], activeAccountId: item.activeAccountId || id });
+  };
+  return <div className="kimi-accounts-config">
+    <p>{zh ? '本机登录与每个 Kimi for Coding API Key 独立查询，不切换 CLI 登录。一个账户的多个 Key 共享额度，不是每个 Key 各有一份套餐。' : 'Query the local login and each Kimi for Coding API key independently without switching CLI accounts. Keys belonging to one account share its quota.'}</p>
+    <div className="kimi-account-actions"><button type="button" className="ghost-btn" disabled={item.accounts.length >= 20} onClick={() => add('api-key')}>{zh ? '+ 添加 API Key 账户' : '+ Add API-key account'}</button>{!item.accounts.some(account => account.connectionType === 'local') ? <button type="button" className="ghost-btn" disabled={item.accounts.length >= 20} onClick={() => add('local')}>{zh ? '+ 添加本机登录' : '+ Add local login'}</button> : null}</div>
+    {item.accounts.map((account, index) => <fieldset key={account.id} className="kimi-account-fields"><legend>{zh ? `账户 ${index + 1}` : `Account ${index + 1}`}</legend>
+      <label><span>{zh ? '账户名称 / Key 标签' : 'Account name / key label'}</span><input value={account.label} maxLength={80} onChange={event => updateAccount(account.id, { label: event.target.value })} placeholder={zh ? '例如：个人 Pro / 工作' : 'e.g. Personal Pro / Work'}/></label>
+      <label><span>{zh ? '连接方式' : 'Connection method'}</span><select value={account.connectionType} onChange={event => { clearDraftSecret(account.id); updateAccount(account.id, { connectionType: event.target.value, authMode: event.target.value === 'local' ? 'local' : provider.supportsKeychain ? 'keychain' : 'environment', legacyCredential: false, hasSecret: false, credentialState: 'absent' }); }}>
+        <option value="api-key">Kimi for Coding API Key</option><option value="local" disabled={item.accounts.some(other => other.id !== account.id && other.connectionType === 'local')}>{zh ? '本机 CLI 登录' : 'Local CLI login'}</option>{account.connectionType === 'web-token' ? <option value="web-token">{zh ? '原有网页登录令牌' : 'Existing website token'}</option> : null}
+      </select></label>
+      {account.connectionType === 'local' ? <p className="kimi-account-help">{zh ? '查询时读取当前 Kimi CLI 登录；切换登录后不会沿用旧账户的额度历史。本机历史日志没有 Key 证据时，不自动归属给此账户。' : 'Reads the current Kimi CLI login at query time. Switching login isolates quota history; local logs without key evidence are not automatically assigned to this account.'}</p> : <>
+        <label><span>{zh ? '凭据来源' : 'Credential source'}</span><select value={account.authMode} onChange={event => { clearDraftSecret(account.id); updateAccount(account.id, { authMode: event.target.value }); }}><option value="keychain" disabled={!provider.supportsKeychain}>{zh ? '安全保存到钥匙串' : 'Save to Keychain'}</option><option value="environment">{zh ? '环境变量' : 'Environment variable'}</option></select></label>
+        {account.authMode === 'environment' ? <label><span>{zh ? '此账户的环境变量名' : 'Environment variable for this account'}</span><input value={account.environmentVariable} placeholder="KIMI_CODE_WORK_KEY" onChange={event => updateAccount(account.id, { environmentVariable: event.target.value })}/></label> : <label><span>{account.connectionType === 'api-key' ? 'API Key' : (zh ? '网页登录令牌' : 'Website token')}</span><input type="password" autoComplete="off" spellCheck="false" value={accountSecrets['kimi-code']?.[account.id] || ''} onChange={event => setAccountSecrets(current => ({ ...current, 'kimi-code': { ...current['kimi-code'], [account.id]: event.target.value } }))} placeholder={account.hasSecret === false ? 'sk-kimi-…' : zh ? '留空保留已保存凭据' : 'Leave blank to keep saved credential'}/></label>}
+        <p className="kimi-account-help">{zh ? '使用 Kimi Code 控制台创建的 Key，不是 Moonshot 开放平台 Key。保存后不回显，也不进入本机用量、导出或社区同步。' : 'Use a key created in the Kimi Code console, not a Moonshot platform key. Saved secrets are never returned or included in usage records, exports, or community sync.'}</p>
+      </>}
+      <EntitlementFields className="kimi-account-entitlement" item={account} onChange={patch => updateAccount(account.id, patch)} zh={zh}/>
+      <button type="button" className="ghost-btn" onClick={() => { clearDraftSecret(account.id); const accounts = item.accounts.filter(other => other.id !== account.id); updateProvider('kimi-code', { accountsInitialized: true, accounts, activeAccountId: item.activeAccountId === account.id ? accounts[0]?.id || '' : item.activeAccountId }); }}>{zh ? '移除此账户' : 'Remove account'}</button>
+    </fieldset>)}
+    <p>{zh ? '新套餐可能只有 5 小时和月度窗口；只展示官方返回的数据，不补造周额度。无法确认两个连接属于同一账户时，请勿把它们当成独立套餐相加。' : 'New plans may expose only 5-hour and monthly windows. Missing weekly quotas are not invented. Connections without verified identity must not be assumed to be separate plans.'}</p>
   </div>;
 }
 
@@ -222,7 +274,7 @@ function StandardProviderConfig({
     <SetupSteps provider={provider} zh={zh}/>
     <div className="provider-auth-fields">
       {item.authMode === 'environment' ? <label><span>{zh ? '环境变量名（凭据内容不要填在这里）' : 'Environment variable name—not the secret itself'}</span><input value={item.environmentVariable} onChange={(event) => updateProvider(provider.id, { environmentVariable: event.target.value })} placeholder={provider.defaultEnvironmentVariable || 'TOKEN'}/><small>{zh ? `在启动看板前设置 ${item.environmentVariable || provider.defaultEnvironmentVariable}，保存后会自动验证。` : 'Set this variable before starting the dashboard; saving will verify it.'}</small></label> : null}
-      {item.authMode === 'keychain' ? <label><span>{secretLabel(provider, zh)}</span><input type="password" autoComplete="off" spellCheck="false" value={secrets[provider.id] || ''} onChange={(event) => setSecrets((current) => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.hasSecret ? (zh ? '已安全保存 · 留空保持不变' : 'Saved securely · leave blank to keep') : credentialState(provider) === 'unchecked' ? (zh ? '尚未检测 · 留空保留原凭据' : 'Not checked · leave blank to keep existing') : secretPlaceholder} disabled={!provider.supportsKeychain}/><small>{zh ? '只会提交给 127.0.0.1 本地服务，并保存到系统钥匙串。' : 'Sent only to the local 127.0.0.1 service and stored in Keychain.'}</small>{provider.supportsKeychain && credentialState(provider) !== 'absent' ? <button type="button" onClick={() => setClearSecrets((current) => current.includes(provider.id) ? current.filter((id) => id !== provider.id) : [...current, provider.id])}>{clearSecrets.includes(provider.id) ? (zh ? '撤销清除' : 'Keep secret') : (zh ? '清除本机凭据（如有）' : 'Clear local secret if saved')}</button> : null}</label> : null}
+      {item.authMode === 'keychain' ? <div className="benefit-credential-field">{['workbuddy', 'claude-code'].includes(provider.id) ? <CredentialTupleFields provider={provider} value={secrets[provider.id] || ''} onChange={value => setSecrets(current => ({ ...current, [provider.id]: value }))} zh={zh}/> : <label><span>{secretLabel(provider, zh)}</span><input type="password" autoComplete="off" spellCheck="false" value={secrets[provider.id] || ''} onChange={(event) => setSecrets((current) => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.hasSecret ? (zh ? '已安全保存 · 留空保持不变' : 'Saved securely · leave blank to keep') : credentialState(provider) === 'unchecked' ? (zh ? '尚未检测 · 留空保留原凭据' : 'Not checked · leave blank to keep existing') : secretPlaceholder} disabled={!provider.supportsKeychain}/><small>{zh ? '只会提交给 127.0.0.1 本地服务，并保存到系统钥匙串。' : 'Sent only to the local 127.0.0.1 service and stored in Keychain.'}</small></label>}{provider.supportsKeychain && credentialState(provider) !== 'absent' ? <button type="button" onClick={() => setClearSecrets((current) => current.includes(provider.id) ? current.filter((id) => id !== provider.id) : [...current, provider.id])}>{clearSecrets.includes(provider.id) ? (zh ? '撤销清除' : 'Keep secret') : (zh ? '清除本机凭据（如有）' : 'Clear local secret if saved')}</button> : null}</div> : null}
       {provider.extraFields?.includes('workspaceId') ? <label><span>{zh ? 'Workspace ID 或账单页链接（可选）' : 'Workspace ID or billing URL (optional)'}</span><input value={item.workspaceId} onChange={(event) => updateProvider(provider.id, { workspaceId: event.target.value })} placeholder="https://opencode.ai/workspace/wrk_…/billing"/></label> : null}
       {!provider.sites && provider.extraFields?.includes('site') ? <label><span>{zh ? 'Qoder 站点' : 'Qoder site'}</span><select value={item.site} onChange={(event) => updateProvider(provider.id, { site: event.target.value })}><option value="international">qoder.com · {zh ? '国际站' : 'International'}</option><option value="china">qoder.com.cn · {zh ? '中国站' : 'China'}</option></select></label> : null}
       {provider.extraFields?.includes('customPath') ? <label><span>{zh ? 'IDE 配置目录（通常留空）' : 'IDE config directory (usually blank)'}</span><input value={item.customPath} onChange={(event) => updateProvider(provider.id, { customPath: event.target.value })} placeholder="~/Library/Application Support/JetBrains/WebStorm2026.2"/></label> : null}
@@ -337,8 +389,18 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
     setMessageTone('info');
     setValidationErrors([]);
     try {
+      const kimi = draft.providers['kimi-code'];
+      if (kimi?.enabled && !kimi.accounts.length) throw new Error(zh ? '请至少添加一个 Kimi 账户。' : 'Add at least one Kimi account.');
+      for (const account of kimi?.accounts || []) {
+        const saved = settings.providers['kimi-code'].accounts.find(value => value.id === account.id);
+        const unchanged = saved?.connectionType === account.connectionType && saved?.authMode === account.authMode && saved?.legacyCredential === account.legacyCredential;
+        if (!account.label.trim() || (account.authMode === 'environment' && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(account.environmentVariable))
+          || (account.authMode === 'keychain' && !accountSecrets['kimi-code']?.[account.id]?.trim() && (!unchanged || saved.hasSecret === false))) {
+          throw new Error(zh ? '请为每个 Kimi 账户填写名称及对应凭据；新增或切换连接方式后需要重新填写。' : 'Complete each Kimi account name and its credential. New or changed connections require a fresh credential.');
+        }
+      }
       const openCode = draft.providers.opencode;
-      if (openCode.enabled && !openCode.accounts.length) throw new Error(zh
+      if (openCode.enabled && openCode.authMode !== 'local' && !openCode.accounts.length) throw new Error(zh
         ? 'OpenCode Go 已启用，请先添加至少一个账户。'
         : 'OpenCode Go is enabled. Add at least one account.');
       const incompleteOpenCode = openCode.accounts.filter((account) => (
@@ -416,7 +478,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
         const setEnabled = (enabled) => {
           const patch = { enabled };
           if (enabled && provider.quotaSupport === 'manual' && provider.supportsKeychain) patch.authMode = 'keychain';
-          if (enabled && provider.id === 'opencode' && !item.accounts.length) {
+          if (enabled && provider.id === 'opencode' && item.authMode !== 'local' && !item.accounts.length) {
             const id = accountIdentifier();
             patch.accounts = [{
               id, label: '',
@@ -432,7 +494,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
             setExpanded(provider.id);
           }
         };
-        const entitlementItem = provider.id === 'opencode'
+        const entitlementItem = ['opencode', 'kimi-code'].includes(provider.id)
           ? item.accounts.find((account) => account.id === item.activeAccountId) || item.accounts[0] || item
           : item;
         return <article className={`${item.enabled ? 'enabled' : ''} ${isExpanded ? 'expanded' : ''} ${unavailable ? 'unavailable' : ''}`} id={`limit-account-provider-${provider.id}`} key={provider.id}>
@@ -440,8 +502,9 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
           <div className={`provider-detection ${detectionClass(provider.detection?.state)}`}>{['detected', 'configured'].includes(provider.detection?.state) ? <Check size={12}/> : <CircleAlert size={12}/>}<span>{provider.detection?.label}</span>{provider.detection?.detail ? <small>{provider.detection.detail}</small> : null}</div>
           {unavailable ? <div className="provider-unavailable-copy"><p>{provider.localHint}</p>{provider.dashboardUrl ? <a href={provider.dashboardUrl} target="_blank" rel="noreferrer">{zh ? '打开官方页面' : 'Open official site'}<ExternalLink size={11}/></a> : null}</div> : null}
           {isExpanded && !unavailable ? <div className="provider-config-panel">
+            {provider.id === 'kimi-code' ? <KimiConnectionPanel provider={provider} item={item} updateProvider={updateProvider} accountSecrets={accountSecrets} setAccountSecrets={setAccountSecrets} zh={zh}/> : <>
             {provider.id === 'copilot' ? <CopilotConnectionPanel item={item} updateProvider={updateProvider} setClearAccountSecrets={setClearAccountSecrets} enableMaster={() => setDraft((current) => ({ ...current, enabled: true }))} onCopilotDeviceAction={onCopilotDeviceAction} onCopilotConnected={handleCopilotConnected} zh={zh}/> : provider.id === 'opencode' ? <OpenCodeGoConnectionPanel item={item} provider={provider} savedAccounts={settings.providers.opencode.accounts} updateProvider={updateProvider} accountSecrets={accountSecrets} setAccountSecrets={setAccountSecrets} clearAccountSecrets={clearAccountSecrets} setClearAccountSecrets={setClearAccountSecrets} enableMaster={() => setDraft((current) => ({ ...current, enabled: true }))} zh={zh}/> : <StandardProviderConfig provider={provider} item={item} updateProvider={updateProvider} secrets={secrets} setSecrets={setSecrets} clearSecrets={clearSecrets} setClearSecrets={setClearSecrets} zh={zh}/>}
-            {item.enabled && provider.id !== 'opencode' ? <EntitlementBlock provider={provider} item={item} updateProvider={updateProvider} zh={zh}/> : null}
+            {item.enabled && provider.id !== 'opencode' ? <EntitlementBlock provider={provider} item={item} updateProvider={updateProvider} zh={zh}/> : null}</>}
           </div> : null}
         </article>;
       })}</div>
@@ -459,7 +522,7 @@ export function LimitSettingsDialog({ open, settings, onClose, onSave, onCopilot
         <p>{zh ? '浏览器只提交你主动输入的凭据一次；服务端把手动凭据交给 macOS 钥匙串，普通 config.json 只保存开关、来源和变量名。接口响应永远不包含 Token 或 Cookie，只显示不暴露主目录的来源提示。' : 'The browser submits manually entered secrets once. The local server stores them in macOS Keychain; config.json keeps only toggles, source modes, and variable names. Responses never contain tokens or cookies and show only home-redacted source hints.'}</p>
       </details>
       <div className="limit-sticky-alerts">
-        {validationErrors.length ? <div className="provider-validation-errors" role="alert">{validationErrors.map((provider) => <div key={provider.id}><CircleAlert size={14}/><span><b>{provider.label}</b><small>{quotaErrorMessage(provider, zh)}</small></span><button type="button" onClick={() => { if (provider.id === 'copilot' || provider.id === 'opencode') { document.getElementById(`limit-account-provider-${provider.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; } setView('all'); setExpanded(provider.id); }}>{zh ? '去修复' : 'Fix'}</button></div>)}</div> : null}
+        {validationErrors.length ? <div className="provider-validation-errors" role="alert">{validationErrors.map((provider) => <div key={`${provider.id}:${provider.accountId || ''}`}><CircleAlert size={14}/><span><b>{provider.label}</b><small>{quotaErrorMessage(provider, zh)}</small></span><button type="button" onClick={() => { if (provider.id === 'copilot' || provider.id === 'opencode') { document.getElementById(`limit-account-provider-${provider.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; } setView('all'); setExpanded(provider.id); }}>{zh ? '去修复' : 'Fix'}</button></div>)}</div> : null}
         {message ? <p className={`limit-save-message limit-save-message--${messageTone}`} role={messageTone === 'error' || messageTone === 'warning' ? 'alert' : 'status'}>{message}</p> : null}
       </div></div>
     {confirmDiscard ? <div className="dialog-dirty-bar" role="alertdialog" aria-label={zh ? '未保存的更改' : 'Unsaved changes'}>

@@ -2,6 +2,21 @@
 
 > [English](./NETWORK.md)
 
+### 可选的 WorkBuddy 与 Claude 权益查询
+
+主动启用后，WorkBuddy 只请求 `https://www.workbuddy.cn/billing/meter/get-user-resource-summary`
+及同域的 `get-user-resource-paid-packages` / `get-user-resource-free-packages`。手动提供的 Cookie
+与同一请求中的 User-Agent 仅发送到该域名。可选周期查询有共享超时预算，失败不隐藏已取得的 Credits 余额。
+
+Claude OAuth 用量请求可带 `?cedar_ember=1`，读取重置券与赠送云额度；它们不与订阅额度、个人支出混算。
+手动凭据支持原 Token，或可选 JSON `{ "accessToken": "…", "sessionCookie": "sessionKey=…" }`。
+只有主动提供 Cookie 时，才访问 `https://claude.ai/api/account` 与
+`https://claude.ai/api/organizations/<已验证组织>/subscription_details`，并在查询前后使用
+`https://api.anthropic.com/api/oauth/profile` 核验同一账号与组织。Cookie 和 OAuth 请求头不会跨域互传；
+身份不一致或可选查询失败时，日期保持未知。不会自动导入浏览器会话、解密客户端凭据、续期或改写登录文件。
+
+Codex 实测轮次性能完全由本地日志派生，不新增联网，也不进入社区上传载荷。
+
 项目没有遥测、软件版本更新检查、广告请求或隐藏的后台连接。本地解析模块不导入网络客户端。价格目录仅在
 `init` 的一次 best-effort 检查、用户运行 `pricing update`，或点击看板“检查更新”时下载；不会上传本机用量。只有用户
 明确执行 `daemon install` 后才会存在后台同步；它可随时通过 CLI 检查或移除。
@@ -71,7 +86,8 @@ CSP 和 no-store 响应。Token 分析始终离线。只有用户点击相应控
 - Codex：`https://chatgpt.com/backend-api/wham/usage`，以及可选的
   `wham/rate-limit-reset-credits` 辅助端点；
 - Claude Code：`https://api.anthropic.com/api/oauth/usage`；
-- Kimi Code：`https://api.kimi.com/coding/v1/usages`；本机 CLI access token 即将到期时，
+- Kimi Code：本机登录与各个 Coding API Key 独立请求 `https://api.kimi.com/coding/v1/usages`；
+  API Key 不调用 Web 或 OAuth 接口，也不会失败后回退到其他账户。本机 CLI access token 即将到期时，
   通过 `https://auth.kimi.com/api/oauth/token` 在 Kimi Code 的跨进程锁保护下轮换，
   并原子更新仅 owner 可读的 CLI 凭据文件；当用户明确选择 Web Token 来源时，
   使用 `https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages` 和

@@ -74,7 +74,7 @@ test('compacts recent snapshots to 15-minute buckets and older snapshots to dail
 test('merges alternating provider successes but replaces a re-observed provider window set', () => {
   const observations = [{
     observedAt: '2026-08-12T11:01:00.000Z',
-    providers: [{ id: 'codex', status: 'ok', plan: 'must-not-persist', windows: [
+    providers: [{ id: 'codex', status: 'ok', planName: 'must-not-persist', windows: [
       { id: 'primary', label: '5 hours', usedPercent: 10, remainingPercent: 90 },
       { id: 'weekly', label: 'Weekly', usedPercent: 20, remainingPercent: 80 },
     ] }],
@@ -161,6 +161,64 @@ test('records every successful account result without account labels or credenti
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
+test('records the provider plan as a bounded single-line identity for plan segmentation', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kbu-limit-history-plan-'));
+  const path = join(directory, 'history.json');
+  const provider = (plan) => ({
+    id: 'codex', label: 'Codex', status: 'ok', account: 'private@example.com', source: '/private/path',
+    updatedAt: '2026-08-12T11:00:00.000Z', plan,
+    windows: [{
+      id: 'primary', label: '5 小时', usedPercent: 25, remainingPercent: 75,
+      resetsAt: '2026-08-12T15:00:00.000Z', windowSeconds: 18_000,
+    }],
+  });
+  try {
+    const history = recordLimitSnapshot({ generatedAt: '2026-08-12T11:00:00.000Z', providers: [provider('Kimi Code Max')] }, { path, now: NOW });
+    const recorded = history.observations[0].providers[0];
+    assert.deepEqual(Object.keys(recorded), ['id', 'plan', 'observedAt', 'windows']);
+    assert.equal(recorded.plan, 'Kimi Code Max');
+    const raw = readFileSync(path, 'utf8');
+    assert.equal(raw.includes('private@example.com'), false);
+    assert.equal(raw.includes('/private/path'), false);
+
+    // Non-string and blank plans fail closed to unknown; control characters
+    // are flattened to a single line and overlong labels are bounded, matching
+    // the provider contract's display-text handling.
+    for (const invalid of [42, {}, null, '', '   ']) {
+      const normalized = normalizeLimitHistory({ observations: [{
+        observedAt: '2026-08-12T11:00:00.000Z',
+        providers: [{ id: 'codex', plan: invalid, windows: [{
+          id: 'primary', label: '5 hours', usedPercent: 10, remainingPercent: 90,
+        }] }],
+      }] }, { now: NOW });
+      assert.equal('plan' in normalized.observations[0].providers[0], false, String(invalid));
+    }
+    const flattened = normalizeLimitHistory({ observations: [{
+      observedAt: '2026-08-12T11:00:00.000Z',
+      providers: [{ id: 'codex', plan: 'pro\nsecret-plan\ttail', windows: [{
+        id: 'primary', label: '5 hours', usedPercent: 10, remainingPercent: 90,
+      }] }, { id: 'codex2', plan: 'y'.repeat(200), windows: [{
+        id: 'primary', label: '5 hours', usedPercent: 10, remainingPercent: 90,
+      }] }],
+    }] }, { now: NOW });
+    assert.equal(flattened.observations[0].providers[0].plan, 'pro secret-plan tail');
+    assert.equal(flattened.observations[0].providers[1].plan, 'y'.repeat(80));
+
+    // Account results keep their own plan identity alongside the account id.
+    const accounts = recordLimitSnapshot({ generatedAt: '2026-08-12T11:30:00.000Z', providers: [{
+      id: 'opencode', label: 'OpenCode Go', status: 'ok', updatedAt: '2026-08-12T11:30:00.000Z', windows: [],
+      accounts: [
+        { accountId: 'personal', status: 'ok', plan: 'go-pro', updatedAt: '2026-08-12T11:30:00.000Z', windows: [{ id: 'weekly', label: 'Weekly', usedPercent: 20, remainingPercent: 80 }] },
+        { accountId: 'work', status: 'ok', updatedAt: '2026-08-12T11:30:00.000Z', windows: [{ id: 'weekly', label: 'Weekly', usedPercent: 70, remainingPercent: 30 }] },
+      ],
+    }] }, { path, now: NOW });
+    const latest = accounts.observations.at(-1).providers;
+    assert.deepEqual(latest.map((entry) => [entry.accountId, entry.plan]), [['personal', 'go-pro'], ['work', undefined]]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('normalizes schema v1 history by preserving its real container time on each provider', () => {
   const history = normalizeLimitHistory({ schemaVersion: 1, observations: [{
     observedAt: '2026-08-12T10:04:00.000Z',
@@ -169,7 +227,10 @@ test('normalizes schema v1 history by preserving its real container time on each
     ] }],
   }] }, { now: NOW });
 
-  assert.equal(history.schemaVersion, 1);
+  // v1 records normalize forward to the current schema; without a plan they
+  // stay unknown-plan evidence.
+  assert.equal(history.schemaVersion, 2);
+  assert.equal('plan' in history.observations[0].providers[0], false);
   assert.equal(history.observations[0].providers[0].observedAt, '2026-08-12T10:04:00.000Z');
 });
 
@@ -208,4 +269,46 @@ test('malformed history fails closed to an empty schema', () => {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('plan and unknown-plan boundaries survive every resolution and repeated compaction', () => {
+  for (const daysAgo of [0, 10, 60]) {
+    for (const middlePlan of ['pro', null]) {
+      const start = NOW - daysAgo * 86400_000 - 3600_000;
+      const observations = ['plus', middlePlan, 'plus', ' PLUS '].map((plan, index) => ({
+        observedAt: new Date(start + index * 60_000).toISOString(),
+        providers: [{ id: 'codex', plan, windows: [{ id: 'primary', usedPercent: index * 10 }] }],
+      }));
+      const compacted = compactLimitHistory(observations, { now: NOW });
+      assert.deepEqual(compacted.map((row) => row.providers[0].plan?.toLowerCase() || null), ['plus', middlePlan, 'plus']);
+      assert.deepEqual(compacted.map((row) => row.providers[0].windows[0].usedPercent), [0, 10, 30]);
+      assert.deepEqual(compactLimitHistory(compacted, { now: NOW }), compacted);
+      // Aging a previously compacted file to daily resolution must not erase
+      // boundaries which were preserved at the finer resolution.
+      assert.deepEqual(compactLimitHistory(compacted, { now: NOW + 90 * 86400_000 }), compacted);
+    }
+  }
+});
+
+test('plan comparison is account-scoped and absent providers are not unknown-plan samples', () => {
+  const point = (minute, providers) => ({ observedAt: `2026-08-12T11:${minute}:00.000Z`,
+    providers: providers.map(([accountId, plan]) => ({ id: 'opencode', accountId, plan,
+      windows: [{ id: 'weekly', usedPercent: 10 }] })),
+  });
+  const observations = [point('01', [['home', 'plus'], ['work', 'pro']]),
+    point('02', [['work', 'PRO']]), point('03', [['home', 'PLUS']])];
+  assert.equal(compactLimitHistory(observations, { now: NOW }).length, 1);
+  observations.push(point('04', [['home', 'pro']]), point('05', [['home', 'plus']]));
+  assert.equal(compactLimitHistory(observations, { now: NOW }).length, 3);
+});
+
+test('frequent plan transitions still obey the history count and retention budgets', () => {
+  const observations = Array.from({ length: 20_005 }, (_, index) => ({
+    observedAt: new Date(NOW - (20_005 - index) * 1000).toISOString(),
+    providers: [{ id: 'codex', plan: index % 2 ? 'pro' : 'plus', windows: [{ id: 'primary', usedPercent: 10 }] }],
+  }));
+  const compacted = compactLimitHistory(observations, { now: NOW });
+  assert.equal(compacted.length, 20_000);
+  assert.equal(compacted[0].observedAt, observations[5].observedAt);
+  assert.deepEqual(compactLimitHistory(compacted, { now: NOW + 401 * 86400_000 }), []);
 });

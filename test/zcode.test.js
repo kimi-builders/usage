@@ -48,6 +48,37 @@ test('ZCode reads SQLite usage as exclusive fields and keeps provider/model fact
   assert.equal(JSON.stringify(result).includes('/private/work'), false);
 });
 
+test('ZCode reads renamed modelId/providerId fields from newer builds', async (t) => {
+  if (!DatabaseSync) return t.skip('node:sqlite unavailable');
+  const path = join(root, 'zcode-renamed.sqlite');
+  const db = new DatabaseSync(path);
+  try {
+    db.exec('CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT); CREATE TABLE message (session_id TEXT, time_created INTEGER, data TEXT)');
+    db.prepare('INSERT INTO session (id, directory) VALUES (?, ?)').run('session-2', '/private/work/z-project');
+    const insert = db.prepare('INSERT INTO message (session_id, time_created, data) VALUES (?, ?, ?)');
+    insert.run('session-2', Date.parse('2026-08-10T11:00:01.000Z'), JSON.stringify({ role: 'user' }));
+    // One store can hold rows from both builds mid-upgrade; neither spelling may drop to unknown.
+    insert.run('session-2', Date.parse('2026-08-10T11:00:06.000Z'), JSON.stringify({
+      role: 'assistant', modelID: 'glm-5', providerID: 'zai',
+      path: { root: '/private/work/z-project' },
+      tokens: { input: 130, output: 40, reasoning: 10, cache: { read: 30, write: 20 } },
+    }));
+    insert.run('session-2', Date.parse('2026-08-10T11:00:08.000Z'), JSON.stringify({
+      role: 'assistant', modelId: 'glm-5.2', providerId: 'zai',
+      path: { root: '/private/work/z-project' },
+      tokens: { input: 60, output: 20, cache: { read: 10, write: 5 } },
+    }));
+  } finally { db.close(); }
+  process.env.KBU_USAGE_ZCODE_DB = path;
+  const result = await parse({ sessionSalt: SALT });
+  assert.equal(result.buckets.length, 2);
+  assert.deepEqual(result.buckets.map((bucket) => bucket.model).sort(), ['glm-5', 'glm-5.2']);
+  for (const bucket of result.buckets) {
+    assert.notEqual(bucket.model, 'unknown');
+    assert.equal(bucket.modelProvider, 'zai');
+  }
+});
+
 test('ZCode isolates invalid JSON and extracts Windows project basenames on every OS', async (t) => {
   if (!DatabaseSync) return t.skip('node:sqlite unavailable');
   const path = join(root, 'damaged.sqlite');

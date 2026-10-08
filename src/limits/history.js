@@ -4,7 +4,9 @@ import {
 import { dirname, join } from 'node:path';
 import { getConfigDir } from '../config.js';
 
-const HISTORY_SCHEMA_VERSION = 1;
+// v2 adds an optional per-provider plan identity so evidence can be segmented
+// when the subscription plan changes. v1 files simply carry unknown plans.
+const HISTORY_SCHEMA_VERSION = 2;
 const RETENTION_MS = 400 * 24 * 60 * 60 * 1_000;
 const RECENT_MS = 2 * 24 * 60 * 60 * 1_000;
 const MIDTERM_MS = 45 * 24 * 60 * 60 * 1_000;
@@ -49,6 +51,11 @@ function sanitizeWindow(window) {
   };
 }
 
+function sanitizePlan(value) {
+  if (typeof value !== 'string') return null;
+  return value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 80) || null;
+}
+
 function sanitizeProvider(provider) {
   const id = String(provider?.id || '').slice(0, 100);
   // Fresh snapshots carry status; normalized history intentionally does not.
@@ -56,10 +63,19 @@ function sanitizeProvider(provider) {
   const windows = (provider.windows || []).map(sanitizeWindow).filter(Boolean);
   if (!windows.length) return null;
   const observedAt = iso(provider?.observedAt);
-  const accountId = /^[A-Za-z0-9_-]{1,80}$/.test(String(provider?.accountId || ''))
-    ? String(provider.accountId)
+  const scopedAccountId = provider.id === 'kimi-code' && /^kimi_[a-f0-9]{32}$/.test(provider.historyAccountId || '')
+    ? provider.historyAccountId : provider.accountId;
+  const accountId = /^[A-Za-z0-9_-]{1,80}$/.test(String(scopedAccountId || ''))
+    ? String(scopedAccountId)
     : null;
-  return { id, ...(accountId ? { accountId } : {}), ...(observedAt ? { observedAt } : {}), windows };
+  const plan = sanitizePlan(provider?.plan);
+  return {
+    id,
+    ...(accountId ? { accountId } : {}),
+    ...(plan ? { plan } : {}),
+    ...(observedAt ? { observedAt } : {}),
+    windows,
+  };
 }
 
 function sanitizeObservation(observation, { fallbackProviderObservedAt = true } = {}) {
@@ -92,16 +108,28 @@ export function compactLimitHistory(observations, { now = Date.now() } = {}) {
     return time <= now + 5 * 60 * 1_000 && time >= now - RETENTION_MS;
   }).sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt));
   const buckets = new Map();
+  const plans = new Map();
+  const providerKey = (provider) => `${provider.id}\u0000${provider.accountId || ''}`;
+  let segment = 0;
   for (const observation of valid) {
+    // A plan transition is an evidence boundary, including known -> unknown
+    // -> known and returns to an earlier tier. Never compact across it, even
+    // when both observations fall in the same 15-minute/hour/day bucket.
+    // Keeping real boundary observations (not synthetic identities) survives
+    // repeated load/save compaction and still obeys retention/count limits.
+    if (observation.providers.some((provider) => plans.has(providerKey(provider))
+      && plans.get(providerKey(provider)) !== (provider.plan?.toLowerCase() || null))) segment += 1;
+    for (const provider of observation.providers) {
+      plans.set(providerKey(provider), provider.plan?.toLowerCase() || null);
+    }
     const time = Date.parse(observation.observedAt);
     const interval = intervalForAge(Math.max(0, now - time));
-    const key = `${interval}:${Math.floor(time / interval)}`;
+    const key = `${interval}:${Math.floor(time / interval)}:${segment}`;
     const current = buckets.get(key);
     if (!current) {
       buckets.set(key, observation);
       continue;
     }
-    const providerKey = (provider) => `${provider.id}\u0000${provider.accountId || ''}`;
     const providers = new Map(current.providers.map((provider) => [providerKey(provider), provider]));
     for (const provider of observation.providers) {
       // A successful provider result is a complete fact set for that provider.
@@ -138,7 +166,8 @@ export function recordLimitSnapshot(snapshot, { path = defaultPath(), now = Date
     observedAt,
     providers: (snapshot?.providers || []).flatMap((provider) => {
       const values = Array.isArray(provider?.accounts) && provider.accounts.length
-        ? provider.accounts.map((account) => ({ ...account, id: provider.id }))
+        ? provider.accounts.filter(account => provider.id !== 'kimi-code' || !account.duplicateOf)
+          .map((account) => ({ ...account, id: provider.id }))
         : [provider];
       return values.map((value) => ({
         ...value,

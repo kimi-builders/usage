@@ -5,6 +5,8 @@ import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { aggregateToBuckets, extractSessions } from './index.js';
 import { configuredExtraRoots, discoverCodexHomes } from '../extra-roots.js';
+import { compactCodexUsage, reconcileCodexUsage } from './codex-usage.js';
+import { codexTurnPerformance, compactCodexCompletion } from './codex-performance.js';
 
 /**
  * Codex CLI parser (openai/codex).
@@ -15,7 +17,10 @@ import { configuredExtraRoots, discoverCodexHomes } from '../extra-roots.js';
  * (live + archive overlap), so physical copies are deduped per session id
  * keeping the file with the most parseable records.
  *
- * Token accounting prefers `info.last_token_usage` (a per-request delta).
+ * Durable `token_usage_record` and UI token_count mirrors are reconciled
+ * before aggregation. Explicit request identities are session-scoped; copied
+ * foreign-thread ledger records cannot contribute local usage.
+ * Legacy accounting prefers `info.last_token_usage` (a per-request delta).
  * When it is absent we fall back to the cumulative `total_token_usage` minus
  * a running baseline; a negative field in that delta means the counter was
  * reset (compaction / new window), so the current total becomes the delta.
@@ -132,12 +137,12 @@ function metadataOnly(record) {
   const payload = record.payload || {};
   if (record.type === 'turn_context') return {
     type: record.type, timestamp: record.timestamp,
-    payload: { model: payload.model, effort: payload.effort },
+    payload: { model: payload.model, effort: payload.effort, turn_id: payload.turn_id },
   };
   return {
     type: record.type, timestamp: record.timestamp,
     payload: {
-      id: payload.id, timestamp: payload.timestamp, cwd: payload.cwd,
+      id: payload.id, session_id: payload.session_id, timestamp: payload.timestamp, cwd: payload.cwd,
       git: payload.git ? { repository_url: payload.git.repository_url } : undefined,
       cli_version: payload.cli_version, model_provider: payload.model_provider,
       forked_from_id: payload.forked_from_id, parent_thread_id: payload.parent_thread_id,
@@ -173,12 +178,18 @@ async function readRollout(file) {
           }
           continue;
         }
-        if (raw?.type === 'turn_context' || isTokenCount(raw)) {
-          records.push(raw?.type === 'turn_context' ? metadataOnly(raw) : raw);
+        if (raw?.type === 'turn_context' || raw?.type === 'token_usage_record' || isTokenCount(raw)) {
+          records.push(raw?.type === 'turn_context' ? metadataOnly(raw) : compactCodexUsage(raw));
+          continue;
+        }
+        if (raw?.type === 'event_msg' && ['task_complete', 'turn_aborted'].includes(raw.payload?.type)) {
+          records.push({ timestamp: raw.timestamp, type: raw.type, payload: compactCodexCompletion(raw.payload) });
           continue;
         }
         if (parseTimestampMs(raw?.timestamp) !== null) {
-          records.push({ timestamp: raw.timestamp, type: raw.type });
+          records.push({ timestamp: raw.timestamp, type: raw.type,
+            ...(raw.type === 'event_msg' ? { payload: { type: raw.payload?.type, turn_id: raw.payload?.turn_id } } : {}),
+          });
         }
       }
     } catch (error) {
@@ -233,7 +244,7 @@ function projectFrom(payload) {
   return 'unknown';
 }
 
-export async function parse({ sessionSalt, sourceOptions } = {}) {
+export async function parse({ sessionSalt, sourceOptions, includePerformance = false } = {}) {
   const homes = roots({ sourceOptions });
   if (homes.length === 0) return null;
 
@@ -253,6 +264,17 @@ export async function parse({ sessionSalt, sourceOptions } = {}) {
     }
   }
   const sessions = Array.from(winners.values());
+  const warnings = [];
+  const turnPerformance = [];
+  for (const session of sessions) {
+    if (includePerformance) turnPerformance.push(...codexTurnPerformance(
+      session.records, session.sessionId, session.meta?.payload?.session_id || session.sessionId,
+      { project: projectFrom(session.meta?.payload), agentVersion: session.meta?.payload?.cli_version },
+    ));
+    const reconciled = reconcileCodexUsage(session.records, session.sessionId, session.meta?.payload?.session_id || session.sessionId);
+    session.records = reconciled.records;
+    for (const warning of reconciled.warnings) warnings.push(warning);
+  }
 
   // Per-session token_count fingerprint sequences (record order) — needed
   // both for the parent's replay snapshot and the child's prefix skip.
@@ -316,8 +338,6 @@ export async function parse({ sessionSalt, sourceOptions } = {}) {
     const firstMeta = session.meta;
     let stickyModel = null;
     let stickyEffort = null;
-    let baseline = null; // previous total_token_usage (running baseline)
-    let lastPositiveTotal = 0;
     let tokenOrdinal = 0;
 
     for (const record of session.records) {
@@ -352,42 +372,8 @@ export async function parse({ sessionSalt, sourceOptions } = {}) {
       if (timestampMs === null) continue; // invalid timestamp → skip the record
 
       const info = record.payload?.info;
-      const total = info?.total_token_usage;
-
-      // Bookkeeping dedup: a repeated positive total_tokens is a duplicate
-      // emission (e.g. compaction bookkeeping) — skip the event entirely.
-      const totalTokens = tokenCount(total?.total_tokens);
-      if (totalTokens > 0 && totalTokens === lastPositiveTotal) continue;
-
-      let delta;
-      let current = null;
-      if (total && typeof total === 'object') {
-        current = {
-          input_tokens: tokenCount(total.input_tokens),
-          cached_input_tokens: tokenCount(total.cached_input_tokens ?? total.cache_read_input_tokens),
-          cache_write_input_tokens: tokenCount(total.cache_write_input_tokens),
-          output_tokens: tokenCount(total.output_tokens),
-          reasoning_output_tokens: tokenCount(total.reasoning_output_tokens),
-          total_tokens: tokenCount(total.total_tokens),
-        };
-      }
-      if (info?.last_token_usage && typeof info.last_token_usage === 'object') {
-        delta = info.last_token_usage;
-      } else if (current) {
-        if (!baseline) {
-          delta = current;
-        } else {
-          const fields = Object.keys(current);
-          const diff = Object.fromEntries(fields.map((field) => [field, current[field] - baseline[field]]));
-          // Negative field → counter reset (compaction / new window): the
-          // current total becomes a fresh baseline, i.e. the delta itself.
-          delta = fields.some((field) => diff[field] < 0) ? current : diff;
-        }
-      } else {
-        continue;
-      }
-      if (current) baseline = current;
-      if (totalTokens > 0) lastPositiveTotal = totalTokens;
+      const delta = info?.last_token_usage;
+      if (!delta) continue;
 
       // OpenAI fields overlap (cached ⊂ input, reasoning ⊂ output) — split
       // into mutually exclusive fields.
@@ -435,5 +421,7 @@ export async function parse({ sessionSalt, sourceOptions } = {}) {
   return {
     buckets: aggregateToBuckets(entries),
     sessions: extractSessions(sessionEvents, sessionSalt),
+    ...(includePerformance ? { turnPerformance } : {}),
+    ...(warnings.length ? { skipped: true, warnings } : {}),
   };
 }

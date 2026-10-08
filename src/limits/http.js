@@ -8,6 +8,8 @@ export const LIMIT_ALLOWED_HOSTS = new Set([
   'cloudcode-pa.googleapis.com',
   'oauth2.googleapis.com',
   'api.anthropic.com',
+  'claude.ai',
+  'www.workbuddy.cn',
   'cursor.com',
   'api.github.com',
   'github.com',
@@ -21,6 +23,14 @@ export const LIMIT_ALLOWED_HOSTS = new Set([
   'bailian-cs.console.aliyun.com', 'bailian-singapore-cs.alibabacloud.com',
   'codewhisperer.us-east-1.amazonaws.com',
 ]);
+
+function httpFailure(status) {
+  if (status === 401) return { code: 'unauthorized', message: '登录状态已过期或没有额度读取权限。' };
+  // Providers decide whether 403 means a regional restriction or an auth
+  // failure. Keep the existing auth recovery/fallback contract by default.
+  if (status === 403) return { code: 'unauthorized', message: '供应商拒绝了额度请求，可能没有读取权限。' };
+  return { code: 'provider_error', message: `供应商额度接口返回 HTTP ${status}。` };
+}
 
 export async function requestBytes(url, {
   method = 'GET', headers = {}, body, timeoutMs = 12_000, fetcher = fetch,
@@ -36,12 +46,8 @@ export async function requestBytes(url, {
       method, headers, body, cache: 'no-store', redirect: 'error', signal: controller.signal,
     });
     if (!response.ok) {
-      const unauthorized = response.status === 401 || response.status === 403;
-      throw new LimitHTTPError(unauthorized
-        ? '登录状态已过期或没有额度读取权限。'
-        : `供应商额度接口返回 HTTP ${response.status}。`, {
-        status: response.status, code: unauthorized ? 'unauthorized' : 'provider_error',
-      });
+      const failure = httpFailure(response.status);
+      throw new LimitHTTPError(failure.message, { status: response.status, code: failure.code });
     }
     return Buffer.from(await response.arrayBuffer());
   } catch (error) {
@@ -84,13 +90,10 @@ export async function requestJson(url, {
     let payload = null;
     try { payload = raw ? JSON.parse(raw) : null; } catch { /* handled below */ }
     if (!response.ok) {
-      const unauthorized = response.status === 401 || response.status === 403;
-      const message = unauthorized
-        ? '登录状态已过期或没有额度读取权限。'
-        : `供应商额度接口返回 HTTP ${response.status}。`;
-      throw new LimitHTTPError(message, {
+      const failure = httpFailure(response.status);
+      throw new LimitHTTPError(failure.message, {
         status: response.status,
-        code: unauthorized ? 'unauthorized' : 'provider_error',
+        code: failure.code,
       });
     }
     if (payload == null || typeof payload !== 'object') {
@@ -126,12 +129,8 @@ export async function requestText(url, {
     });
     const raw = await response.text();
     if (!response.ok) {
-      const unauthorized = response.status === 401 || response.status === 403;
-      throw new LimitHTTPError(unauthorized
-        ? '登录状态已过期或没有额度读取权限。'
-        : `供应商额度接口返回 HTTP ${response.status}。`, {
-        status: response.status, code: unauthorized ? 'unauthorized' : 'provider_error',
-      });
+      const failure = httpFailure(response.status);
+      throw new LimitHTTPError(failure.message, { status: response.status, code: failure.code });
     }
     return raw;
   } catch (error) {

@@ -4,6 +4,14 @@
   "lastReviewedAt": "2026-09-12",
   "providers": [
     {
+      "id": "workbuddy",
+      "upstreamShape": "Website resource summary, credits only",
+      "input": { "code": 0, "data": { "SubscriptionPackageName": "Pro", "Packages": [{ "CapacityUnit": "credits", "CycleTotalCapacity": "100", "CycleRemainCapacity": "70", "CycleFrozenCapacity": "5" }] } },
+      "invalidInput": { "code": 0, "data": { "Packages": [{ "CapacityUnit": "credits", "CycleTotalCapacity": "invalid", "CycleRemainCapacity": "70" }] } },
+      "invalidBehavior": "throws",
+      "expected": { "status": "ok", "windowIds": ["monthly-credits"], "remainingPercents": [70] }
+    },
+    {
       "id": "codex",
       "upstreamShape": "wham usage",
       "input": {

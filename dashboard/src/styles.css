@@ -1822,3 +1822,33 @@ body.drawer-open { overflow: hidden; }
 .limit-save-message--success { color: var(--green); }
 .limit-save-message--warning { color: var(--amber); }
 .limit-save-message--error { color: var(--red); }
+
+/* Optional provider facts and local-only measured performance. */
+.benefit-credential-field, .benefit-credential-tuple { display: grid; gap: 12px; min-width: 0; max-width: 100%; }
+.benefit-credential-field:only-child, .benefit-credential-field:has(.benefit-credential-tuple) { grid-column: 1 / -1; }
+.benefit-credential-field > button { justify-self: start; padding: 0; border: 0; background: transparent; color: var(--red); font: inherit; font-size: 11px; cursor: pointer; }
+.benefit-credential-tuple label { display: grid; gap: 6px; min-width: 0; }
+.benefit-credential-tuple input { width: 100%; min-width: 0; box-sizing: border-box; }
+.benefit-credential-tuple small, .provider-setup-steps > p { color: var(--grey); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
+.provider-benefit-facts > p { padding: 12px 20px; margin: 0; color: var(--grey); border-top: 1px solid var(--line); font-size: 11px; }
+.provider-benefit-facts .limit-provider-summary, .codex-performance .limit-provider-summary { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
+.provider-benefit-facts dd, .codex-performance dd { font-family: 'JetBrains Mono', monospace; overflow-wrap: anywhere; }
+.provider-benefit-facts .limit-provider-summary dt, .provider-benefit-facts .limit-provider-summary dd,
+.codex-performance .limit-provider-summary dt, .codex-performance .limit-provider-summary dd { white-space: normal; line-height: 1.5; overflow: visible; }
+.codex-performance .limit-provider-summary small { color: var(--grey); font-size: 10px; }
+.codex-performance { margin: 20px 0; }
+@media (max-width: 900px) {
+  .provider-benefit-facts .limit-provider-summary, .codex-performance .limit-provider-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.kimi-accounts-config { min-width: 0; display: grid; gap: 16px; }
+.kimi-accounts-config > p, .kimi-account-help { color: var(--grey); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.kimi-account-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.kimi-account-fields { margin: 0; min-width: 0; padding: 16px; border: 1px solid var(--line); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.kimi-account-fields > label { min-width: 0; display: grid; gap: 6px; font-size: 12px; color: var(--grey); }
+.kimi-account-fields input, .kimi-account-fields select { min-width: 0; width: 100%; box-sizing: border-box; background: var(--bg); color: var(--paper); border: 1px solid var(--line); padding: 10px; font: inherit; }
+.kimi-account-fields .kimi-account-help, .kimi-account-entitlement { grid-column: 1 / -1; }
+.kimi-account-fields legend { color: var(--paper); font-size: 12px; }
+.kimi-account-entitlement .subscription-paid-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 900px) {
+  .kimi-account-fields, .kimi-account-entitlement .subscription-paid-fields { grid-template-columns: minmax(0, 1fr); }
+}

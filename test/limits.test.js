@@ -21,6 +21,9 @@ import {
   clearLimitCache, createCopilotDeviceController, getPublicLimitSettings,
   loadSubscriptionLimits, saveLimitSettings,
 } from '../src/limits/service.js';
+import {
+  buildBenefitCapacityOverview, buildSubscriptionInsights, kimiMonthlyBlocking,
+} from '../dashboard/src/subscription-insights.js';
 
 const NOW = new Date('2026-08-11T12:00:00.000Z');
 
@@ -493,6 +496,36 @@ test('OpenCode Go API key mode fails before network access when the key is missi
   assert.equal(requested, false);
 });
 
+test('OpenCode Go API key 403 becomes an empty state with a machine-readable notEntitled reason', async () => {
+  // A valid key without an active Go subscription is not a login failure: the
+  // client gets the reason instead of parsing prose or a neutral error.
+  let requested = 0;
+  const result = await fetchOpenCodeGoLimits({
+    settings: {
+      authMode: 'environment', environmentVariable: 'OPENCODE_API_KEY',
+      connectionType: 'api-key', workspaceId: '', accountLabel: 'Personal',
+    },
+    environment: { OPENCODE_API_KEY: 'go_secret' },
+    fetcher: async () => {
+      requested += 1;
+      return new Response(JSON.stringify({ code: 'forbidden' }), { status: 403 });
+    },
+  });
+  assert.equal(requested, 1);
+  assert.equal(result.status, 'empty');
+  assert.equal(result.emptyReason, 'notEntitled');
+  assert.deepEqual(result.windows, []);
+  assert.match(result.notice, /订阅/);
+});
+
+test('OpenCode Go API key 401 stays an unauthorized error instead of an empty state', async () => {
+  await assert.rejects(fetchOpenCodeGoLimits({
+    settings: { authMode: 'environment', environmentVariable: 'OPENCODE_API_KEY', connectionType: 'api-key' },
+    environment: { OPENCODE_API_KEY: 'go_secret' },
+    fetcher: async () => new Response('{}', { status: 401 }),
+  }), (error) => error.code === 'unauthorized');
+});
+
 test('reads Kiro CLI token and profile from its read-only SQLite state', () => {
   const payload = Buffer.from(JSON.stringify({ exp: 4_102_444_800 })).toString('base64url');
   const token = `header.${payload}.signature`;
@@ -694,7 +727,7 @@ test('maps Kimi Code local and web quota shapes', () => {
   assert.equal(local.windows[0].remainingPercent, 80);
   assert.equal(local.windows[1].label, '每周');
   assert.equal(local.windows[1].usedPercent, 30);
-  assert.match(local.notice, /5 小时滚动（5H 频限）/);
+  assert.match(local.notice, /只显示接口返回的窗口/);
 
   const web = parseKimiWebUsage({
     usages: [{
@@ -715,6 +748,122 @@ test('maps Kimi Code local and web quota shapes', () => {
   assert.equal(web.windows[0].label, '5 小时滚动（5H 频限）');
   assert.equal(web.windows[1].label, '每周');
   assert.equal(web.windows[2].label, 'Code 每周');
+});
+
+test('parses the Kimi Code 2.x keyed usages response', () => {
+  const result = parseKimiCodeUsage({
+    usages: {
+      limit_5h: { used_ratio: 0.3, reset_time: '2026-08-11T18:00:00Z' },
+      limit_7d: { used_ratio: 0.2, resetTime: '2026-08-17T00:00:00Z' },
+      limit_month_total: { used_ratio: 0.4, reset_at: '2026-09-01T00:00:00Z' },
+      limit_month_code: { used_ratio: '0.25', reset_in: 7_200 },
+    },
+    user: { membership: { level: 'LEVEL_ADVANCED' } },
+  }, { now: NOW });
+  assert.equal(result.status, 'ok');
+  assert.equal(result.plan, 'Allegro');
+  assert.deepEqual(result.windows.map((window) => window.id),
+    ['session', 'weekly', 'month-total', 'month-code']);
+  assert.deepEqual(result.windows.map((window) => window.usedPercent), [30, 20, 40, 25]);
+  result.windows.forEach((window) => {
+    assert.ok(Math.abs(window.usedPercent + window.remainingPercent - 100) < 0.001);
+  });
+  assert.equal(result.windows[0].windowSeconds, 18_000);
+  assert.equal(result.windows[1].windowSeconds, 604_800);
+  assert.equal(result.windows[2].windowSeconds, null);
+  assert.equal(result.windows[3].windowSeconds, null);
+  assert.equal(result.windows[0].resetsAt, '2026-08-11T18:00:00.000Z');
+  assert.equal(result.windows[2].resetsAt, '2026-09-01T00:00:00.000Z');
+  assert.equal(result.windows[3].resetsAt, new Date(NOW.getTime() + 7_200_000).toISOString());
+  assert.match(result.notice, /未返回周额度不代表查询失败/);
+  assert.doesNotMatch(result.notice, /Kimi Web 登录令牌/);
+
+  // A hybrid response keeps one window per id and the keyed map wins it.
+  const hybrid = parseKimiCodeUsage({
+    usages: { limit_5h: { used_ratio: 0.3, reset_time: '2026-08-11T18:00:00Z' } },
+    limits: [{ window: { duration: 5, timeUnit: 'TIME_UNIT_HOUR' }, detail: { limit: '100', remaining: '80' } }],
+    usage: { limit: '100', used: '10' },
+  }, { now: NOW });
+  assert.deepEqual(hybrid.windows.map((window) => window.id), ['session', 'weekly']);
+  assert.equal(hybrid.windows[0].usedPercent, 30);
+
+  // Ratios that are missing or unparseable are skipped, not guessed.
+  assert.deepEqual(parseKimiCodeUsage({
+    usages: { limit_5h: { reset_time: '2026-08-11T18:00:00Z' }, limit_7d: { used_ratio: 'soon' } },
+  }, { now: NOW }).status, 'empty');
+});
+
+test('Kimi monthly pool exhaustion projects shorter windows as blocked while raw observations stay intact', () => {
+  const snapshot = parseKimiCodeUsage({
+    usages: {
+      limit_5h: { used_ratio: 0.2, reset_time: '2026-08-11T15:00:00Z' },
+      limit_7d: { used_ratio: 0.3, resetTime: '2026-08-17T00:00:00Z' },
+      limit_month_total: { used_ratio: 1, reset_at: '2026-09-01T00:00:00Z' },
+      limit_month_code: { used_ratio: 0.9 },
+    },
+    user: { membership: { level: 'LEVEL_ADVANCED' } },
+  }, { now: NOW });
+  const insight = buildSubscriptionInsights(
+    { generatedAt: NOW.toISOString(), buckets: [] },
+    { generatedAt: NOW.toISOString(), providers: [snapshot] });
+  const windows = Object.fromEntries(insight.providers[0].windows.map((window) => [window.id, window]));
+  // The blocked state is a derived display marker: raw percents survive and
+  // are never rewritten into the projection.
+  assert.equal(windows.session.blockedByMonthly, true);
+  assert.equal(windows.session.usedPercent, 20);
+  assert.equal(windows.session.blockedResetsAt, '2026-09-01T00:00:00.000Z');
+  assert.equal(windows.session.pace, null);
+  assert.equal(windows.weekly.blockedByMonthly, true);
+  assert.equal(windows['month-total'].blockedByMonthly, undefined);
+  assert.equal(windows['month-code'].blockedByMonthly, undefined);
+
+  // Blocked windows cannot advertise "available before reset"; the monthly
+  // pool itself still lists in the reset overview.
+  const overview = buildBenefitCapacityOverview(insight.providers, NOW.getTime());
+  assert.equal(overview.resetRows.some((row) => row.windowId === 'session'), false);
+  assert.equal(overview.resetRows.some((row) => row.windowId === 'month-total'), true);
+
+  // An unknown monthly reset must not promise an earlier recovery time.
+  const unknownReset = buildSubscriptionInsights(
+    { generatedAt: NOW.toISOString(), buckets: [] },
+    { generatedAt: NOW.toISOString(), providers: [parseKimiCodeUsage({
+      usages: { limit_5h: { used_ratio: 0.2 }, limit_month_total: { used_ratio: 1 } },
+    }, { now: NOW })] });
+  const unknownSession = unknownReset.providers[0].windows.find((window) => window.id === 'session');
+  assert.equal(unknownSession.blockedByMonthly, true);
+  assert.equal(unknownSession.blockedResetsAt, null);
+
+  // Available or already-reset monthly pools never block.
+  assert.equal(kimiMonthlyBlocking([
+    { id: 'month-total', remainingPercent: 0.1, resetsAt: null },
+  ], { now: NOW.getTime() }), null);
+  assert.equal(kimiMonthlyBlocking([
+    { id: 'month-total', remainingPercent: 0, resetsAt: '2026-08-11T11:00:00Z' },
+    { id: 'session', remainingPercent: 100, resetsAt: null },
+  ], { now: NOW.getTime() }), null);
+  const blocking = kimiMonthlyBlocking([
+    { id: 'month-total', remainingPercent: 0, resetsAt: '2026-09-01T00:00:00Z' },
+    { id: 'month-code', remainingPercent: 0, resetsAt: '2026-08-20T00:00:00Z' },
+    { id: 'session', remainingPercent: 80, resetsAt: '2026-08-11T15:00:00Z' },
+    { id: 'weekly', remainingPercent: 70, resetsAt: '2026-08-17T00:00:00Z' },
+  ], { now: NOW.getTime() });
+  assert.equal(blocking.resetsAt, '2026-09-01T00:00:00.000Z'); // latest blocker horizon
+  assert.deepEqual([...blocking.windowIds].sort(), ['session', 'weekly']);
+
+  // The Kimi Web subscription total binds the shorter windows the same way.
+  const web = parseKimiWebUsage({
+    usages: [{ scope: 'FEATURE_CODING', limits: [{
+      window: { duration: 5, timeUnit: 'TIME_UNIT_HOUR' },
+      detail: { limit: '100', remaining: '80', resetTime: '2026-08-11T15:00:00Z' },
+    }] }],
+  }, { subscriptionBalance: { amountUsedRatio: 1, expireTime: '2026-09-01T00:00:00Z' } }, { now: NOW });
+  const webInsight = buildSubscriptionInsights(
+    { generatedAt: NOW.toISOString(), buckets: [] },
+    { generatedAt: NOW.toISOString(), providers: [web] });
+  const webWindows = Object.fromEntries(webInsight.providers[0].windows.map((window) => [window.id, window]));
+  assert.equal(webWindows.session.blockedByMonthly, true);
+  assert.equal(webWindows.session.usedPercent, 20);
+  assert.equal(webWindows.total.blockedByMonthly, undefined);
 });
 
 test('Kimi preserves completed optional subscription facts when another enrichment fails', async () => {
@@ -885,6 +1034,93 @@ test('prefers a running agy loopback quota service without reading OAuth credent
   assert.match(calls[0].path, /RetrieveUserQuotaSummary$/);
 });
 
+const idTokenWith = (payload) => [
+  Buffer.from('{"alg":"none"}').toString('base64url'),
+  Buffer.from(JSON.stringify(payload)).toString('base64url'),
+  'test-signature',
+].join('.');
+
+test('Antigravity OAuth path prefers the grouped quota summary endpoint with Starter weekly pools', async () => {
+  const requested = [];
+  const result = await fetchAntigravityLimits({
+    settings: { authMode: 'environment', environmentVariable: 'ANTIGRAVITY_TEST_OAUTH' },
+    environment: { ANTIGRAVITY_TEST_OAUTH: JSON.stringify({
+      access_token: 'synthetic-access-token', project_id: 'synthetic-project',
+      id_token: idTokenWith({ email: 'builder@example.com' }),
+    }) },
+    fetcher: async (url, init) => {
+      requested.push(String(url).replace('https://cloudcode-pa.googleapis.com', ''));
+      assert.equal(init.headers.Authorization, 'Bearer synthetic-access-token');
+      if (String(url).includes('loadCodeAssist')) {
+        return new Response(JSON.stringify({ planInfo: { planType: 'starter' } }), { status: 200 });
+      }
+      if (String(url).includes('retrieveUserQuotaSummary')) {
+        return new Response(JSON.stringify({ response: { groups: [
+          { displayName: 'Gemini Models', buckets: [
+            { bucketId: 'gemini-weekly', window: 'weekly', remainingFraction: 0.9, resetTime: '2026-08-18T00:00:00Z' },
+          ] },
+          { displayName: 'Claude and GPT models', buckets: [
+            { bucketId: '3p-weekly', window: 'weekly', remainingFraction: 0.75 },
+          ] },
+        ] } }), { status: 200 });
+      }
+      throw new Error(`unexpected endpoint requested: ${url}`);
+    },
+  });
+  assert.deepEqual(requested, ['/v1internal:loadCodeAssist', '/v1internal:retrieveUserQuotaSummary']);
+  assert.equal(result.source, 'Antigravity OAuth JSON');
+  assert.equal(result.account, 'builder@example.com');
+  assert.equal(result.plan, 'starter');
+  assert.deepEqual(result.windows.map((item) => item.id), ['gemini-weekly', '3p-weekly']);
+  assert.deepEqual(result.windows.map((item) => item.windowSeconds), [604_800, 604_800]);
+  assert.deepEqual(result.windows.map((item) => item.remainingPercent), [90, 75]);
+  assert.equal(JSON.stringify(result).includes('synthetic-access-token'), false);
+});
+
+test('Antigravity OAuth path falls back to the per-model chain when the summary endpoint fails', async () => {
+  const requested = [];
+  const result = await fetchAntigravityLimits({
+    settings: { authMode: 'environment', environmentVariable: 'ANTIGRAVITY_TEST_OAUTH' },
+    environment: { ANTIGRAVITY_TEST_OAUTH: JSON.stringify({ access_token: 'synthetic-access-token' }) },
+    fetcher: async (url) => {
+      const endpoint = String(url).replace('https://cloudcode-pa.googleapis.com', '');
+      requested.push(endpoint);
+      if (endpoint.includes('loadCodeAssist')) {
+        return new Response(JSON.stringify({ planInfo: { planType: 'pro' } }), { status: 200 });
+      }
+      if (endpoint.includes('retrieveUserQuotaSummary')) {
+        return new Response('HTTP 500', { status: 500 });
+      }
+      return new Response(JSON.stringify({
+        models: { 'gemini-3-pro': { quotaInfo: { remainingFraction: 0.62, resetTime: '2026-08-12T00:00:00Z' } } },
+      }), { status: 200 });
+    },
+  });
+  assert.deepEqual(requested, [
+    '/v1internal:loadCodeAssist', '/v1internal:retrieveUserQuotaSummary', '/v1internal:fetchAvailableModels',
+  ]);
+  assert.equal(result.plan, 'pro');
+  assert.equal(result.windows.length, 1);
+  assert.equal(result.windows[0].id, 'gemini');
+  assert.equal(result.windows[0].remainingPercent, 62);
+});
+
+test('Antigravity OAuth path keeps a logged-out summary response instead of degrading the error', async () => {
+  const requested = [];
+  await assert.rejects(fetchAntigravityLimits({
+    settings: { authMode: 'environment', environmentVariable: 'ANTIGRAVITY_TEST_OAUTH' },
+    environment: { ANTIGRAVITY_TEST_OAUTH: JSON.stringify({ access_token: 'synthetic-access-token' }) },
+    fetcher: async (url) => {
+      requested.push(String(url).replace('https://cloudcode-pa.googleapis.com', ''));
+      if (String(url).includes('loadCodeAssist')) {
+        return new Response(JSON.stringify({}), { status: 200 });
+      }
+      return new Response('HTTP 401', { status: 401 });
+    },
+  }), (error) => error?.code === 'unauthorized');
+  assert.deepEqual(requested, ['/v1internal:loadCodeAssist', '/v1internal:retrieveUserQuotaSummary']);
+});
+
 test('parses JetBrains local XML without network access', () => {
   const quota = JSON.stringify({ type: 'PRO', current: '12', maximum: '100', tariffQuota: { available: '88' } }).replaceAll('"', '&quot;');
   const refill = JSON.stringify({ next: '2026-09-01T00:00:00Z' }).replaceAll('"', '&quot;');
@@ -931,8 +1167,8 @@ test('subscription limit service isolates provider failures and does not expose 
   assert.equal(JSON.stringify(result).includes('/Users/private'), false);
   assert.equal(result.providers[1].account, 'b•••@example.com');
   assert.deepEqual(Object.keys(result.providers[1]), [
-    'id', 'label', 'status', 'account', 'plan', 'source', 'notice', 'resetCredits',
-    'balances', 'updatedAt', 'windows', 'quotaCoverage',
+    'id', 'label', 'status', 'emptyReason', 'account', 'plan', 'source', 'notice', 'resetCredits',
+    'balances', 'creditBalance', 'cloudCredits', 'subscriptionDates', 'updatedAt', 'windows', 'quotaCoverage',
   ]);
 });
 
@@ -1016,6 +1252,106 @@ test('subscription limit service never queries an incomplete OpenCode account', 
   assert.equal(requested, false);
   assert.equal(result.providers[0].accounts[0].status, 'error');
   assert.equal(result.providers[0].accounts[0].error.code, 'not_configured');
+});
+
+test('Cursor HTTP 403 responses enter a six-hour cooldown that manual refresh and cache clears lift', async () => {
+  clearLimitCache();
+  let calls = 0;
+  let clock = NOW.valueOf();
+  const config = { subscriptionLimits: {
+    enabled: true, refreshMinutes: 10,
+    providerOrder: ['cursor'],
+    providers: { cursor: { enabled: true } },
+  } };
+  const options = {
+    config,
+    historyLoader: () => ({ schemaVersion: 1, observations: [] }),
+    historyRecorder: () => {},
+    now: () => clock,
+    fetchers: { cursor: async () => {
+      calls++;
+      throw Object.assign(new Error('forbidden'), { code: 'unauthorized', status: 403 });
+    } },
+  };
+  const first = await loadSubscriptionLimits({ force: true, ...options });
+  assert.equal(calls, 1);
+  assert.equal(first.providers[0].error.code, 'forbidden');
+  assert.match(first.providers[0].error.message, /手动刷新可立即重试/);
+
+  // Within the TTL cache the payload is served without new requests.
+  await loadSubscriptionLimits(options);
+  assert.equal(calls, 1);
+
+  // After the cache expires, the cooldown keeps the automatic refresh from re-requesting.
+  clock += 11 * 60_000;
+  const cooled = await loadSubscriptionLimits(options);
+  assert.equal(calls, 1);
+  assert.equal(cooled.providers[0].error.code, 'forbidden');
+
+  // A manual refresh retries immediately, even inside the cooldown window.
+  clock += 60_000;
+  await loadSubscriptionLimits({ force: true, ...options });
+  assert.equal(calls, 2);
+
+  // Six hours after the last forbidden answer the automatic refresh retries again.
+  clock += 6 * 60 * 60_000 + 11 * 60_000;
+  await loadSubscriptionLimits(options);
+  assert.equal(calls, 3);
+
+  // Clearing the cache (as settings saves do) lifts the cooldown before it expires.
+  clearLimitCache();
+  await loadSubscriptionLimits(options);
+  assert.equal(calls, 4);
+});
+
+test('non-Cursor 403 failures never inherit Cursor cooldown and accounts keep refreshing', async () => {
+  clearLimitCache();
+  let clock = NOW.valueOf();
+  const calls = [];
+  const config = { subscriptionLimits: {
+    enabled: true, refreshMinutes: 10,
+    providerOrder: ['opencode'],
+    providers: { opencode: {
+      enabled: true,
+      accounts: [
+        { id: 'blocked', label: 'Blocked', connectionType: 'api-key' },
+        { id: 'healthy', label: 'Healthy', connectionType: 'api-key' },
+      ],
+      activeAccountId: 'healthy',
+    } },
+  } };
+  const options = {
+    config,
+    historyLoader: () => ({ schemaVersion: 1, observations: [] }),
+    historyRecorder: () => {},
+    now: () => clock,
+    fetchers: { opencode: async ({ settings }) => {
+      calls.push(settings.accountId);
+      if (settings.accountId === 'blocked') {
+        throw Object.assign(new Error('forbidden'), { code: 'unauthorized', status: 403 });
+      }
+      return {
+        id: 'opencode', label: 'OpenCode Go', status: 'ok', updatedAt: NOW.toISOString(),
+        source: 'test', windows: [],
+      };
+    } },
+  };
+  const first = await loadSubscriptionLimits({ force: true, ...options });
+  assert.deepEqual(calls, ['blocked', 'healthy']);
+  assert.equal(first.providers[0].accounts[0].error.code, 'unauthorized');
+  assert.equal(first.providers[0].accounts[1].status, 'ok');
+
+  // After the cache expires both accounts retry; only Cursor has a cooldown.
+  clock += 11 * 60_000;
+  const cooled = await loadSubscriptionLimits(options);
+  assert.deepEqual(calls, ['blocked', 'healthy', 'blocked', 'healthy']);
+  assert.equal(cooled.providers[0].accounts[0].error.code, 'unauthorized');
+  assert.equal(cooled.providers[0].accounts[1].status, 'ok');
+
+  // Once the cooldown lapses the blocked account is queried again.
+  clock += 6 * 60 * 60_000 + 1 * 60_000;
+  await loadSubscriptionLimits(options);
+  assert.deepEqual(calls, ['blocked', 'healthy', 'blocked', 'healthy', 'blocked', 'healthy']);
 });
 
 test('loading public settings never probes credentials unless detection is explicitly requested', () => {

@@ -32,6 +32,9 @@ test('front-end and daemon resolve the same official DSH, MCode and Qoder direct
   const cases = [
     ['DSH_HOME', '~/custom dsh', env => getDshSessionsDir(env, home), join(home, 'custom dsh', 'sessions')],
     ['MCODE_HOME', join(home, 'custom mcode'), env => resolveMcodeDbPath(env, home), join(home, 'custom mcode', 'v2', 'sqlite', 'runtime-state.sqlite')],
+    // The mcode CLI relocates its whole data root with these two variables.
+    ['MINIMAX_DATA_DIR', join(home, 'minimax data'), env => resolveMcodeDbPath(env, home), join(home, 'minimax data', 'v2', 'sqlite', 'runtime-state.sqlite')],
+    ['MAVIS_DATA_DIR', join(home, 'mavis data'), env => resolveMcodeDbPath(env, home), join(home, 'mavis data', 'v2', 'sqlite', 'runtime-state.sqlite')],
     ['QODER_CONFIG_DIR', '~/qoder cli', env => getQoderProjectsDir('qoder', env, home), join(home, 'qoder cli', 'projects')],
     ['QODERCN_CONFIG_DIR', '~/qoder cn cli', env => getQoderProjectsDir('qoder-cn', env, home), join(home, 'qoder cn cli', 'projects')],
     ['QODER_HOME', '~/qoder ide', env => getQoderDbPath('qoder', env, home), join(home, 'qoder ide', 'cache', 'db', 'local.db')],

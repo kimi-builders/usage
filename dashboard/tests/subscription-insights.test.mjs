@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { recordLimitSnapshot, loadLimitHistory } from '../../src/limits/history.js';
 import {
   buildBenefitCapacityOverview, buildSubscriptionInsights, buildSubscriptionViewUsage, filterBenefitUsageRecords,
   localEvidenceDayKey, nearestBenefitObservation, selectSubscriptionAccounts, subscriptionAttribution,
@@ -109,14 +113,15 @@ test('uses completed-cycle history when the current Token estimate is weak', () 
     ],
   };
   const value = structuredClone(limits);
+  value.providers[0].plan = 'pro';
   value.providers[0].windows[0].usedPercent = 1;
   value.providers[0].windows[0].remainingPercent = 99;
   value.history = { observations: [
-    { observedAt: '2026-08-09T11:55:00.000Z', providers: [{ id: 'codex', windows: [{
+    { observedAt: '2026-08-09T11:55:00.000Z', providers: [{ id: 'codex', plan: 'pro', windows: [{
       id: 'primary', label: '5 小时', usedPercent: 80, remainingPercent: 20,
       resetsAt: '2026-08-09T12:00:00.000Z', windowSeconds: 18_000,
     }] }] },
-    { observedAt: '2026-08-10T11:55:00.000Z', providers: [{ id: 'codex', windows: [{
+    { observedAt: '2026-08-10T11:55:00.000Z', providers: [{ id: 'codex', plan: 'pro', windows: [{
       id: 'primary', label: '5 小时', usedPercent: 100, remainingPercent: 0,
       resetsAt: '2026-08-10T12:00:00.000Z', windowSeconds: 18_000,
     }] }] },
@@ -206,6 +211,40 @@ test('selects a provider account without mixing its quota facts or history', () 
   assert.equal(provider.accountId, 'work');
   assert.equal(provider.windows[0].usedPercent, 70);
   assert.deepEqual(provider.windows[0].historyPoints.map((point) => point.usedPercent), [65]);
+});
+
+test('Kimi account metadata and opaque history stay isolated; Agent tokens never become per-key evidence', () => {
+  const identities = ['kimi_' + 'a'.repeat(32), 'kimi_' + 'b'.repeat(32)];
+  const accounts = ['personal', 'work', 'duplicate'].map((id, index) => ({
+    id: 'kimi-code', accountId: id, accountLabel: id, status: 'ok', updatedAt: generatedAt,
+    historyAccountId: identities[index === 1 ? 1 : 0], accountIdentityVerified: true,
+    ...(index === 2 ? { duplicateOf: 'personal' } : {}),
+    windows: [{ id: 'session', label: '5 hours', usedPercent: 20 + index * 10, remainingPercent: 80 - index * 10,
+      windowSeconds: 18000, resetsAt: '2026-08-11T14:00:00Z' }],
+  }));
+  const multi = { generatedAt, providers: [{ ...accounts[0], activeAccountId: 'personal', accounts }],
+    history: { observations: [{ observedAt: generatedAt, providers: identities.map((id, index) => ({
+      id: 'kimi-code', accountId: id, windows: [{ id: 'session', label: '5 hours', usedPercent: 5 + index * 10 }],
+    })) }] } };
+  const settings = { providers: { 'kimi-code': { accounts: accounts.map((account, index) => ({ id: account.accountId,
+    entitlementType: 'paid', subscriptionPrice: 10 + index * 10, subscriptionCurrency: 'usd' })) } } };
+  const usage = { ...snapshot, buckets: snapshot.buckets.map(item => ({ ...item, source: 'kimi-code' })) };
+  for (const id of ['personal', 'work']) {
+    const report = buildSubscriptionInsights(usage, selectSubscriptionAccounts(multi, { 'kimi-code': id }), { settings });
+    const provider = report.providers[0];
+    assert.equal(provider.subscription.price, id === 'personal' ? 10 : 20);
+    assert.equal(provider.localAttributionAvailable, false);
+    assert.equal(provider.lifetimeTotals.totalTokens, 0);
+    assert.equal(provider.windows[0].estimatedCapacityTokens, null);
+    assert.deepEqual(provider.windows[0].historyPoints.map(point => point.usedPercent), [id === 'personal' ? 5 : 15]);
+    assert.equal(report.summary.spendByCurrency.usd, 30);
+    assert.equal(report.summary.subscriptionAccounts, 2);
+    assert.equal(buildBenefitCapacityOverview(report.providers, Date.parse(generatedAt)).resetRows.length, 2);
+  }
+  const rotated = structuredClone(multi);
+  rotated.providers[0].accounts[0].historyAccountId = 'kimi_' + 'c'.repeat(32);
+  assert.deepEqual(buildSubscriptionInsights(usage, selectSubscriptionAccounts(rotated, { 'kimi-code': 'personal' }), { settings })
+    .providers[0].windows[0].historyPoints, []);
 });
 
 test('summarizes like-for-like capacity across accounts without duplicating local estimates', () => {
@@ -316,14 +355,15 @@ test('uses the selected OpenCode account subscription without sharing metadata',
 
 test('links sanitized quota history to local tokens and calculates current-cycle pace', () => {
   const value = structuredClone(limits);
+  value.providers[0].plan = 'pro';
   value.providers[0].windows[0].usedPercent = 30;
   value.providers[0].windows[0].remainingPercent = 70;
   value.history = { observations: [
-    { observedAt: '2026-08-11T10:00:00.000Z', providers: [{ id: 'codex', windows: [{
+    { observedAt: '2026-08-11T10:00:00.000Z', providers: [{ id: 'codex', plan: 'pro', windows: [{
       id: 'primary', label: '5 小时', usedPercent: 10, remainingPercent: 90,
       resetsAt: '2026-08-11T14:00:00.000Z', windowSeconds: 18_000,
     }] }] },
-    { observedAt: '2026-08-11T12:00:00.000Z', providers: [{ id: 'codex', windows: [{
+    { observedAt: '2026-08-11T12:00:00.000Z', providers: [{ id: 'codex', plan: 'pro', windows: [{
       id: 'primary', label: '5 小时', usedPercent: 30, remainingPercent: 70,
       resetsAt: '2026-08-11T14:00:00.000Z', windowSeconds: 18_000,
     }] }] },
@@ -654,4 +694,35 @@ test('quota evidence drilldown locates the nearest sanitized observation', () =>
   ];
   assert.equal(nearestBenefitObservation(rows, '2026-08-11T10:06:00.000Z').id, 'near');
   assert.equal(nearestBenefitObservation(rows, 'invalid'), null);
+});
+
+test('persisted and reloaded plan transitions cannot reconnect earlier forecast evidence', () => {
+  for (const middlePlan of ['pro', null]) {
+    const directory = mkdtempSync(join(tmpdir(), 'kbu-plan-insights-'));
+    const path = join(directory, 'history.json');
+    const at = '2026-10-08T10:10:00.000Z';
+    const now = Date.parse(at);
+    const quota = (usedPercent) => ({ id: 'primary', label: '5 hours', windowSeconds: 18000,
+      resetsAt: '2026-10-08T12:00:00.000Z', usedPercent, remainingPercent: 100 - usedPercent });
+    try {
+      const samples = [['2026-10-08T09:45:00.000Z', 'plus', 10],
+        ['2026-10-08T10:02:00.000Z', middlePlan, 5], [at, 'plus', 50]];
+      for (const [updatedAt, plan, used] of samples) {
+        recordLimitSnapshot({ generatedAt: updatedAt, providers: [{
+          id: 'codex', status: 'ok', plan, updatedAt, windows: [quota(used)],
+        }] }, { path, now });
+      }
+      const history = loadLimitHistory({ path, now });
+      const result = buildSubscriptionInsights({ generatedAt: at, buckets: [] }, {
+        history, providers: [{ id: 'codex', status: 'ok', plan: 'plus', updatedAt: at, windows: [quota(50)] }],
+      });
+      const window = result.providers[0].windows[0];
+      assert.equal(window.historyPoints.length, 3);
+      assert.deepEqual(window.forecastHistoryPoints.map((row) => row.observedAt), [at]);
+      assert.equal(window.pace.burnPercentPerHour, null);
+      assert.equal(window.pace.projectedExhaustAt, null);
+      assert.ok(window.pace.projectedFinalPercent < 100);
+      assert.equal(window.cycleStats.sampledCycles, 0);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }
 });

@@ -2,6 +2,20 @@ import { redactLocalPathsInText, safeLocalPathDisplay } from '../safe-display.js
 
 const RESULT_STATUSES = new Set(['ok', 'empty']);
 
+/**
+ * Machine-readable "why is there no window" vocabulary that may accompany an
+ * empty result, aligned with the upstream desktop clients' EmptyReason enums.
+ * Additive within contract v1: clients that do not know the field ignore it,
+ * and clients that do can render the reason instead of a neutral empty state.
+ * Unknown values fail closed instead of passing through silently.
+ */
+export const PROVIDER_EMPTY_REASONS = Object.freeze([
+  'limitReached',
+  'noWindow',
+  'notEntitled',
+  'sessionWithoutPlanLimits',
+]);
+
 function invalid(message) {
   const error = new Error(`额度 Provider 返回结构不兼容：${message}`);
   error.code = 'invalid_response';
@@ -135,6 +149,35 @@ function browserBalances(balances) {
   });
 }
 
+// Optional provider facts are deliberately outside quota windows, money
+// balances, and user-declared subscription spend. Raw payloads/IDs never pass.
+function browserBenefitFacts(result) {
+  const numeric = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1e12;
+  let creditBalance = null; let cloudCredits = null; let subscriptionDates = null;
+  if (result.creditBalance != null) {
+    const value = result.creditBalance;
+    if (result.id !== 'workbuddy' || !numeric(value.total) || !numeric(value.remaining)
+      || value.reserved != null && !numeric(value.reserved)) throw invalid('creditBalance 无效');
+    dateOrNull(value.resetsAt, 'creditBalance.resetsAt');
+    creditBalance = { total: value.total, remaining: value.remaining, reserved: value.reserved ?? null, resetsAt: value.resetsAt ?? null };
+  }
+  if (result.cloudCredits != null) {
+    const value = result.cloudCredits;
+    if (result.id !== 'claude-code' || !numeric(value.limit) || value.limit <= 0 || !numeric(value.remaining)
+      || !numeric(value.used) || Math.abs(value.used + value.remaining - value.limit) > 0.000001
+      || typeof value.locked !== 'boolean') throw invalid('cloudCredits 无效');
+    dateOrNull(value.expiresAt, 'cloudCredits.expiresAt');
+    cloudCredits = { limit: value.limit, remaining: value.remaining, used: value.used, locked: value.locked, expiresAt: value.expiresAt ?? null };
+  }
+  if (result.subscriptionDates != null) {
+    if (result.id !== 'claude-code') throw invalid('subscriptionDates 无效');
+    dateOrNull(result.subscriptionDates.renewsAt, 'subscriptionDates.renewsAt');
+    dateOrNull(result.subscriptionDates.expiresAt, 'subscriptionDates.expiresAt');
+    subscriptionDates = { renewsAt: result.subscriptionDates.renewsAt ?? null, expiresAt: result.subscriptionDates.expiresAt ?? null };
+  }
+  return { creditBalance, cloudCredits, subscriptionDates };
+}
+
 /**
  * Enforce the browser-safe shape shared by every subscription quota provider.
  * Provider-specific parsers remain free to add fields, but the stable fields
@@ -145,6 +188,9 @@ export function assertProviderContract(expectedId, result) {
   if (result.id !== expectedId) throw invalid(`期望 ${expectedId}，收到 ${String(result.id || '空 id')}`);
   text(result.label, 'label');
   if (!RESULT_STATUSES.has(result.status)) throw invalid(`status ${String(result.status)} 不受支持`);
+  if (result.emptyReason != null && !PROVIDER_EMPTY_REASONS.includes(result.emptyReason)) {
+    throw invalid(`emptyReason ${String(result.emptyReason)} 不受支持`);
+  }
   requiredDate(result.updatedAt, 'updatedAt');
   if (!Array.isArray(result.windows)) throw invalid('windows 必须是数组');
   if (result.status === 'empty' && result.windows.length) throw invalid('empty 结果不能包含额度窗口');
@@ -154,12 +200,19 @@ export function assertProviderContract(expectedId, result) {
     id: expectedId,
     label: safeText(result.label, 100),
     status: result.status,
+    emptyReason: PROVIDER_EMPTY_REASONS.includes(result.emptyReason) ? result.emptyReason : null,
     account: safeAccount(result.account),
     plan: safeText(result.plan, 160),
     source: safeDisplayText(result.source, 240),
     notice: safeDisplayText(result.notice, 300),
     resetCredits: browserResetCredits(result.resetCredits),
     balances: browserBalances(result.balances),
+    ...browserBenefitFacts(result),
+    ...(expectedId === 'kimi-code' && /^kimi_[a-f0-9]{32}$/.test(result.historyAccountId || '') ? {
+      historyAccountId: result.historyAccountId,
+      accountIdentityVerified: result.accountIdentityVerified === true,
+      ...(/^key_[a-f0-9]{32}$/.test(result.credentialId || '') ? { credentialId: result.credentialId } : {}),
+    } : {}),
     updatedAt: new Date(result.updatedAt).toISOString(),
     windows: result.windows.map(browserWindow),
   };

@@ -141,6 +141,9 @@ export function createDashboardData(snapshot, {
     diagnostics: diagnostic.diagnostics,
     buckets,
     sessions,
+    turnPerformance: (snapshot.data.turnPerformance || []).map(({ source, project, agentVersion, model, modelCanonical, reasoningEffort, completedAt, durationMs, firstTokenMs, outputTokens }) => ({
+      source, project, agentVersion, model, modelCanonical, reasoningEffort, completedAt, durationMs, firstTokenMs, outputTokens,
+    })),
     activityHours: aggregateActivityHours(snapshot.data.sessions),
   };
 }

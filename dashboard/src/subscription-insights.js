@@ -5,7 +5,7 @@ import {
 
 const PROVIDER_SOURCES = {
   // A model name or Agent does not establish which Coding Plan paid for it.
-  glm: [], minimax: [], 'alibaba-coding': [],
+  glm: [], minimax: [], 'alibaba-coding': [], workbuddy: [],
   'kimi-code': ['kimi-code'],
   codex: ['codex'],
   'claude-code': ['claude-code'],
@@ -46,7 +46,7 @@ function normalizedEntitlementType(subscription) {
 
 function subscriptionSettingsForProvider(provider, settings) {
   const providerSettings = settings?.providers?.[provider.id] || {};
-  if (provider.id !== 'opencode' || !Array.isArray(providerSettings.accounts)) return providerSettings;
+  if (!['opencode', 'kimi-code'].includes(provider.id) || !Array.isArray(providerSettings.accounts)) return providerSettings;
   const accountId = provider.accountId || providerSettings.activeAccountId;
   return providerSettings.accounts.find((account) => account.id === accountId)
     || providerSettings.accounts.find((account) => account.id === providerSettings.activeAccountId)
@@ -73,10 +73,19 @@ function normalizedSubscriptionFacts(subscription = {}) {
 
 function subscriptionRecordsForSummary(providers, settings) {
   return providers.flatMap((provider) => {
-    if (provider.id !== 'opencode') return [provider.subscription];
-    const accounts = settings?.providers?.opencode?.accounts;
+    if (!['opencode', 'kimi-code'].includes(provider.id)) return [provider.subscription];
+    const accounts = settings?.providers?.[provider.id]?.accounts;
+    if (provider.id === 'kimi-code' && Array.isArray(accounts) && !accounts.length) return [];
     if (!Array.isArray(accounts) || !accounts.length) return [provider.subscription];
-    return accounts.map((account) => normalizedSubscriptionFacts(account));
+    return accounts.filter(account => !provider.accounts?.find(result => result.accountId === account.id)?.duplicateOf)
+      .map((account) => {
+        // A local login may have no declaration while a verified sibling key
+        // does. Keep that declaration once; do not manufacture another plan.
+        const siblingIds = new Set((provider.accounts || []).filter(result => result.duplicateOf === account.id).map(result => result.accountId));
+        const declared = normalizedEntitlementType(account) !== 'unknown' ? account
+          : accounts.find(sibling => siblingIds.has(sibling.id) && normalizedEntitlementType(sibling) !== 'unknown') || account;
+        return normalizedSubscriptionFacts(declared);
+      });
   });
 }
 
@@ -107,6 +116,28 @@ function normalizeQuotaWindow(window) {
     ...window,
     usedPercent: usedPercent == null ? null : Math.max(0, Math.min(100, usedPercent)),
     remainingPercent: remainingPercent == null ? null : Math.max(0, Math.min(100, remainingPercent)),
+  };
+}
+
+// Kimi monthly membership pools bind the shorter rate windows (upstream
+// CodexBar "binding cap"): once a pool is observed exhausted and has not reset
+// yet, the 5-hour/weekly windows cannot deliver fresh capacity. This only
+// derives a display marker — raw window observations stay untouched and no
+// quota amount is invented. An unknown blocker reset never promises an
+// earlier recovery time.
+const KIMI_MONTHLY_POOL_IDS = new Set(['month-total', 'month-code', 'total']);
+
+export function kimiMonthlyBlocking(windows, { now = Date.now() } = {}) {
+  const list = Array.isArray(windows) ? windows.filter(Boolean) : [];
+  const blockers = list.filter((window) => KIMI_MONTHLY_POOL_IDS.has(window.id)
+    && Number.isFinite(window.remainingPercent) && window.remainingPercent <= 0
+    && (timestamp(window.resetsAt) == null || timestamp(window.resetsAt) > now));
+  if (!blockers.length) return null;
+  const resets = blockers.map((window) => timestamp(window.resetsAt)).filter((time) => time != null);
+  return {
+    resetsAt: resets.length === blockers.length ? new Date(Math.max(...resets)).toISOString() : null,
+    windowIds: new Set(list.map((window) => window.id)
+      .filter((id) => typeof id === 'string' && !KIMI_MONTHLY_POOL_IDS.has(id))),
   };
 }
 
@@ -450,7 +481,7 @@ export function buildBenefitCapacityOverview(providers, now = Date.now()) {
       return [{ ...provider, overviewAccountKey: `${provider.id}:` }];
     }
     const selectedAccountId = provider.accountId || provider.activeAccountId || null;
-    return provider.accounts.map((account, index) => {
+    return provider.accounts.filter(account => !account.duplicateOf).map((account, index) => {
       const accountId = account.accountId || null;
       if (accountId && accountId === selectedAccountId) {
         return { ...provider, overviewAccountKey: `${provider.id}:${accountId}` };
@@ -474,8 +505,10 @@ export function buildBenefitCapacityOverview(providers, now = Date.now()) {
       };
     });
   });
+  // Blocked windows are excluded: their next reset does not restore access,
+  // so they must not advertise "available before reset" capacity.
   const rows = accounts.flatMap((provider) => (provider.windows || [])
-    .filter((window) => !window.stale && timestamp(window.resetsAt) != null)
+    .filter((window) => !window.stale && !window.blockedByMonthly && timestamp(window.resetsAt) != null)
     .map((window) => {
       const resetAt = timestamp(window.resetsAt);
       const seconds = finite(window.windowSeconds);
@@ -642,12 +675,42 @@ function totalsAtObservation(buckets, window, observedAt, sourceHistoryStart, us
   };
 }
 
-function historyWindows(history, providerId, accountId, buckets, sourceHistoryStart, usageObservedAt) {
+// Providers expose the subscription tier as a plan label on their quota
+// results, so that label is the plan identity here; comparisons are trimmed
+// and case-folded.
+function normalizedPlan(plan) {
+  const value = typeof plan === 'string' ? plan.trim().toLowerCase() : '';
+  return value || null;
+}
+
+function historyWindows(history, providerId, accountId, buckets, sourceHistoryStart, usageObservedAt, currentPlan = null, evidenceOnly = false, allowHistoricalPlan = false) {
   const groups = new Map();
-  for (const observation of history?.observations || []) {
-    const provider = observation.providers?.find((item) => (
-      item.id === providerId && (accountId ? item.accountId === accountId : !item.accountId)
-    ));
+  const observations = [...(history?.observations || [])].sort((a, b) => Date.parse(a.observedAt) - Date.parse(b.observedAt));
+  const records = observations.map((observation) => observation.providers?.find((item) => (
+    item.id === providerId && (accountId ? item.accountId === accountId : !item.accountId)
+  )) || null);
+  // Forecast evidence is only the latest contiguous known-plan segment.
+  // Plus -> Pro -> Plus starts a new segment; an unknown plan is a boundary,
+  // not evidence for either neighbor. Keep the full history for drill-down.
+  const anchorPlan = normalizedPlan(currentPlan)
+    || (allowHistoricalPlan ? normalizedPlan(records.filter(Boolean).at(-1)?.plan) : null)
+    || null;
+  const segment = new Set();
+  const requiresPlan = providerId === 'codex' || anchorPlan
+    || records.some((record) => normalizedPlan(record?.plan));
+  if (evidenceOnly && requiresPlan && anchorPlan) {
+    for (let index = records.length - 1; index >= 0; index -= 1) {
+      const record = records[index];
+      if (!record) continue;
+      if (normalizedPlan(record.plan) !== anchorPlan) break;
+      segment.add(index);
+    }
+  }
+  for (let index = 0; index < observations.length; index += 1) {
+    const observation = observations[index];
+    const provider = records[index];
+    if (!provider) continue;
+    if (evidenceOnly && requiresPlan && !segment.has(index)) continue;
     const hasProviderTime = Object.prototype.hasOwnProperty.call(provider || {}, 'observedAt');
     const providerTime = timestamp(provider?.observedAt);
     const legacyTime = hasProviderTime ? null : timestamp(observation.observedAt);
@@ -687,7 +750,7 @@ function windowPace(window, now) {
   if (elapsedFraction < 0.03) return {
     elapsedFraction, projectedFinalPercent: null, burnPercentPerHour: null, projectedExhaustAt: null,
   };
-  const currentCycle = (window.historyPoints || []).filter((point) => (
+  const currentCycle = (window.forecastHistoryPoints || []).filter((point) => (
     point.resetsAt === window.resetsAt && Date.parse(point.observedAt) <= now
       && finite(point.usedPercent) != null
   ));
@@ -778,7 +841,9 @@ export function buildSubscriptionInsights(snapshot, limits, {
     const providerEvidenceClock = evidenceClock(usageObservedAt, quotaObservedAt);
     const providerStale = quotaObservedAt != null
       && usageReferenceAt - quotaObservedAt > QUOTA_STALE_AFTER_MS;
-    const attribution = providerAttribution(provider.id);
+    // Agent-level Kimi history cannot prove which local/API-key account paid.
+    const attribution = provider.id === 'kimi-code' && provider.accounts?.length
+      ? { kind: 'source', sources: [], modelFamily: null } : providerAttribution(provider.id);
     const buckets = allBuckets.filter((bucket) => matchesNormalizedAttribution(bucket, attribution));
     const sources = new Set(attribution.kind === 'source'
       ? attribution.sources
@@ -815,8 +880,12 @@ export function buildSubscriptionInsights(snapshot, limits, {
     const { monthlyPrice } = subscriptionFacts;
     const normalizedHistoryStart = Number.isFinite(sourceHistoryStart) ? sourceHistoryStart : null;
     const history = historyWindows(
-      limits?.history, provider.id, provider.accountId || null,
-      buckets, normalizedHistoryStart, usageObservedAt,
+      limits?.history, provider.id, provider.historyAccountId || provider.accountId || null,
+      buckets, normalizedHistoryStart, usageObservedAt, provider.plan || null,
+    );
+    const evidence = historyWindows(
+      limits?.history, provider.id, provider.historyAccountId || provider.accountId || null,
+      buckets, normalizedHistoryStart, usageObservedAt, provider.plan || null, true, provider.status === 'error',
     );
     const baseWindows = currentWindows.length ? currentWindows : [...history.values()].map((points) => {
       const latest = points.at(-1);
@@ -830,17 +899,29 @@ export function buildSubscriptionInsights(snapshot, limits, {
     });
     const enrichedWindows = baseWindows.map((window) => {
       const historyPoints = history.get(window.id) || [];
-      const cycleStats = buildCycleCapacityStats(historyPoints, modelRows, quotaObservedAt ?? usageReferenceAt);
+      const forecastHistoryPoints = evidence.get(window.id) || [];
+      const cycleStats = buildCycleCapacityStats(forecastHistoryPoints, modelRows, quotaObservedAt ?? usageReferenceAt);
       const value = {
         ...window,
         historyPoints,
+        forecastHistoryPoints,
         cycleStats,
         capacitySummary: windowCapacitySummary(window, cycleStats),
       };
       return { ...value, pace: value.stale || quotaObservedAt == null ? null : windowPace(value, quotaObservedAt) };
     });
-    const currentQuotaWindows = enrichedWindows.filter((window) => !window.stale && hasQuotaFact(window));
-    const historicalQuotaWindows = enrichedWindows.filter((window) => (
+    // Blocked-by-monthly markers are derived display state: the raw window
+    // numbers stay untouched, and pace is meaningless for a blocked window.
+    const blocking = provider.id === 'kimi-code'
+      ? kimiMonthlyBlocking(provider.windows, { now: quotaObservedAt ?? usageReferenceAt })
+      : null;
+    const displayWindows = blocking
+      ? enrichedWindows.map((window) => (blocking.windowIds.has(window.id)
+        ? { ...window, blockedByMonthly: true, blockedResetsAt: blocking.resetsAt, pace: null }
+        : window))
+      : enrichedWindows;
+    const currentQuotaWindows = displayWindows.filter((window) => !window.stale && hasQuotaFact(window));
+    const historicalQuotaWindows = displayWindows.filter((window) => (
       window.stale && (hasQuotaFact(window) || (window.historyPoints || []).some(hasQuotaFact))
     ));
     const quotaObservation = {
@@ -860,7 +941,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
       currencies: Array.isArray(provider.balances) ? provider.balances.length : 0,
       observedAt: quotaObservedAt == null ? null : new Date(quotaObservedAt).toISOString(),
     };
-    const primaryWindow = [...enrichedWindows]
+    const primaryWindow = [...displayWindows]
       .filter((window) => window.estimatedCapacityTokens != null && window.windowSeconds)
       .sort((left, right) => right.windowSeconds - left.windowSeconds)[0] || null;
     const localAttributionAvailable = attribution.kind !== 'source' || sources.size > 0;
@@ -890,13 +971,15 @@ export function buildSubscriptionInsights(snapshot, limits, {
       activity: providerActivity(buckets),
       usageRecords: providerUsageRecords(buckets),
       observationLog: [...(history.values())].flat().sort((left, right) => Date.parse(right.observedAt) - Date.parse(left.observedAt)),
-      windows: enrichedWindows,
+      windows: displayWindows,
       primaryWindow,
       hasLocalUsage: lifetimeTotals.totalTokens > 0,
       subscription: subscriptionFacts,
       economics,
       quotaObservation,
       balanceObservation,
+      creditObservation: { state: provider.status === 'ok' && provider.creditBalance
+        ? providerStale ? 'historical' : 'current' : 'unavailable' },
       evidenceClock: {
         ...providerEvidenceClock,
         usageObservedAt: usageObservedAt == null ? null : new Date(usageObservedAt).toISOString(),
@@ -967,6 +1050,7 @@ export function buildSubscriptionInsights(snapshot, limits, {
       balanceObservableProviders: providers.filter((provider) => provider.balanceObservation.state === 'current').length,
       officialFactProviders: providers.filter((provider) => (
         provider.quotaObservation.state === 'current' || provider.balanceObservation.state === 'current'
+          || provider.creditObservation.state === 'current'
       )).length,
       recentTokens: recentTrackedTotals.totalTokens,
       apiEquivalentUsd: recentTrackedTotals.costMicros / 1_000_000,

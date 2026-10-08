@@ -39,15 +39,38 @@ function count(value) {
   return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
 }
 
-export function parseUsageCsv(text) {
+function parseUsageCsvResult(text) {
   const parsedRows = rows(text);
-  if (parsedRows.length < 2) return [];
+  if (parsedRows.length < 2) return { entries: [] };
   const header = parsedRows[0].map((value) => value.trim());
   const column = (name) => header.indexOf(name);
   const dateIndex = column('Date');
   const modelIndex = column('Model');
-  if (dateIndex < 0 || modelIndex < 0) return [];
-  return parsedRows.slice(1).flatMap((row) => {
+  const hasTokenColumn = [
+    'Input (w/o Cache Write)',
+    'Input (w/ Cache Write)',
+    'Cache Read',
+    'Output Tokens',
+  ].some((name) => column(name) >= 0);
+  // A renamed column used to degrade silently: every row then parsed as zero
+  // tokens, the run uploaded an empty snapshot, and sync.js pruned Cursor's
+  // incremental state as if the account had gone quiet — the dashboard just
+  // stopped counting Cursor. The export header is an external contract, so
+  // treat one we do not recognise as a skipped run instead: the state
+  // survives and the user gets a warning.
+  if (dateIndex < 0 || modelIndex < 0 || !hasTokenColumn) {
+    return {
+      entries: [],
+      skipped: true,
+      warnings: [
+        'cursor: export header does not match the expected columns ' +
+        '(Date, Model and at least one token column); run skipped to protect incremental sync state. ' +
+        'Cursor may have changed its export format.' +
+        ` Current header: ${header.slice(0, 8).join(', ')}`,
+      ],
+    };
+  }
+  const entries = parsedRows.slice(1).flatMap((row) => {
     const rawDate = row[dateIndex]?.trim();
     const timestamp = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
       ? new Date(`${rawDate}T00:00:00.000Z`)
@@ -72,13 +95,20 @@ export function parseUsageCsv(text) {
       requestCount: 1,
     }];
   });
+  return { entries };
+}
+
+export function parseUsageCsv(text) {
+  return parseUsageCsvResult(text).entries;
 }
 
 export async function parse({ sourceOptions } = {}) {
   const path = csvPath(sourceOptions);
   if (!path) return null;
+  const { entries, ...report } = parseUsageCsvResult(readFileSync(path, 'utf8'));
   return {
-    buckets: aggregateToBuckets(parseUsageCsv(readFileSync(path, 'utf8'))),
+    buckets: aggregateToBuckets(entries),
     sessions: [],
+    ...report,
   };
 }

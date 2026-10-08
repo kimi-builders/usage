@@ -93,9 +93,56 @@ export function loadCodexCredentials(environment = process.env) {
   };
 }
 
-export function loadKimiCredentials(environment = process.env) {
-  const root = configuredHome(environment, 'KIMI_CODE_HOME', join(homedir(), '.kimi-code'));
-  const path = join(root, 'credentials', 'kimi-code.json');
+const CODEX_REREAD_ATTEMPTS = 2;
+const CODEX_REREAD_DELAY_MS = 50;
+
+function wait(ms) {
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
+}
+
+// The Codex CLI publishes auth.json atomically and may rotate its credentials
+// while a usage fetch is in flight. When the file is missing, only partially
+// written, or its access token is expired or about to expire, reread a bounded
+// number of times before reporting the login as missing or stale. The CLI owns
+// the refresh token; a reread never redeems it.
+export async function loadCodexCredentialsRereading(environment = process.env, {
+  attempts = CODEX_REREAD_ATTEMPTS,
+  delayMs = CODEX_REREAD_DELAY_MS,
+  sleep = wait,
+} = {}) {
+  let credentials = loadCodexCredentials(environment);
+  let retriesRemaining = attempts;
+  while ((!credentials.found || !credentials.fresh) && retriesRemaining > 0) {
+    retriesRemaining -= 1;
+    await sleep(delayMs);
+    credentials = loadCodexCredentials(environment);
+  }
+  return credentials;
+}
+
+// Kimi Code has two login locations in the wild: kimi-cli (1.x) keeps
+// `$KIMI_SHARE_DIR/credentials/kimi-code.json`, defaulting to `~/.kimi`, while
+// the current CLI (2.x) writes `$KIMI_CODE_HOME/credentials/kimi-code.json`,
+// defaulting to `~/.kimi-code`. Reading a single home reported a missing login
+// for users of the other CLI generation, so candidates are probed in that
+// order and the first existing file wins; with no login anywhere the 2.x path
+// is named so a later refresh writes where the installed CLI actually logs in.
+export function kimiCredentialPaths(environment = process.env, home = homedir()) {
+  const roots = [
+    configuredHome(environment, 'KIMI_SHARE_DIR', null),
+    configuredHome(environment, 'KIMI_CODE_HOME', null),
+    join(home, '.kimi-code'),
+    join(home, '.kimi'),
+  ].filter(Boolean);
+  return roots.map((root) => join(root, 'credentials', 'kimi-code.json'));
+}
+
+export function loadKimiCredentials(environment = process.env, { home = homedir() } = {}) {
+  const paths = kimiCredentialPaths(environment, home);
+  const path = paths.find((candidate) => {
+    try { return statSync(candidate).isFile(); } catch { return false; }
+  }) || paths[0];
+  const root = dirname(dirname(path));
   const payload = jsonFile(path);
   const accessToken = text(payload?.access_token || payload?.accessToken);
   const claims = decodeJwtPayload(accessToken);

@@ -474,6 +474,31 @@ export function availableModels(data, source = 'all') {
   }).models;
 }
 
+export function analyzeTurnPerformance(data, inputFilters) {
+  const filters = normalizedFilters(inputFilters);
+  const end = new Date(data.generatedAt);
+  const start = rangeStart(filters.range, end);
+  const deviceId = localDeviceId(data);
+  const rows = (data.turnPerformance || []).filter(row => row.source === 'codex'
+    && Number.isSafeInteger(row.durationMs) && row.durationMs > 0
+    && Number.isSafeInteger(row.outputTokens) && row.outputTokens > 0
+    && inRange(row.completedAt, start, end) && matchesBucket(row, filters, deviceId));
+  const median = values => {
+    if (!values.length) return null;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  };
+  const first = rows.filter(row => Number.isSafeInteger(row.firstTokenMs)
+    && row.firstTokenMs >= 0 && row.firstTokenMs <= row.durationMs).map(row => row.firstTokenMs);
+  const durationMs = rows.reduce((sum, row) => sum + row.durationMs, 0);
+  const outputTokens = rows.reduce((sum, row) => sum + row.outputTokens, 0);
+  return { sampleCount: rows.length, firstTokenSampleCount: first.length,
+    medianFirstTokenMs: median(first), medianDurationMs: median(rows.map(row => row.durationMs)),
+    outputTokensPerSecond: durationMs && Number.isSafeInteger(durationMs) && Number.isSafeInteger(outputTokens)
+      ? outputTokens / durationMs * 1_000 : null };
+}
+
 export function analyze(data, inputFilters) {
   const selectedData = filterData(data, inputFilters);
   const { filters, buckets, sessions, activityHours } = selectedData;
@@ -497,6 +522,7 @@ export function analyze(data, inputFilters) {
   const recordsByBucket = buildRecords(buckets, 'bucket');
   return {
     ...selectedData,
+    turnPerformance: analyzeTurnPerformance(data, inputFilters),
     totals,
     lifetimeTotals,
     previous,

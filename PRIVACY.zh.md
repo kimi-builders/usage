@@ -40,6 +40,11 @@ Collector 必须打开并解码已选日志记录，其中可能含有对话正�
 
 ## 永不上传
 
+Codex 实测轮次计时（TTFT、整轮时长与吞吐量样本）留在本机；社区同步仍只发送原有白名单用量记录。
+WorkBuddy 官网 Cookie / User-Agent 组合及 Claude 可选 OAuth / Cookie 组合均须主动提供，
+仅使用所选环境变量或 macOS 钥匙串保存。供应商余额、重置券、赠送云额度与订阅日期不会加入用量导出或社区上传。
+原始 grant ID、兑换句柄、账号标识和赠送额度锁定原因会被丢弃。
+
 - prompt、response、reasoning 文本或 tool result；
 - 完整文件路径、仓库 remote 或文件内容；
 - 原始 session ID；
@@ -50,6 +55,11 @@ Collector 必须打开并解码已选日志记录，其中可能含有对话正�
 自动检测的 token 从 Provider 自己的本机登录存储读取。手动 secret 在可用时使用 macOS
 Keychain；普通 Collector 配置只保存 Provider 开关、认证方式、环境变量名、可选 IDE 路径
 和 Qoder 站点选择。
+
+Kimi 每个连接的名称、手动订阅标注与凭据分离保存。Key 只保留在所选环境变量或 macOS 钥匙串；
+接口返回的账户身份在进入浏览器或本机额度历史之前转换为安装实例隔离的 HMAC 标识，不保留原始
+账户 ID 或 Key 前缀。这些标识不进入用量导出或社区同步。额度事实不能证明跨客户端的 Key 用量归属，
+没有逐请求证据的本机 Token 保持未关联。
 
 OpenCode Go 为每个账户单独保存 Cookie；Workspace 在查询时自动发现，除非用户为该账户
 保存可选的 `wrk_…` 覆盖值。原始 token、Cookie 和复制的 cURL 片段永远不会返回浏览器、

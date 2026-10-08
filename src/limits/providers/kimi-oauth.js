@@ -184,7 +184,7 @@ async function refreshUnderLock(initial, {
         if (recovery.refreshToken && recovery.refreshToken !== current.refreshToken && recovery.fresh) {
           return recovery;
         }
-        throw new LimitHTTPError('Kimi Code 登录已失效，请重新登录。', {
+        throw new LimitHTTPError('Kimi Code 登录已失效。运行 kimi 重新登录后，下次查询会自动重读新凭据，无需重启本工具。', {
           status: error?.status || 401, code: 'unauthorized',
         });
       }

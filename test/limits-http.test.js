@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { requestJson, requestText } from '../src/limits/http.js';
+import { requestBytes, requestJson, requestText } from '../src/limits/http.js';
 
 test('quota HTTP layer classifies authentication, upstream, and invalid-payload failures', async () => {
   await assert.rejects(
@@ -20,6 +20,34 @@ test('quota HTTP layer classifies authentication, upstream, and invalid-payload 
       fetcher: async () => new Response('<!doctype html>', { status: 200 }),
     }),
     (error) => error.code === 'invalid_response',
+  );
+});
+
+test('quota HTTP layer preserves 403 auth recovery and leaves provider-specific cooldown to the service', async () => {
+  const forbidden = { status: 403 };
+  await assert.rejects(
+    requestJson('https://cursor.com/api/usage-summary', {
+      fetcher: async () => new Response('{"error":"not_available_in_your_country"}', forbidden),
+    }),
+    (error) => error.code === 'unauthorized' && error.status === 403,
+  );
+  await assert.rejects(
+    requestBytes('https://cursor.com/api/usage-summary', {
+      fetcher: async () => new Response('forbidden', forbidden),
+    }),
+    (error) => error.code === 'unauthorized' && error.status === 403,
+  );
+  await assert.rejects(
+    requestText('https://cursor.com/api/auth/me', {
+      fetcher: async () => new Response('forbidden', forbidden),
+    }),
+    (error) => error.code === 'unauthorized' && error.status === 403,
+  );
+  await assert.rejects(
+    requestJson('https://cursor.com/api/usage-summary', {
+      fetcher: async () => new Response('{"error":"expired"}', { status: 401 }),
+    }),
+    (error) => error.code === 'unauthorized' && error.status === 401,
   );
 });
 
@@ -51,4 +79,3 @@ test('quota HTTP layer classifies offline and timeout failures without real netw
     (error) => error.code === 'timeout',
   );
 });
-

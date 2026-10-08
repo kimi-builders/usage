@@ -6,51 +6,43 @@
 [![CI](https://github.com/kimi-builders/usage/actions/workflows/ci.yml/badge.svg)](https://github.com/kimi-builders/usage/actions/workflows/ci.yml)
 [![MIT License](https://img.shields.io/github/license/kimi-builders/usage)](./LICENSE)
 
-**Turn usage scattered across AI coding agents into one dashboard you can
-actually analyze.**
+**See AI coding agent token usage, cost estimates, and activity in one local dashboard.**
 
-Kimi Builders Usage reads logs that Kimi Code, Claude Code, Codex, OpenCode,
-and other tools already keep on your computer. It combines tokens, standard-API
-cost estimates, active time, models, projects, and subscription limits. The
-local dashboard needs no account and stays offline by default; community sync
-is a separate opt-in capability.
+Kimi Builders Usage provides a CLI and a local web dashboard for logs already
+stored by Kimi Code, Claude Code, Codex, OpenCode, and other agents. Compare usage
+across agents and models, break it down by project, and track activity over time.
+No account or changes to your existing agent workflow are required.
 
-## Start in 3 minutes
+## Quick start
 
-[Node.js 20+](https://nodejs.org/) is required. No desktop app or global npm
-install is needed:
+Works on macOS, Linux, and Windows with [Node.js 20+](https://nodejs.org/).
+No desktop app or global npm installation is needed:
 
 ```bash
 npx @kimi.builders/usage@latest dashboard
 ```
 
-On the first run:
+1. On your first npx run, enter `y` when prompted to download the package.
+   Installation does not scan logs.
+2. In the browser wizard, select the agents you want to analyze, set them to
+   “Local only”, and start the scan.
+3. When the scan finishes, choose “Stay local for now” to open the dashboard.
 
-1. npm asks to download `@kimi.builders/usage`; enter `y`. Installation does
-   not scan or upload anything.
-2. The dashboard detects available agents without immediately parsing all
-   history. The first-run wizard asks for each agent's Off / Local only /
-   Local + sync scope before scanning.
-3. Review the local results, then optionally connect the community, choose sync
-   sources, and enable background sync—all in the browser. Press `Ctrl+C` when
-   finished.
+Run the same command to reopen it. Press “Rescan” to read new logs, and use
+`Ctrl+C` in the terminal to stop. Local scanning and analysis work offline;
+the initial npm download requires a network connection.
 
-> **Local is the default.** Opening the dashboard, pressing “Rescan”, and
-> running `init` never upload usage; `init` only connects the device. Data from
-> agents marked “Local + sync” is sent only when you explicitly run `sync`,
-> press “Sync now”, install background sync, or use `init --sync`.
-
-If an agent is missing from the dashboard, run this fully offline check first:
+If an agent is missing, run the offline diagnostic:
 
 ```bash
 npx @kimi.builders/usage@latest inspect --dry-run
 ```
 
-[Supported sources](#supported-local-usage-sources) ·
-[Compatibility and known limitations](./docs/SOURCE_COMPATIBILITY.en.md) ·
-[Troubleshooting](./SUPPORT.en.md)
+[Supported sources](#supported-local-usage-sources) · [Commands](#command-reference) ·
+[Troubleshooting](./SUPPORT.en.md) · [All docs](./docs/README.en.md)
 
-### Let an agent do it for you
+<details>
+<summary>Let an agent install and launch it</summary>
 
 Copy this prompt into Codex, Claude Code, Kimi Code, or another agent that can
 operate your local terminal. It will check the environment, inspect sources,
@@ -80,159 +72,41 @@ Requirements:
    can stop or restart it.
 ```
 
-If you have decided to connect and sync the community, use this prompt instead.
-The agent must pause for your device approval and must not install continuous
-background sync on its own:
-
-```text
-Read these documents and follow their current instructions:
-- https://github.com/kimi-builders/usage/blob/main/README.en.md
-- https://github.com/kimi-builders/usage/blob/main/PRIVACY.md
-- https://github.com/kimi-builders/usage/blob/main/NETWORK.md
-
-Help me connect Kimi Builders Usage to kimi.builders and perform one sync.
-Check Node.js 20+ and run the offline dry-run first. Then check the existing
-connection with `npx @kimi.builders/usage@latest status`. If this device is not
-connected, run `npx @kimi.builders/usage@latest init`, open the device approval
-page, and pause so I can review and approve it. After approval, complete one
-`npx @kimi.builders/usage@latest sync`, verify the final status, and launch the
-local dashboard. Never print or copy API keys, cookies, credentials, full local
-paths, session identifiers, or conversation content. Do not install, restart,
-or remove the background daemon unless I explicitly approve that separate step.
-```
+</details>
 
 ![Usage Center overview](./docs/assets/screenshots/dashboard-overview-en.webp)
 
-## The short answers
-
-| Question | Answer |
-| --- | --- |
-| Does it upload conversations or code? | No. The Collector reads selected log files to extract usage. Conversation text and full paths never enter the dashboard, exports, or community uploads. |
-| Is a community account required? | No. Local usage and subscription analysis work independently. |
-| Which agents are supported? | Seventeen sources are auto-scanned; Cursor CSV is an explicit opt-in. See the matrix below. |
-| Are the costs real bills? | No. They are standard-API estimates with visible pricing coverage and unpriced Tokens. |
-| Which systems are supported? | macOS, Linux, and Windows with Node.js 20 or newer. |
-
-## Choose what you need
-
-**Local usage only:** you are already done. Do not run `init`.
-
-**Subscription limits:** open “Benefit Center → Benefit settings” in the local
-dashboard and enable only the providers you use. Limit queries are off by
-default and never run merely because you opened the Token dashboard.
-
-**Community or multi-device history:** press “Sync data” in the dashboard,
-approve the device in your browser, and select which agents may sync. One-shot
-sync, background sync, disconnect, and current-device cloud deletion are all
-available in the dashboard. The CLI equivalent is:
-
-```bash
-npx @kimi.builders/usage@latest init
-npx @kimi.builders/usage@latest sync
-```
-
-The community receives redacted aggregate records only. Project upload is off
-by default. See [community sync](#connect-and-sync-the-community-optional) for
-the complete flow.
-
-## Three capabilities, three explicit boundaries
-
-| Capability | Network by default | Account required | Data destination |
-| --- | --- | --- | --- |
-| Local Token dashboard | No | No | Local memory and browser only |
-| Subscription limits | No; opt in per provider | Existing provider login or manual credential | Directly from this machine to the selected provider |
-| Community sync | No; explicit connection required | kimi.builders | Redacted aggregates |
-
-The cloud cannot pull files from your computer. See [NETWORK.md](./NETWORK.md)
-for every network target and trigger.
-
 ## What you get
 
-- A complete local dashboard for Today, 24H, 7D, 30D, 90D, and all history.
-- One cross-agent contract for input, cache writes, cache reads, output,
-  reasoning, requests, and sessions.
-- Trends, natural-week comparisons, hourly activity, distributions, records,
-  CSV/JSON exports, and share posters.
-- Canonical model identity, reasoning effort, agent version, terminal, and OS
-  facts when the source provides them.
-- Standard API estimates with pricing coverage and unpriced-token disclosure,
-  never presented as subscription bills.
-- An optional Subscription Center for quota history, burn pace, token capacity,
-  and subscription-value observations.
-
-## More of the product
-
-Every screenshot and poster below was generated from real local agent logs, not
-mockups or seeded demo data.
+- **Combined usage:** see multiple agents together, with input, cache-write,
+  cache-read, output, and reasoning tokens shown separately.
+- **Model and project analysis:** filter by agent, model, project, reasoning
+  effort, or agent version to find the largest consumers, where logs provide those fields.
+- **Activity and trends:** explore Today, 24H, 7D, 30D, 90D, or all history,
+  with calendar-week comparisons, hourly activity, request counts, and sessions.
+- **Cost estimates:** value usage at standard API prices, with pricing coverage
+  and unpriced tokens visible alongside the estimate.
+- **Personal goals:** set a monthly target and track hourly usage spikes,
+  active-day streaks, and token milestones.
+- **Portable results:** export CSV / JSON or create a usage poster. CLI commands
+  also provide statistics, rankings, and exports directly in the terminal.
 
 ![Daily trend, natural-week trend, and hourly activity](./docs/assets/screenshots/dashboard-trends-en.webp)
 
-![Account benefits, official quotas, and local token capacity](./docs/assets/screenshots/dashboard-benefits-en.webp)
-
-Share posters exclude projects, devices, paths, and conversation content. They
-also omit unreachable localhost QR codes. A custom avatar stays in the current
-browser and is never uploaded to the community or a third party.
+Posters show token breakdowns, frequently used agents, leading models, and activity.
+They exclude projects, devices, full paths, and conversation content. Custom avatars
+are processed and saved on this device across restarts. The screenshots and posters
+in this README were generated from real local agent logs.
 
 <p align="center">
   <img src="./docs/assets/screenshots/kimi-builders-usage-24h-en.webp" alt="Last 24 hours usage poster" width="48%">
   <img src="./docs/assets/screenshots/kimi-builders-usage-30d-en.webp" alt="Last 30 days usage poster" width="48%">
 </p>
 
-**Project status:** public Beta. Stable sources are covered by cross-platform
-fixtures and contract tests; sources with limited log-format evidence remain
-explicitly labelled Beta. [Roadmap](./docs/ROADMAP.en.md) ·
-[Release notes](./docs/RELEASE_NOTES_0.6.1.en.md) · [All docs](./docs/README.en.md)
-
-## Run from source
-
-```bash
-git clone https://github.com/kimi-builders/usage.git
-cd usage
-npm run setup
-npm run dev
-```
-
-`npm run setup` installs dashboard development dependencies once. `npm run dev`
-starts the local API and Vite dashboard together; a second terminal is not
-needed. Examples below use `npx @kimi.builders/usage …`; in a checkout, replace
-that prefix with `node ./bin/kbu-usage.js …`.
-
-To keep the browser closed:
-
-```bash
-npm run dev -- --no-open
-```
-
-## Local dashboard
-
-```bash
-npx @kimi.builders/usage dashboard
-```
-
-Every launch creates a new browser capability token. The server rejects
-non-loopback peers, unexpected Host/Origin values, and unauthorized requests.
-“Rescan” refreshes local data only; “Sync data” is a separate explicit action.
-
-The versioned catalog treats first-party provider documentation as authoritative,
-then matches models by effective date, context tier, and processing tier against
-standard API prices. AI Pricing Guru is used only by maintainer CI to flag changes
-for explicitly mapped provider/model pairs; it never overwrites prices and is not a
-scan or Dashboard runtime dependency. `init` makes a best-effort download
-of the public community catalog; you can also update explicitly in the Dashboard
-or with `pricing update`. This downloads public prices and uploads no local usage.
-Strict validation, last-known-good caching, and a bundled offline snapshot keep
-analytics independent from the API. Coverage, assumptions, and unpriced tokens
-remain visible so an incomplete estimate cannot look like a real invoice.
-
-Session timing uses the same bounded-work definition across tools:
-
-- active time counts assistant/tool gaps up to five minutes each;
-- engaged time counts user-to-assistant/tool turn gaps up to 30 minutes each;
-- a long-lived session ID cannot turn offline days into continuous work.
-
-See [Local Snapshot v1](./docs/LOCAL_SNAPSHOT_V1.en.md) for fields and formulas.
-
 ## Supported local usage sources
+
+There are 17 automatically scanned sources, plus an explicit opt-in for Cursor CSV.
+The project is in public Beta; maturity varies by source as shown below.
 
 | Agent | Status | Local source |
 | --- | --- | --- |
@@ -251,16 +125,15 @@ See [Local Snapshot v1](./docs/LOCAL_SNAPSHOT_V1.en.md) for fields and formulas.
 | Trae CLI | Beta | Local CLI session, trace, and event logs |
 | MiniMax Code | Beta | Token ledger in `~/.minimax/v2/sqlite/runtime-state.sqlite` |
 | Qoder / Qoder CN | Beta | Separate sources; IDE SQLite tokens and CLI/app sessions; credits are never converted into tokens |
-| DeepSeek Harness (DSH) | Beta | V0–V3 JSONL / multi-frame Zstd under `$DSH_HOME/sessions`; inherited-session deduplication |
+| DeepSeek Harness (DSH) | Beta | V0–V4 JSONL / multi-frame Zstd under `$DSH_HOME/sessions`; inherited-session deduplication |
 | Cursor | Explicit opt-in | Usage CSV exported by Cursor Dashboard |
 
 Qoder routing tiers such as `auto` are left unpriced as `qoder-auto`, never treated as concrete models.
-Compressed DSH logs require Node ≥22.15 with built-in Zstd or an installed `zstd` binary;
-missing decompression support is reported as a partial source failure. New sources default
-to local-only for users with an explicit per-agent sync scope; uploading requires opting in.
+Compressed DSH logs require Node ≥22.15 with built-in Zstd or an installed `zstd` binary.
+Missing decompression support is reported as a partial source failure.
 
 Sources are parsed independently. A missing, damaged, or changed source never
-blocks another source and never clears that source's previous sync checkpoint.
+blocks another source; incomplete results are reported separately.
 These diagnostics stay offline:
 
 ```bash
@@ -282,9 +155,8 @@ npx @kimi.builders/usage sources enable cursor --csv /path/to/usage.csv
 npx @kimi.builders/usage sources disable cursor
 ```
 
-Local Cursor source settings do not require a community account or `init`. Dashboard
-verification and the CLI command only store the local CSV path; they neither access
-the network nor start community sync. See the
+Dashboard verification and the CLI command only store the local CSV path, without
+network access. See the
 [source compatibility matrix](./docs/SOURCE_COMPATIBILITY.en.md) for maturity,
 limitations, and verification evidence.
 
@@ -294,14 +166,47 @@ Full paths stay in local configuration; the browser receives directory names
 only. The CLI equivalents are `sources add-root <agent> /absolute/directory`
 and `sources remove-root <agent> /absolute/directory`.
 
+## How to read the data
+
+| Data | Meaning and limits |
+| --- | --- |
+| Locally observed usage | Tokens, requests, sessions, and timing extracted from selected agent logs. Unrecorded activity is outside the totals. |
+| Provider quotas | Usage percentages, reset times, credits, or balances returned by a provider after you enable queries. Units stay as reported. |
+| Derived estimates | Standard-API costs, token capacity, and usage forecasts. They depend on pricing, evidence windows, or sampling assumptions and are not actual bills or official fixed token caps. |
+| User-entered information | Monthly goals, subscription prices, billing cycles, and renewal dates, kept separate from observations and provider quotas. |
+
+Cost estimates use a bundled pricing catalog, matching models by effective date,
+context tier, and processing tier. You can explicitly download a public catalog
+in the dashboard or with `pricing update`; that download contains no local usage.
+Failed validation preserves the last valid catalog, and the bundled snapshot
+remains available offline. Official provider documentation is authoritative;
+third-party pricing aggregators are used only for maintainer drift checks and
+are not runtime dependencies for scanning or the dashboard.
+
+Session timing follows the same definition across tools:
+
+- **Active time:** gaps between assistant/tool events within a turn, capped at five minutes each.
+- **Engaged time:** user-to-assistant/tool turn gaps, capped at 30 minutes each.
+- A long-lived session ID cannot turn offline days into continuous work.
+
+See [Local Snapshot v1](./docs/LOCAL_SNAPSHOT_V1.en.md) for fields and formulas.
+
+The Codex performance card uses only local turns with a complete request ledger
+and successful completion timing. It follows usage filters and shows time to first
+token, whole-turn output throughput, median duration, and sample counts. Missing
+timing is never inferred from Token counts. Whole-turn throughput includes tool
+and waiting time, not just model generation. Performance samples stay local and
+are never uploaded to the community.
+
 ## Subscription limits (optional)
 
-Subscription limits are not local token consumption. They are off by default.
+Open “Benefit Center → Benefit settings” in the dashboard and enable the
+providers you want to check. Queries are off by default.
 The Collector contacts a provider only after you enable it, using an existing
 local login or a credential source you choose.
 
 Current integrations cover Codex, Claude Code, Kimi Code, Cursor, GitHub
-Copilot, Antigravity, Kiro, DeepSeek, OpenCode Go, Qoder, Warp, JetBrains AI,
+Copilot, Antigravity, Kiro, DeepSeek, OpenCode Go, Qoder, Warp, JetBrains AI, WorkBuddy,
 GLM / Z.ai, MiniMax, and Alibaba Coding Plan.
 Depending on the provider, setup can use local detection, an
 environment variable, or macOS Keychain. Trae has no stable independently
@@ -310,9 +215,22 @@ showing invented data.
 
 **Connect GLM, MiniMax, or Alibaba:** open Benefit settings → All platforms,
 expand the provider, select your plan's region, and follow its credential instructions.
-After configuration it appears under Detected. GLM and MiniMax use plan API keys;
+GLM and MiniMax use plan API keys;
 Alibaba Coding Plan uses a console Cookie. See the [connection guide](./docs/CODING_PLAN_SETUP.en.md).
 These integrations show official quota facts only; model names alone never assign local Tokens to a plan.
+
+**Connect WorkBuddy:** expand its card in Benefit settings and follow the steps to
+manually enter the Cookie and User-Agent from the same website request, or supply
+the tuple through `WORKBUDDY_SESSION_JSON`. The view shows official total,
+remaining, and reserved Credits, plus a cycle end when available. It never reads
+browser cookies automatically or assumes that the website account owns local
+WorkBuddy Tokens.
+
+When Claude Code reports reset vouchers or promotional cloud Credits, these are
+shown separately from regular quota and subscription spending. Renewal/expiry
+dates are optional: explicitly provide the same account's OAuth token and website
+Cookie, and dates appear only after account and organization verification. Missing
+credentials or a failed optional check do not affect existing quota queries.
 
 Google retired the individual Gemini CLI OAuth benefit surface, so it is no
 longer a Subscription Center provider. Existing Gemini CLI local Token history
@@ -328,6 +246,12 @@ account independently chooses either an API key or Cookie + Workspace ID. Its
 credential, quota facts, and user-entered subscription details are never shared
 with another account.
 
+**Kimi multi-account quotas:** Keep the local CLI login and add separate Kimi for Coding API-key accounts
+inside the same Kimi Code settings card. Use the account picker after saving. Only reported five-hour,
+monthly or legacy weekly windows appear; keys for one account share its quota. Cross-client logs cannot yet
+reliably identify each request's key, so per-key Token usage is not invented.
+See [multi-account setup and login recovery](./docs/KIMI_CODE_LOGIN.en.md).
+
 DeepSeek uses an explicitly configured API key with the public balance endpoint.
 It shows per-currency total, topped-up, and granted money balances and never
 converts money into a Token quota. A separate local model-family view groups
@@ -341,99 +265,22 @@ quota tabs and provider requests.
 
 Every successful refresh stores one sanitized quota snapshot locally. The
 Subscription Center aligns changes in the same provider window with local Token
-usage to show burn pace, projected utilization at reset, 30-day actual cost per
-million Tokens, standard-API-equivalent value, and model concentration. Every
+usage to show burn pace, projected utilization at reset, 30-day cost per
+million tokens based on user-entered spend, standard-API-equivalent value, and model concentration. Every
 observation identifies its evidence window. It never changes a plan automatically
 or presents observed utilization as a provider-published fixed Token cap.
 
-Quota credentials and responses never enter token snapshots, exports, or
-community sync. Manual secrets are not stored in the normal `config.json`.
+Quota credentials and responses never enter token snapshots or exports. Manual secrets are not stored in the normal `config.json`.
 Sanitized history is retained for at most 400 days and downsampled as it ages; it
-also stays out of exports, posters, and community sync. Provider endpoints and
+also stays out of exports and posters. Provider endpoints and
 authentication boundaries are in [NETWORK.md](./NETWORK.md), and locally stored
 fields are documented in [PRIVACY.md](./PRIVACY.md).
 
-## Connect and sync the community (optional)
-
-Connect the device once (or do the whole flow in the dashboard's “Sync data”
-dialog):
-
-```bash
-npx @kimi.builders/usage init
-```
-
-The terminal shows a device code and opens the community approval page. After
-approval, the device receives an independently revocable `kbu_` key. `init`
-does not upload usage by itself; confirm source scope in the dashboard or with
-`sources set`, then sync. Project upload is off by default; when disabled, the
-JSON payload has no `project` field.
-
-The connection code is valid for 10 minutes and lives only in the current
-Collector/local-dashboard process; it is never written to browser storage or a
-config file. Refreshing the dashboard can resume the request, while stopping or
-restarting the process requires a new code. The device key is delivered once
-after approval and can be safely revoked from the local dashboard at any time.
-
-Each agent has three independent modes:
-
-```bash
-npx @kimi.builders/usage sources list
-npx @kimi.builders/usage sources set codex off
-npx @kimi.builders/usage sources set kimi-code local
-npx @kimi.builders/usage sources set claude-code private
-```
-
-`off` does not scan, `local` stays in on-device analysis, and `private` may
-upload to your community account. Changing mode never silently deletes existing
-cloud history. Current-device cloud deletion is a separate confirmed dashboard
-action. Newly supported agents default to local only and never join sync
-automatically; account-level community settings separately control visibility.
-
-Run one sync:
-
-```bash
-npx @kimi.builders/usage sync
-```
-
-Or install continuous per-user sync:
-
-```bash
-npx @kimi.builders/usage daemon install --interval 15
-npx @kimi.builders/usage daemon status
-npx @kimi.builders/usage daemon restart
-npx @kimi.builders/usage daemon uninstall
-```
-
-The service needs no administrator privileges. It uses `launchd` on macOS,
-user `systemd` on Linux, and Task Scheduler on Windows. It works only while the
-device is awake and online. After upgrading the Collector, run `daemon restart`
-to copy that version into a stable local runtime directory. Clearing the npx cache
-does not remove that copy; background sync never automatically upgrades. Node
-itself must remain installed.
-
-The sync dialog shows the verified community account, acknowledged upload batches,
-estimated remaining time, and retry waits. The CLI also reports batch progress.
-Partial source failures persist as partial results with local diagnostics, without
-advancing the last fully successful synchronization time.
-
-Sync uses incremental checkpoints, per-source failure isolation, and a
-concurrency lock. Repeated runs do not duplicate counts. If you delete a
-device's remote history, reconnect as a different device, or the dashboard
-cannot prove that the local checkpoint belongs to the current community
-device, review every agent marked `private`, then explicitly replay it:
-
-```bash
-npx @kimi.builders/usage sync --full
-```
-
-`--full` re-uploads normalized aggregates only for `private` sources. It does
-not include `off` or `local` sources and does not delete community data. The
-checkpoint is bound to an irreversible fingerprint of the community target
-and device credential, so a reconnect cannot silently inherit another
-device's “already uploaded” state. The dashboard shows the same scope and asks
-for a second confirmation.
+![Account benefits, official quotas, and local token capacity](./docs/assets/screenshots/dashboard-benefits-en.webp)
 
 ## Command reference
+
+Append these commands to `npx @kimi.builders/usage`. Run `--help` for all options.
 
 | Command | Purpose | Network |
 | --- | --- | --- |
@@ -447,51 +294,63 @@ for a second confirmation.
 | `inspect --dry-run` | Show roots and parser results | No |
 | `doctor [--json]` | Produce a redacted compatibility report | No |
 | `sources list` | Show local usage-source status and policies | No |
-| `sources set <agent> off\|local\|private` | Set one agent's scan and sync scope | No |
+| `sources set <agent> off\|local` | Set one agent's local scan scope | No |
 | `completion [zsh\|bash\|fish]` | Generate Shell auto-completion scripts | No |
-| `init [--api-url URL] [--sync] [--skip-pricing-update]` | Connect a community device and best-effort refresh public pricing; `--sync` alone uploads usage immediately | Yes |
-| `sync [--full]` | Upload changed aggregates; `--full` explicitly replays allowed sources | Yes |
-| `daemon install/status/restart/uninstall` | Manage background sync scheduler | See NETWORK |
-| `summary [--days N] [--remote]` | Read usage summary (local-first by default, `--remote` for cloud) | No local / Yes remote |
-| `reset --local` | Clear local sync checkpoints | No |
 
 Global options: `--lang en|zh` (select language, defaults to OS locale auto-detection), `--no-color` / `--plain` (disable ANSI colors), `--json` (structured JSON output).
 
-Local configuration and checkpoint state live under
+Local configuration lives under
 `~/.kimi-builders/usage/`. Sensitive config files use mode `0600` on POSIX.
 
-## Privacy promise
+## Data and privacy
 
-The Collector **never uploads**:
+The Collector reads selected logs to extract usage. Prompts, responses, reasoning
+text, tool results, file contents, repository remotes, and full paths are excluded
+from usage snapshots. Local results may keep project-directory names for analysis.
+Raw session IDs are transformed with HMAC-SHA-256 and a random installation-local
+salt, so different devices cannot correlate the result.
 
-- prompts, responses, reasoning text, or tool results;
-- full paths, file contents, repository remotes, or environment dumps;
-- raw session IDs;
-- provider cookies, OAuth tokens, API keys, or quota responses;
-- local dashboard filters, navigation, or interaction events.
+The dashboard server listens only on `127.0.0.1`, creates a fresh browser access
+token on each launch, and rejects unauthorized requests and unexpected Host/Origin
+values. Local usage scans do not read quota credentials; quota queries require
+separate opt-in settings.
 
-Session IDs are transformed with HMAC-SHA-256 and a random installation-local
-salt, so different devices cannot correlate the result. The local snapshot may
-keep a project-directory basename for private analysis; community sync removes
-the project field by default.
+Theme, language, goals, and poster avatars are saved on this device across restarts.
+Provider credentials and sanitized quota history are managed separately; manual
+credentials are not stored in the ordinary config file. See [privacy](./PRIVACY.md)
+and the [per-command network inventory](./NETWORK.md) for details.
 
-Further reading:
+## Documentation and feedback
 
-- [Development roadmap](./docs/ROADMAP.en.md)
-- [Contributing](./CONTRIBUTING.en.md)
-- [Support and troubleshooting](./SUPPORT.en.md)
-- [Privacy boundaries](./PRIVACY.md)
-- [Per-command network inventory](./NETWORK.md)
-- [Threat model](./THREAT_MODEL.md)
-- [Security reporting and release requirements](./SECURITY.md)
-- [Local/community product boundary](./docs/PRODUCT_BOUNDARY.en.md)
+The project is in public Beta. Stable sources have cross-platform fixtures and
+contract tests; Beta sources are still gaining log-format coverage. For missing
+data or format differences, follow the troubleshooting guide to share redacted diagnostics.
 
-## Development and verification
+[Troubleshooting](./SUPPORT.en.md) · [Source compatibility](./docs/SOURCE_COMPATIBILITY.en.md) ·
+[Roadmap](./docs/ROADMAP.en.md) · [Release notes](./docs/RELEASE_NOTES_0.6.1.en.md) ·
+[Contributing](./CONTRIBUTING.en.md) · [Security reporting](./SECURITY.md) · [Threat model](./THREAT_MODEL.md)
+
+## Run from source
 
 ```bash
+git clone https://github.com/kimi-builders/usage.git
+cd usage
 npm run setup
 npm run dev
 ```
+
+`npm run setup` installs dashboard development dependencies once. `npm run dev`
+starts the local API and Vite dashboard together; a second terminal is not
+needed. README examples use `npx @kimi.builders/usage …`; in a checkout, replace
+that prefix with `node ./bin/kbu-usage.js …`.
+
+To keep the browser closed:
+
+```bash
+npm run dev -- --no-open
+```
+
+## Development and verification
 
 Before a commit:
 
@@ -515,7 +374,7 @@ itself. See [PUBLISHING.md](./PUBLISHING.md).
 Tests redirect every source, config, and state path to temporary fixtures. They
 do not read the developer's real HOME.
 
-Before submitting parser, quota-provider, sync-protocol, or UI changes, follow
+Before submitting code changes, follow
 the relevant privacy and test checklist in [CONTRIBUTING.en.md](./CONTRIBUTING.en.md).
 Do not open a public Issue for a vulnerability; use the private reporting path
 documented in [SUPPORT.en.md](./SUPPORT.en.md).
@@ -532,3 +391,14 @@ provider-specific quota protocols and parsers were adapted from CodexBar. Code
 adaptations, product references, and bundled dependencies are recorded
 separately and do not imply joint ownership, maintenance, or endorsement. See
 [NOTICE](./NOTICE) for the complete provenance record.
+
+## Connect and sync the community (optional)
+
+[kimi.builders](https://kimi.builders/usage) is a separate web application. If you
+want cross-device aggregation or community participation, you can choose to send
+redacted usage aggregates there. This package's local analytics work independently.
+
+Connection, allowed sources, and background operation are separate choices.
+Project upload is off by default; provider credentials and quota history are
+excluded. See the [optional integration guide](./docs/COMMUNITY_SYNC.en.md) for
+authorization, sync commands, and background-service setup.

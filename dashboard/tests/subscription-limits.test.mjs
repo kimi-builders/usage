@@ -5,6 +5,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 import { parseAlibabaCodingQuota } from '../../src/limits/providers/alibaba-coding.js';
+import { parseKimiCodeUsage } from '../../src/limits/providers/kimi.js';
 import { assertProviderContract } from '../../src/limits/contract.js';
 import { compactLimitHistory } from '../../src/limits/history.js';
 import { buildBenefitCapacityOverview, buildSubscriptionInsights } from '../src/subscription-insights.js';
@@ -12,6 +13,8 @@ import { buildBenefitCapacityOverview, buildSubscriptionInsights } from '../src/
 let module;
 let utils;
 let settings;
+let extraFacts;
+let performance;
 let server;
 let originalLocalStorageDescriptor;
 
@@ -31,6 +34,8 @@ test.before(async () => {
   module = await server.ssrLoadModule('/src/SubscriptionLimits.jsx');
   utils = await server.ssrLoadModule('/src/subscription-limits-utils.js');
   settings = await server.ssrLoadModule('/src/LimitSettingsDialog.jsx');
+  extraFacts = await server.ssrLoadModule('/src/ProviderBenefitFacts.jsx');
+  performance = await server.ssrLoadModule('/src/CodexPerformance.jsx');
 });
 
 test.after(async () => {
@@ -48,12 +53,68 @@ test('shows a value / limit detail only when both numbers are finite', () => {
   assert.equal(utils.limitWindowDetail({ value: 12, limit: Number.POSITIVE_INFINITY }), null);
 });
 
+test('WorkBuddy and Claude extra facts render separately in both languages, including locked/expired and date-only evidence', () => {
+  const now = new Date('2026-10-08T12:00:00Z');
+  const provider = { status: 'ok', updatedAt: now.toISOString(), creditBalance: { total: 20_000, remaining: 10_000, reserved: null },
+    cloudCredits: { limit: 50, remaining: 10, locked: true, expiresAt: '2026-11-01T00:00:00Z' },
+    subscriptionDates: { renewsAt: '2026-11-01', expiresAt: null } };
+  for (const zh of [true, false]) {
+    const html = renderToStaticMarkup(createElement(extraFacts.ProviderBenefitFacts, { provider, zh, now }));
+    assert.match(html, /2026-11-01/); assert.match(html, /\$10.00/);
+    assert.match(html, zh ? /已锁定/ : /Locked/); assert.match(html, zh ? /1万/ : /10K/);
+    assert.match(html, zh ? /不与本机 Token/ : /separate from local Tokens/);
+    if (!zh) assert.doesNotMatch(html, /\p{Script=Han}/u);
+  }
+  const expired = renderToStaticMarkup(createElement(extraFacts.ProviderBenefitFacts, { provider, zh: false, now: new Date('2026-12-01') }));
+  assert.match(expired, /Expired/); assert.match(expired, /Historical observation/);
+  assert.equal(renderToStaticMarkup(createElement(extraFacts.ProviderBenefitFacts, { provider: { ...provider, status: 'error' }, zh: false, now })), '');
+});
+
+test('Codex performance copy distinguishes whole-turn throughput from generation and leaves missing timing unavailable', () => {
+  const value = { sampleCount: 0, firstTokenSampleCount: 0, medianFirstTokenMs: null, medianDurationMs: null, outputTokensPerSecond: null };
+  for (const zh of [true, false]) {
+    const html = renderToStaticMarkup(createElement(performance.CodexPerformance, { value, zh }));
+    assert.match(html, /—/); assert.match(html, zh ? /没有完整计时样本/ : /No complete timing samples/);
+    const measured = renderToStaticMarkup(createElement(performance.CodexPerformance, { value: { ...value, sampleCount: 1, firstTokenSampleCount: 1, medianFirstTokenMs: 0 }, zh }));
+    assert.match(measured, /0 s/); assert.match(measured, zh ? /不是模型纯生成速度/ : /not pure model generation speed/);
+    if (!zh) {
+      assert.doesNotMatch(measured, /\p{Script=Han}/u);
+      assert.match(measured, /1 timed sample</); assert.doesNotMatch(measured, /1 timed samples/);
+    }
+  }
+});
+
+test('reset voucher expiry is not described as a quota reset and expired inventory awaits refresh', () => {
+  const credits = { availableCount: 2, nextExpiry: '2026-10-09T00:00:00Z' };
+  const before = utils.resetCreditPresentation(credits, false, new Date('2026-10-08T00:00:00Z'));
+  assert.equal(before.value, '2'); assert.match(before.detail, /Expires/); assert.doesNotMatch(before.detail, /Resets/);
+  const after = utils.resetCreditPresentation(credits, false, new Date('2026-10-09T00:00:00Z'));
+  assert.equal(after.state, 'unknown'); assert.equal(after.value, '—'); assert.match(after.detail, /refresh/);
+  assert.equal(utils.quotaWindowDetail('workbuddy', { value: 8000, limit: 20_000 }, true), '8000 / 2万 Credits');
+});
+
+test('JetBrains monthly quota labels are localized without relabeling the total-balance fallback', () => {
+  assert.equal(utils.quotaWindowLabel('jetbrains-ai', { id: 'credits', label: '月度 Credits' }, true), '月度 Credits');
+  assert.equal(utils.quotaWindowLabel('jetbrains-ai', { id: 'credits', label: '月度 Credits' }, false), 'Monthly credits');
+  assert.equal(utils.quotaWindowLabel('jetbrains-ai', { id: 'credits', label: '当前 Credits' }, false), 'Current credits');
+});
+
 test('secret dirty detection supports flat and nested account credential maps', () => {
   assert.equal(utils.hasEnteredSecrets({ codex: '  ' }), false);
   assert.equal(utils.hasEnteredSecrets({ codex: 'token' }), true);
   assert.equal(utils.hasEnteredSecrets({ opencode: { accountA: '  ', accountB: 'auth=cookie' } }), true);
   assert.equal(utils.hasEnteredSecrets({ opencode: { accountA: '' }, copilot: {} }), false);
   assert.equal(utils.hasEnteredSecrets(null), false);
+});
+
+test('quota save warnings include failed non-selected accounts without hiding successful siblings', () => {
+  const failures = utils.quotaSaveFailures({ providers: [{ id: 'kimi-code', label: 'Kimi Code', status: 'ok', accounts: [
+    { accountId: 'a', accountLabel: 'Personal', status: 'ok' },
+    { accountId: 'b', accountLabel: 'Work', status: 'error', error: { code: 'unauthorized' } },
+  ] }] });
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0].label, 'Kimi Code · Work');
+  assert.equal(failures[0].error.code, 'unauthorized');
 });
 
 test('OpenCode Go workspace validation requires an exact per-account ID', () => {
@@ -162,6 +223,42 @@ test('English benefits center does not leak built-in Chinese provider copy', () 
   assert.match(markup, />Weekly</);
   assert.match(markup, /Kimi Web token/);
   assert.doesNotMatch(markup, /[\u3400-\u9fff]/u);
+});
+
+test('empty quota reasons render distinct bilingual recovery states without fake quota bars', () => {
+  const generatedAt = new Date().toISOString();
+  for (const emptyReason of ['notEntitled', 'limitReached', 'noWindow', 'sessionWithoutPlanLimits']) {
+    for (const zh of [true, false]) {
+      const provider = { id: 'opencode', label: 'OpenCode Go', status: 'empty', emptyReason, updatedAt: generatedAt, windows: [] };
+      const copy = utils.quotaEmptyPresentation(provider, zh);
+      const markup = renderToStaticMarkup(createElement(module.SubscriptionCenter, {
+        data: { enabled: true, generatedAt, providers: [provider], history: { observations: [] } },
+        usageData: { generatedAt, buckets: [] }, settings: { providers: {} },
+        onRefresh: () => {}, onSettings: () => {}, view: 'accounts', zh,
+      }));
+      assert.ok(markup.includes(copy.title), emptyReason);
+      assert.ok(markup.includes(copy.detail), emptyReason);
+      assert.doesNotMatch(markup, /role="progressbar"/);
+      if (!zh) assert.doesNotMatch(markup, /[\u3400-\u9fff]/u);
+    }
+  }
+});
+
+test('Kimi monthly labels and new provider notices remain English throughout the account view', () => {
+  const generatedAt = new Date().toISOString();
+  const parsed = parseKimiCodeUsage({ usages: {
+    limit_month_total: { used_ratio: 0.3 }, limit_month_code: { used_ratio: 0.4 },
+  } });
+  const markup = renderToStaticMarkup(createElement(module.SubscriptionCenter, {
+    data: { enabled: true, generatedAt, providers: [parsed], history: { observations: [] } },
+    usageData: { generatedAt, buckets: [] }, settings: { providers: {} },
+    onRefresh: () => {}, onSettings: () => {}, view: 'accounts', zh: false,
+  }));
+  assert.match(markup, /Monthly total/);
+  assert.match(markup, /Monthly coding/);
+  assert.doesNotMatch(markup, /[\u3400-\u9fff]/u);
+  const hint = utils.quotaProviderCatalogCopy({ id: 'kimi-code', detection: { state: 'not_detected', label: '需要登录 Kimi Code' } }, false);
+  assert.doesNotMatch(JSON.stringify(hint), /[\u3400-\u9fff]/u);
 });
 
 test('regional plans show unlinked evidence, not zero usage or zero value, including query failures', () => {
@@ -516,7 +613,7 @@ test('English benefit settings localize catalog and detection copy', () => {
     zh: false,
   }));
 
-  assert.match(markup, /5-hour rolling rate limit, weekly quota, and subscription total/);
+  assert.match(markup, /Multi-account 5-hour and monthly quotas/);
   assert.match(markup, /Kimi Code access detected/);
   assert.doesNotMatch(markup, /[\u3400-\u9fff]/u);
 });

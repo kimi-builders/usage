@@ -47,6 +47,19 @@ selected providers; detection alone does not make provider requests.
 
 ## Never uploaded
 
+Kimi account connections store aliases and subscription declarations separately from credentials.
+Keys remain in the selected environment or macOS Keychain. Returned account identities are replaced with
+installation-scoped HMAC identifiers before reaching the browser or local quota history; raw IDs and key prefixes
+are not retained. These identities never enter usage exports or community sync. Quota facts cannot establish
+per-key Token attribution across clients; unproven local usage stays unlinked.
+
+Codex measured turn timings (TTFT, whole-turn duration and throughput samples) remain local;
+community sync continues to send only its existing allowlisted usage records. WorkBuddy website
+Cookie/User-Agent tuples and optional Claude OAuth/Cookie tuples are manual secrets, stored only
+in the selected environment or macOS Keychain. Provider balance, voucher, promotional-credit,
+and subscription-date facts are not added to usage exports or community uploads. Raw grant IDs,
+redemption handles, account identifiers, and promotional lock reasons are discarded.
+
 - prompts, responses, reasoning text, or tool results;
 - full filesystem paths, repository remotes, or file contents;
 - raw session IDs;

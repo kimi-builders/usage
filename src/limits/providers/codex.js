@@ -1,4 +1,4 @@
-import { loadCodexCredentials } from '../credentials.js';
+import { loadCodexCredentialsRereading } from '../credentials.js';
 import { asDate, asPercent, requestJson } from '../http.js';
 
 const USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage';
@@ -97,8 +97,10 @@ export function parseCodexUsage(payload, credentials, { resetCredits = null, now
   };
 }
 
-export async function fetchCodexLimits({ environment = process.env, fetcher = fetch } = {}) {
-  const credentials = loadCodexCredentials(environment);
+export async function fetchCodexLimits({ environment = process.env, fetcher = fetch, sleep } = {}) {
+  // Missing, partial, or expiring auth.json may still be mid-republish by the
+  // Codex CLI; reread before concluding the login is absent or stale.
+  const credentials = await loadCodexCredentialsRereading(environment, { sleep });
   if (!credentials.found) {
     const error = new Error('未找到 Codex 登录。请先运行 codex 并完成登录。');
     error.code = 'not_configured';

@@ -17,6 +17,7 @@ Trust and release documentation:
 - [Network destinations](../NETWORK.md)
 - [Threat model](../THREAT_MODEL.md)
 - [Security policy](../SECURITY.md)
+- [Optional kimi.builders connection and sync](./COMMUNITY_SYNC.en.md)
 - [Publishing checklist](../PUBLISHING.md)
 - [0.6.1 release notes](./RELEASE_NOTES_0.6.1.en.md)
 - [0.6.0 release notes](./RELEASE_NOTES_0.6.0.en.md)

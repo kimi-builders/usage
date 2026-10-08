@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { normalizeLimitSettings, publicLimitSettings } from '../src/limits/catalog.js';
 import { assertProviderContract } from '../src/limits/contract.js';
 import { clearLimitCache, getPublicLimitSettings, loadSubscriptionLimits, saveLimitSettings } from '../src/limits/service.js';
-import { parseGlmQuota, fetchGlmLimits } from '../src/limits/providers/glm.js';
+import { GLM_NOTICE, parseGlmQuota, fetchGlmLimits } from '../src/limits/providers/glm.js';
 import { parseMiniMaxQuota, fetchMiniMaxLimits } from '../src/limits/providers/minimax.js';
 import { parseAlibabaCodingQuota, fetchAlibabaCodingLimits, normalizeAlibabaCookie } from '../src/limits/providers/alibaba-coding.js';
 import { planAccountId, quotaDate } from '../src/limits/providers/coding-plan-common.js';
@@ -47,6 +47,30 @@ test('GLM rejects impossible reset timestamps without discarding utilization', (
   assert.equal(parseGlmQuota(glm([raw]), options).windows[0].resetsAt, '2026-09-12T13:00:00.000Z');
   raw.type = 'TIME_LIMIT'; raw.unit = 0;
   assert.equal(parseGlmQuota(glm([raw]), options).windows[0].windowSeconds, null);
+});
+
+test('GLM unknown quota shapes are marked unavailable instead of silently dropped', () => {
+  const mixed = parseGlmQuota(glm([
+    { type: 'FUTURE_POINTS_POOL', pointsRemaining: 800 },
+    { type: 'TOKENS_LIMIT', unit: 3, number: 5, percentage: 25 },
+  ]), options);
+  assert.equal(mixed.status, 'ok');
+  assert.equal(mixed.windows.length, 1);
+  assert.match(mixed.notice, /Coding Plan usage 暂不可用/);
+  assert.match(mixed.notice, /Usage Dashboard/);
+  assertProviderContract('glm', mixed);
+
+  // Unsupported entries never fail the whole snapshot, and an empty list is
+  // an explicit "unavailable", not an invented zero-usage state.
+  for (const payload of [glm([]), glm([{ type: 'FUTURE_POINTS_POOL', pointsRemaining: 800 }])]) {
+    const empty = parseGlmQuota(payload, options);
+    assert.equal(empty.status, 'empty');
+    assert.deepEqual(empty.windows, []);
+    assert.match(empty.notice, /Coding Plan usage 暂不可用/);
+    assertProviderContract('glm', empty);
+  }
+
+  assert.equal(parseGlmQuota(glm(), options).notice, GLM_NOTICE);
 });
 
 test('MiniMax usage_count means remaining, not consumed', () => {
@@ -182,12 +206,81 @@ test('unset MiniMax timestamps and Alibaba expiry sentinels do not turn quotas i
   }
 });
 
+test('unknown Codex plans break forecast evidence without hiding old observations', () => {
+  const generatedAt = now.toISOString();
+  const window = (usedPercent, resetsAt) => ({
+    id: 'primary', label: '5 小时', usedPercent, remainingPercent: 100 - usedPercent,
+    resetsAt, windowSeconds: 18_000,
+  });
+  const observation = (plan, usedPercent, observedAt, resetsAt) => ({
+    observedAt, providers: [{
+      id: 'codex', ...(plan ? { plan } : {}), observedAt, windows: [window(usedPercent, resetsAt)],
+    }],
+  });
+  const history = { schemaVersion: 2, observations: [
+    observation('plus', 80, '2026-09-12T10:00:00.000Z', '2026-09-12T13:00:00.000Z'),
+    observation('pro', 30, '2026-09-12T11:00:00.000Z', '2026-09-12T14:00:00.000Z'),
+    observation(null, 45, '2026-09-12T11:30:00.000Z', '2026-09-12T14:30:00.000Z'),
+  ] };
+  const codex = {
+    id: 'codex', label: 'Codex', status: 'ok', plan: 'pro', updatedAt: generatedAt,
+    windows: [window(35, '2026-09-12T15:00:00.000Z')],
+  };
+  const insight = buildSubscriptionInsights({ generatedAt, buckets: [] }, {
+    generatedAt, providers: [codex], history,
+  });
+  const points = insight.providers[0].windows[0].historyPoints;
+  assert.deepEqual(points.map((point) => point.usedPercent), [80, 30, 45]);
+  assert.deepEqual(insight.providers[0].windows[0].forecastHistoryPoints, []);
+
+  // Plan identity compares trimmed and case-folded.
+  const upper = buildSubscriptionInsights({ generatedAt, buckets: [] }, {
+    generatedAt, providers: [{ ...codex, plan: ' PRO ' }], history,
+  });
+  assert.deepEqual(upper.providers[0].windows[0].forecastHistoryPoints, []);
+
+  // A failed refresh cannot infer a known plan through the latest unknown record.
+  const degraded = buildSubscriptionInsights({ generatedAt, buckets: [] }, {
+    generatedAt, providers: [{ ...codex, status: 'error', plan: null, windows: [] }], history,
+  });
+  const degradedPoints = degraded.providers[0].windows[0].historyPoints;
+  assert.deepEqual(degradedPoints.map((point) => point.usedPercent), [80, 30, 45]);
+  assert.deepEqual(degraded.providers[0].windows[0].forecastHistoryPoints, []);
+  assert.equal(degraded.providers[0].quotaObservation.state, 'historical');
+});
+
 test('new providers are opt-in and missing credentials cause no network requests', async () => {
   const settings = normalizeLimitSettings({});
   for (const [id, fetchProvider] of Object.entries(fetchers)) {
     assert.equal(settings.providers[id].enabled, false);
     await assert.rejects(fetchProvider({ settings: settings.providers[id], environment: {}, fetcher: () => assert.fail('network') }), { code: 'not_configured' });
   }
+});
+
+test('Plus to Pro to Plus forecasts use only the latest contiguous plan segment', () => {
+  const generatedAt = now.toISOString();
+  const resetsAt = '2026-09-12T15:00:00.000Z';
+  const window = usedPercent => ({ id: 'primary', label: '5 小时', usedPercent,
+    remainingPercent: 100 - usedPercent, resetsAt, windowSeconds: 18000 });
+  const history = { observations: ['plus', 'pro', 'plus', ' PLUS '].map((plan, i) => ({
+    observedAt: `2026-09-12T${String(8 + i).padStart(2, '0')}:00:00.000Z`,
+    providers: [{ id: 'codex', plan, windows: [window(10 * (i + 1))] }],
+  })) };
+  const insight = buildSubscriptionInsights({ generatedAt, buckets: [] }, { generatedAt, history,
+    providers: [{ id: 'codex', label: 'Codex', status: 'ok', plan: 'plus', updatedAt: generatedAt, windows: [window(50)] }] });
+  const result = insight.providers[0].windows[0];
+  assert.deepEqual(result.historyPoints.map(p => p.usedPercent), [10, 20, 30, 40]);
+  assert.deepEqual(result.forecastHistoryPoints.map(p => p.usedPercent), [30, 40]);
+  // Chronology, not file order, determines the current segment.
+  const reversed = buildSubscriptionInsights({ generatedAt, buckets: [] }, { generatedAt,
+    history: { observations: [...history.observations].reverse() },
+    providers: [{ id: 'codex', label: 'Codex', status: 'ok', plan: 'plus', updatedAt: generatedAt, windows: [window(50)] }] });
+  assert.deepEqual(reversed.providers[0].windows[0].forecastHistoryPoints.map(p => p.usedPercent), [30, 40]);
+  // A successful but unlabelled current response is itself an unknown-plan
+  // boundary, even before it has been appended to the persisted history.
+  const unlabelled = buildSubscriptionInsights({ generatedAt, buckets: [] }, { generatedAt, history,
+    providers: [{ id: 'codex', label: 'Codex', status: 'ok', updatedAt: generatedAt, windows: [window(50)] }] });
+  assert.deepEqual(unlabelled.providers[0].windows[0].forecastHistoryPoints, []);
 });
 
 test('GLM uses the explicitly selected official host and ignores endpoint overrides', async () => {
@@ -215,6 +308,20 @@ test('MiniMax compatibility retry is same-region only, and never hides a transpo
   await assert.rejects(fetchMiniMaxLimits({ settings: { site: 'china', authMode: 'environment', environmentVariable: 'KEY' }, environment: { KEY: 'private-key' },
     fetcher: async () => { calls++; throw new Error('private-key'); } }), error => error.code === 'network_error' && !error.message.includes('private-key'));
   assert.equal(calls, 1);
+});
+
+test('MiniMax HTTP 403 retries the legacy endpoint in the selected region', async () => {
+  for (const [site, host] of [['china', 'api.minimaxi.com'], ['international', 'api.minimax.io']]) {
+    const calls = [];
+    const result = await fetchMiniMaxLimits({ settings: { site, authMode: 'environment', environmentVariable: 'KEY' },
+      environment: { KEY: 'fixture-key' }, fetcher: async url => {
+        assert.equal(url.hostname, host);
+        calls.push(url.pathname);
+        return calls.length === 1 ? json({}, 403) : json(mini());
+      } });
+    assert.equal(result.windows[0].usedPercent, 40);
+    assert.deepEqual(calls, ['/v1/token_plan/remains', '/v1/api/openplatform/coding_plan/remains']);
+  }
 });
 
 test('Alibaba Cookie headers and literal cURL arguments normalize without executing commands', () => {

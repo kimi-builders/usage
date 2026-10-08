@@ -1,7 +1,7 @@
 {
   "name": "@kimi.builders/usage",
   "version": "0.6.1",
-  "description": "Local-first usage analytics and optional sync for AI coding agents",
+  "description": "Local CLI and dashboard for AI coding agent token usage, cost estimates, and activity",
   "type": "module",
   "scripts": {
     "setup": "npm --prefix dashboard install --no-audit --no-fund",
@@ -66,6 +66,6 @@
     "type": "git",
     "url": "git+https://github.com/kimi-builders/usage.git"
   },
-  "homepage": "https://kimi.builders/usage",
+  "homepage": "https://github.com/kimi-builders/usage#readme",
   "license": "MIT"
 }

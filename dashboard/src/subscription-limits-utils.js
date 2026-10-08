@@ -6,7 +6,7 @@ export const PROVIDER_TONES = {
   codex: 'blue', 'kimi-code': 'amber', warp: 'violet',
   antigravity: 'green', 'jetbrains-ai': 'pink', 'claude-code': 'amber', cursor: 'blue',
   copilot: 'violet', deepseek: 'blue', opencode: 'amber', qoder: 'green', trae: 'blue',
-  kiro: 'violet', glm: 'blue', minimax: 'blue', 'alibaba-coding': 'blue',
+  kiro: 'violet', glm: 'blue', minimax: 'blue', 'alibaba-coding': 'blue', workbuddy: 'blue',
 };
 
 export function idSegment(value) {
@@ -39,7 +39,10 @@ export function regionalDraftDetection(provider, item, savedItem, zh) {
 
 export function quotaSaveFailures(result) {
   // Best-effort describes integration stability, not a successful refresh.
-  return (result?.providers || []).filter(provider => provider.status === 'error');
+  return (result?.providers || []).flatMap(provider => provider.accounts?.length
+    ? provider.accounts.filter(account => account.status === 'error').map(account => ({ ...account, id: provider.id,
+      label: `${provider.label} · ${account.accountLabel || account.accountId}` }))
+    : provider.status === 'error' ? [provider] : []);
 }
 
 export function isValidOpenCodeWorkspaceId(value) {
@@ -93,6 +96,8 @@ const QUOTA_WINDOW_LABELS = {
     session: ['5 小时滚动（5H 频限）', '5-hour rolling (5H rate limit)'],
     weekly: ['每周', 'Weekly'], 'code-weekly': ['Code 每周', 'Code weekly'],
     total: ['订阅总额度', 'Subscription total'],
+    'month-total': ['本月总额度', 'Monthly total quota'],
+    'month-code': ['本月代码额度', 'Monthly coding quota'],
   },
   cursor: {
     plan: ['套餐 Credits', 'Plan credits'], overall: ['个人额度', 'Personal allowance'],
@@ -152,6 +157,9 @@ function englishWindowLabel(value) {
 }
 
 export function quotaWindowLabel(providerId, window, zh) {
+  if (providerId === 'jetbrains-ai' && window?.label === '月度 Credits') {
+    return zh ? '月度 Credits' : 'Monthly credits';
+  }
   // Codex may return only one of its primary/secondary windows, so the legacy
   // slot id is not a stable duration label. Prefer the reported duration.
   if (providerId === 'codex' && ['primary', 'secondary'].includes(window?.id)) {
@@ -165,6 +173,9 @@ export function quotaWindowLabel(providerId, window, zh) {
 }
 
 export function quotaWindowDetail(providerId, window, zh) {
+  if (providerId === 'workbuddy' && window?.value != null && window?.limit != null) {
+    return `${localizedCompact(window.value, zh)} / ${localizedCompact(window.limit, zh)} Credits`;
+  }
   if (['glm', 'minimax', 'alibaba-coding'].includes(providerId) && window?.value != null && window?.limit != null) {
     const unit = window.unit === 'requests' ? (zh ? '次请求' : 'requests') : (zh ? '额度单位' : 'quota units');
     return `${localizedCompact(window.value, zh)} / ${localizedCompact(window.limit, zh)} ${unit}`;
@@ -180,7 +191,15 @@ export function quotaWindowDetail(providerId, window, zh) {
 }
 
 const ENGLISH_PROVIDER_NOTICES = new Map([
+  ['WorkBuddy 官方 Credits；预留数不重复扣减，Credits 不等于 Token，也不会自动归属本机账号用量。', 'Official WorkBuddy credits; reserved credits are not deducted again. Credits are not Tokens and local usage is not automatically attributed to this account.'],
+  ['Kimi Code 本机登录可读取会员等级与 5 小时、每周及月度额度。', 'The local Kimi Code login exposes membership level and 5-hour, weekly, and monthly quotas.'],
+  ['Kimi Code 账户额度由该账户的设备和 API Key 共享；只显示接口返回的窗口，未返回周额度不代表查询失败。', 'A Kimi Code account shares quota across its devices and API keys. Only reported windows are shown; a missing weekly window is not a query failure.'],
+  ['Kimi Code 本机登录可读取会员等级、5 小时滚动（5H 频限）与每周额度；订阅总额度需要 Kimi Web 登录令牌。', 'The local Kimi Code login exposes membership level, the 5-hour rolling rate limit, and weekly quota. Subscription totals require a Kimi Web token.'],
+  ['额度接口返回 Gemini 与 Claude/GPT 的 5 小时和每周额度池。', 'The quota API reports 5-hour and weekly pools for Gemini and Claude/GPT models.'],
+  ['OpenCode 账户有效，但当前没有生效的 Go 订阅；本机 OpenCode Token 用量仍会正常统计。', 'The OpenCode key has no active Go subscription. Local OpenCode Token usage is still tracked.'],
+  ['额度来自 OpenCode Go 官方 API（只读复用本机 OpenCode 登录，不回写、不保存凭据）；本机 OpenCode Token 用量与该额度分开统计。', 'Quotas come from the official OpenCode Go API using the local login read-only. Credentials are not written back or saved; local OpenCode Token usage is tracked separately.'],
   ['个人 Coding Plan 官方额度；TOKENS_LIMIT 名称不代表可用原始 Token。MCP 单独展示，不与本机 Token 或其他额度相加。', 'Official personal Coding Plan quota; TOKENS_LIMIT does not mean raw Token capacity. MCP is shown separately, never added to local Tokens or other quota windows.'],
+  ['个人 Coding Plan 官方额度；TOKENS_LIMIT 名称不代表可用原始 Token。MCP 单独展示，不与本机 Token 或其他额度相加。Coding Plan usage 暂不可用：接口包含不受支持的额度形态或未返回可换算的额度；完整套餐用量请查看官方 Usage Dashboard。', 'Official personal Coding Plan quota; TOKENS_LIMIT does not mean raw Token capacity. MCP is shown separately, never added to local Tokens or other quota windows. Coding Plan usage is unavailable: the response contains unsupported quota shapes or no convertible quota; check the Usage Dashboard for complete plan usage.'],
   ['官方 Coding / Token Plan 额度；usage_count 在此接口表示剩余量。仅百分比窗口不伪造 Token 总额；未包含或无可量化上限的窗口不生成进度条。', 'Official Coding / Token Plan quota; usage_count means remaining allowance here. Percentage-only windows never imply a Token cap. Excluded or non-quantifiable windows have no progress bar.'],
   ['百炼 Coding Plan 官方请求额度，不是新版 Token Plan。仅展示可验证窗口，不把请求数转换为 Token；套餐可见但额度缺失不代表未使用或无限。', 'Official Bailian Coding Plan request quotas, not the newer Token Plan. Only verifiable windows are shown; requests are not converted to Tokens. Missing quota does not mean unused or unlimited.'],
   ['订阅额度来自本机 Codex 登录会话，不等同于标准 API 速率限制。', 'Subscription quotas come from the local Codex login and are not standard API rate limits.'],
@@ -214,6 +233,7 @@ export function quotaProviderNotice(value, zh) {
 }
 
 const ENGLISH_SOURCES = new Map([
+  ['OpenCode 本机登录', 'Local OpenCode login'],
   ['Kimi Web 登录令牌', 'Kimi Web token'],
   ['Cursor 登录', 'Cursor login'],
   ['Cursor 桌面端登录', 'Cursor desktop login'],
@@ -245,6 +265,7 @@ export function quotaErrorMessage(provider, zh) {
   const messages = {
     not_configured: `${label} is not configured or no local login was found.`,
     unauthorized: `${label} login expired or cannot read quota.`,
+    forbidden: `${label} quota access was denied (possibly region-restricted); automatic refresh is paused.`,
     timeout: `${label} quota request timed out.`,
     network_error: `${label} quota service is unreachable.`,
     invalid_response: `${label} returned an unsupported quota response.`,
@@ -261,6 +282,11 @@ export function quotaPageError(value, zh) {
 }
 
 const ENGLISH_CATALOG_COPY = {
+  workbuddy: {
+    description: 'Website monthly credits, reserved credits, and cycle end',
+    localHint: 'Provide Cookie and User-Agent from the same website request. No browser import or desktop credential decryption. Credits are not Tokens.',
+    secretKind: 'Cookie + User-Agent JSON',
+  },
   glm: {
     description: 'Personal Coding Plan quota windows and MCP',
     localHint: 'Select the plan’s region and use its personal Coding Plan API key. Team plans are not supported yet; quota units are not raw Tokens.',
@@ -282,9 +308,9 @@ const ENGLISH_CATALOG_COPY = {
     localHint: 'Uses the Claude Code login first. If a newer Claude version stores it only in Keychain, choose an environment variable or the usage-cli Keychain entry.',
   },
   'kimi-code': {
-    description: '5-hour rolling rate limit, weekly quota, and subscription total',
-    localHint: 'Reuses and renews the Kimi Code CLI login. A manual token is needed only for the Web subscription total.',
-    secretKind: 'Kimi login token',
+    description: 'Multi-account 5-hour and monthly quotas; legacy weekly plans supported',
+    localHint: 'Query the local CLI login and multiple Kimi for Coding API keys independently. Weekly quota appears only when reported.',
+    secretKind: 'Kimi for Coding API Key',
   },
   cursor: {
     description: 'Plan credits, on-demand usage, and billing cycle',
@@ -310,7 +336,7 @@ const ENGLISH_CATALOG_COPY = {
   },
   opencode: {
     description: '5-hour, weekly, and monthly Go subscription quotas',
-    localHint: 'Each account independently stores either an API key or Cookie + Workspace ID, together with its quota and subscription details.',
+    localHint: 'Local-login mode reads the OpenCode CLI login. You can also add separate API key or Cookie + Workspace accounts. Missing manual credentials never fall back to another login.',
   },
   qoder: {
     description: 'Personal and shared Big Model Credits',
@@ -337,8 +363,10 @@ function englishDetection(provider) {
   let label;
   const connectedAccounts = raw.match(/^(\d+) 个 GitHub 账户已连接$/);
   const configuredAccounts = raw.match(/^(\d+)(?:\/(\d+))? 个 OpenCode Go 账户已配置$/);
+  const kimiAccounts = raw.match(/^(\d+)\/(\d+) 个 Kimi 账户已配置$/);
   const environment = raw.match(/^已配置环境变量 (.+)$/);
-  if (connectedAccounts) label = `${connectedAccounts[1]} GitHub accounts connected`;
+  if (kimiAccounts) label = `${kimiAccounts[1]}/${kimiAccounts[2]} Kimi accounts configured`;
+  else if (connectedAccounts) label = `${connectedAccounts[1]} GitHub accounts connected`;
   else if (configuredAccounts) label = configuredAccounts[2]
     ? `${configuredAccounts[1]}/${configuredAccounts[2]} OpenCode Go accounts configured`
     : `${configuredAccounts[1]} OpenCode Go accounts configured`;
@@ -361,6 +389,9 @@ function englishDetection(provider) {
 
   let detail = '';
   if (provider.id === 'codex' && state === 'needs_login') detail = 'Run codex and finish signing in';
+  else if (provider.id === 'kimi-code' && state === 'needs_login') detail = 'Run kimi and finish signing in';
+  else if (provider.id === 'kimi-code' && state === 'expired') detail = 'Run kimi to sign in again; the next query rereads credentials without a restart';
+  else if (provider.id === 'opencode' && state === 'not_detected') detail = 'Sign in to OpenCode or add a manual account';
   else if (provider.id === 'claude-code' && state === 'needs_login') detail = 'Run claude and finish signing in';
   else if (provider.id === 'claude-code' && state === 'expired') detail = 'Run claude to sign in again';
   else if (provider.id === 'cursor' && state === 'needs_login') detail = 'Open the Cursor desktop app and sign in';
@@ -381,7 +412,22 @@ export function quotaProviderCatalogCopy(provider, zh) {
   return { ...provider, ...copy, detection: englishDetection(provider) };
 }
 
-export function resetCreditPresentation(resetCredits, zh = false) {
+export function quotaEmptyPresentation(provider, zh) {
+  if (provider?.status !== 'empty') return null;
+  const copy = {
+    notEntitled: zh ? ['当前未开通 Go 订阅', '此登录没有生效的 Go 权益。请确认使用了正确账户，或前往官方页面检查订阅。']
+      : ['No active Go subscription', 'This login has no active Go entitlement. Check the account or review the subscription on the official site.'],
+    limitReached: zh ? ['供应商报告额度已用尽', '接口未提供可量化窗口或重置时间，请查看官方用量页；不会推算剩余额度。']
+      : ['Provider reports the limit reached', 'No measurable window or reset time was supplied. Check official usage; remaining capacity is not inferred.'],
+    noWindow: zh ? ['未返回额度窗口', '当前响应没有可验证的窗口，这不代表零用量或无限额度。']
+      : ['No quota window returned', 'The current response contains no verifiable window. This does not mean zero usage or unlimited capacity.'],
+    sessionWithoutPlanLimits: zh ? ['当前登录不提供套餐额度', '登录可用，但未提供套餐额度窗口。本机 Token 用量仍可独立查看。']
+      : ['No plan limits for this login', 'The login is available but exposes no plan quota windows. Local Token usage remains available separately.'],
+  }[provider.emptyReason];
+  return copy ? { title: copy[0], detail: copy[1] } : null;
+}
+
+export function resetCreditPresentation(resetCredits, zh = false, now = null) {
   const supplied = resetCredits?.availableCount;
   const count = typeof supplied === 'number' && Number.isFinite(supplied) ? supplied : null;
   if (count == null || count < 0) return {
@@ -390,8 +436,14 @@ export function resetCreditPresentation(resetCredits, zh = false) {
   if (count === 0) return {
     state: 'zero', value: '0', detail: zh ? '已观测到可用数量为 0' : 'Observed available count: 0',
   };
+  const expiry = Date.parse(resetCredits?.nextExpiry);
+  if (now != null && Number.isFinite(expiry) && expiry <= +now) return {
+    state: 'unknown', value: '—', detail: zh ? '部分重置券可能已到期，请刷新' : 'Some reset credits may have expired; refresh to confirm',
+  };
   return {
-    state: 'available', value: Math.floor(count).toLocaleString(), detail: null,
+    state: 'available', value: Math.floor(count).toLocaleString(),
+    detail: now != null && Number.isFinite(expiry)
+      ? `${zh ? '有效期至' : 'Expires'} ${new Date(expiry).toLocaleString(zh ? 'zh-CN' : 'en-US')}` : null,
   };
 }
 

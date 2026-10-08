@@ -18,11 +18,11 @@ export const LIMIT_PROVIDER_CATALOG = [
   },
   {
     id: 'kimi-code', label: 'Kimi Code', group: 'recommended', popular: true,
-    description: '5 小时滚动（5H 频限）、每周与订阅总额度', quotaSupport: 'automatic',
+    description: '多个账户的 5 小时与月度额度；兼容旧套餐周额度', quotaSupport: 'automatic',
     defaultAuthMode: 'local', authModes: ['local', 'environment', 'keychain'],
     defaultEnvironmentVariable: 'KIMI_AUTH_TOKEN', dashboardUrl: 'https://www.kimi.com/code/console',
-    secretKind: 'Kimi 登录令牌',
-    localHint: '自动复用并续期 Kimi Code CLI 登录；只有查看 Web 订阅总额度时才需要手动令牌。',
+    secretKind: 'Kimi for Coding API Key', accountMode: 'kimi-accounts',
+    localHint: '可同时查看本机登录与多个 Kimi for Coding API Key 账户；各账户单独查询，周额度仅在接口返回时显示。',
   },
   {
     id: 'cursor', label: 'Cursor', group: 'recommended', popular: true,
@@ -67,11 +67,11 @@ export const LIMIT_PROVIDER_CATALOG = [
   },
   {
     id: 'opencode', label: 'OpenCode Go', group: 'more', popular: true,
-    description: '5 小时、每周与每月 Go 订阅额度', quotaSupport: 'manual',
-    defaultAuthMode: 'keychain', authModes: ['environment', 'keychain'],
+    description: '5 小时、每周与每月 Go 订阅额度', quotaSupport: 'automatic',
+    defaultAuthMode: 'local', authModes: ['local', 'environment', 'keychain'],
     defaultEnvironmentVariable: 'OPENCODE_SESSION_COOKIE', dashboardUrl: 'https://opencode.ai/auth',
     secretKind: 'OpenCode Go 凭据', extraFields: ['workspaceId'], accountMode: 'account-credential',
-    localHint: '每个账户可选择 API Key，或 Cookie + Workspace ID；凭据、额度与订阅信息都按账户独立保存。',
+    localHint: '本机登录模式只读复用 OpenCode CLI 登录；也可添加独立的 API Key 或 Cookie + Workspace 账户。手动账户缺少凭据时不会改用其他登录。',
   },
   {
     id: 'qoder', label: 'Qoder', group: 'more', popular: true,
@@ -80,6 +80,14 @@ export const LIMIT_PROVIDER_CATALOG = [
     defaultEnvironmentVariable: 'QODER_SESSION_COOKIE', dashboardUrl: 'https://qoder.com/account/usage',
     secretKind: 'Qoder Session Cookie', extraFields: ['site'],
     localHint: '登录 Qoder 用量页后粘贴请求 Cookie；国际站和中国站可分别选择。',
+  },
+  {
+    id: 'workbuddy', label: 'WorkBuddy', group: 'more',
+    description: '官网月度 Credits、预留额度与周期结束时间', quotaSupport: 'manual', quotaCoverage: 'best-effort',
+    defaultAuthMode: 'environment', authModes: ['environment', 'keychain'],
+    defaultEnvironmentVariable: 'WORKBUDDY_SESSION_JSON', secretKind: 'Cookie + User-Agent JSON',
+    dashboardUrl: 'https://www.workbuddy.cn/profile/plans-usage',
+    localHint: '主动提供同一官网请求中的 Cookie 与 User-Agent；不会自动读取浏览器或解密客户端登录。Credits 不等于 Token。',
   },
   {
     id: 'warp', label: 'Warp', group: 'more',
@@ -148,7 +156,7 @@ export const LIMIT_ENTITLEMENT_TYPES = ['unknown', 'paid', 'free', 'promotion', 
 export const DEFAULT_LIMIT_PROVIDER_ORDER = [
   'kimi-code', 'codex', 'claude-code', 'cursor', 'copilot', 'antigravity',
   'kiro', 'deepseek', 'opencode', 'qoder', 'warp', 'jetbrains-ai', 'trae',
-  'glm', 'minimax', 'alibaba-coding',
+  'glm', 'minimax', 'alibaba-coding', 'workbuddy',
 ];
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -246,6 +254,28 @@ function normalizeAccounts(candidate, provider, legacySubscription) {
   }).filter(Boolean);
 }
 
+function normalizeKimiAccounts(candidate, legacySubscription) {
+  const candidates = Array.isArray(candidate?.accounts) ? candidate.accounts : [];
+  const migrated = candidate?.accountsInitialized !== true && !candidates.length;
+  const raw = migrated ? [{ id: 'legacy', label: 'Kimi Code',
+    connectionType: !candidate?.authMode || candidate.authMode === 'local' ? 'local' : 'web-token',
+    authMode: candidate?.authMode || 'local', environmentVariable: candidate?.environmentVariable || 'KIMI_AUTH_TOKEN',
+    legacyCredential: true, ...legacySubscription }] : candidates;
+  const seen = new Set(); let hasLocal = false;
+  return raw.slice(0, 20).flatMap(account => {
+    const id = safeAccountId(account?.id);
+    if (!id || seen.has(id)) return [];
+    const connectionType = ['local', 'api-key', 'web-token'].includes(account.connectionType) ? account.connectionType : 'api-key';
+    if (connectionType === 'local' && hasLocal) return [];
+    seen.add(id); hasLocal ||= connectionType === 'local';
+    return [{ id, label: safeText(account.label, 80), connectionType,
+      authMode: connectionType === 'local' ? 'local' : account.authMode === 'environment' ? 'environment' : 'keychain',
+      environmentVariable: safeText(account.environmentVariable, 80),
+      legacyCredential: id === 'legacy' && account.legacyCredential === true,
+      ...normalizeSubscription(account) }];
+  });
+}
+
 export function defaultLimitSettings() {
   return structuredClone(DEFAULT_SETTINGS);
 }
@@ -270,8 +300,9 @@ export function normalizeLimitSettings(value) {
       && !hasExplicitSubscription(candidate) && hasExplicitSubscription(retiredGemini)
       ? retiredGemini : candidate;
     const legacySubscription = normalizeSubscription(subscriptionCandidate);
-    const accounts = normalizeAccounts(candidate, provider, legacySubscription);
-    const subscription = provider.id === 'opencode' ? normalizeSubscription(null) : legacySubscription;
+    const accounts = provider.id === 'kimi-code' ? normalizeKimiAccounts(candidate, legacySubscription)
+      : normalizeAccounts(candidate, provider, legacySubscription);
+    const subscription = ['opencode', 'kimi-code'].includes(provider.id) ? normalizeSubscription(null) : legacySubscription;
     const activeAccountId = safeAccountId(candidate?.activeAccountId);
     const site = ['china', 'international'].includes(candidate?.site) ? candidate.site : provider.defaultSite || 'international';
     providers[provider.id] = {
@@ -284,6 +315,7 @@ export function normalizeLimitSettings(value) {
       workspaceId: provider.id === 'opencode' ? safeWorkspaceId(candidate?.workspaceId) : safeText(candidate?.workspaceId, 240),
       site,
       accounts,
+      ...(provider.id === 'kimi-code' ? { accountsInitialized: true } : {}),
       activeAccountId: accounts.some((account) => account.id === activeAccountId)
         ? activeAccountId
         : accounts[0]?.id || '',
@@ -331,7 +363,7 @@ export function publicLimitSettings(settings, {
     workspaceId: safeLocalPathDisplay(provider.workspaceId),
     accounts: provider.accounts.map((account) => ({
       ...account,
-      ...credential(`${id}:${account.id}`),
+      ...credential(id === 'kimi-code' && account.legacyCredential ? id : `${id}:${account.id}`),
     })),
   }]));
   return {

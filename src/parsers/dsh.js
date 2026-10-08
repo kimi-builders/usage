@@ -7,13 +7,18 @@ import { aggregateToBuckets, extractSessions } from './index.js';
 
 const SOURCE = 'dsh';
 
-// Verified against deepseek-ai/deepseek-harness tag dsh-v0.1.5-alpha.2:
+// Verified against deepseek-ai/deepseek-harness, released formats V0-V4:
 // packages/session/session-format/src/filename.ts, session-format-v0-to-v1,
-// session-format-v1-to-v2, session-format-v2-to-v3, and core/session/src/types.ts.
-// V0/V1 use header.seedLength; V2/V3 use a tagged inherited end-seed marker.
+// session-format-v1-to-v2, session-format-v2-to-v3, core/session/src/types.ts,
+// and docs/persistence-changes/2026-09-16-session-format-v4.md.
+// V0/V1 use header.seedLength; V2-V4 use a tagged inherited end-seed marker.
+// V4 (SESSION_FORMAT_VERSION = 4, commit 669b724a78) keeps the filename, header
+// fields, assistant usage block, and inherited cut; it lifts user-role tool
+// results into tool-role messages, adds forked to turn/end.reason, and adds
+// developer/message, none of which carry billable usage.
 // Re-check the format before accepting another version; never silently read a
 // frozen predecessor when a newer generation is present.
-const MAX_SESSION_FORMAT_VERSION = 3;
+const MAX_SESSION_FORMAT_VERSION = 4;
 const SESSION_FILENAME = /^session(?:\.v([1-9][0-9]*))?\.jsonl(\.zstd)?$/;
 
 // Safety cap for a single session log. DSH stores many small zstd frames per
@@ -201,7 +206,7 @@ function isUserMessageRecord(rec) {
  *   {"type":"user/message"|"assistant/message","time":...,"data":{...}}
  *
  * V0/V1 use header.seedLength. Their untagged end-seed markers can appear
- * after real history and must never be treated as a replay boundary. V2/V3
+ * after real history and must never be treated as a replay boundary. V2-V4
  * instead require isSeeded and use the LAST end-seed with data.inherited=true.
  * Only a proven inherited prefix also present in the parent is skipped.
  *

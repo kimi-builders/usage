@@ -30,13 +30,111 @@ OpenCode, Gemini CLI, Antigravity, GitHub Copilot CLI, Cursor, and Roo Code,
 as well as later Pi Coding Agent, ZCode, and WorkBuddy compatibility work,
 including supporting SQLite utilities where applicable. Subsequent adaptations
 include Grok CLI, Trae CLI, MiniMax Code, Qoder/Qoder CN and DeepSeek Harness
-(DSH, session formats V0–V3) readers and corresponding test fixtures.
+(DSH, session formats V0–V4) readers and corresponding test fixtures.
+
+The OpenCode reader's 2.x store compatibility (sqlite_master table detection,
+session_message projection reads with session/session_v2 directory joins,
+legacy-priority deduplication for migrated stores, and explicit warnings for
+unrecognized table layouts) is adapted from upstream commit
+f1dd16688826e8005b7d71a14a1b4bacc3e74cfd (2026-09-26) and re-expressed in this
+repository's separate SQLite/JSON reader structure and five-field
+mutually-exclusive token contract. That commit's write-cache pricing change has
+no equivalent here, because this project already counts tokens.cache.write in
+its own cacheWriteInputTokens bucket.
+
+The MiniMax Code reader's multi-store data-root coverage (the CLI's own
+MINIMAX_DATA_DIR / MAVIS_DATA_DIR relocation variables, per-profile
+~/.minimax-<profile> homes, the pre-npm ~/.minimax-code and pre-rename ~/.mavis
+stores, physical-path deduplication for compat links, cross-store folding of
+byte-identical ledger rows that keeps duplicates inside a single store, and
+degraded extra-store warnings instead of blanking the live store, plus the
+matching background-service environment whitelist entries) is adapted from
+upstream commit af609278e0e27f73910b1481964f423ef3561546 (2026-09-28) and
+re-expressed in this repository's parser-level root resolver, five-field
+mutually-exclusive token contract with request counts, English warning text,
+and the registry roots() gating that decides whether a source is installed.
+
+The subscription-limit contract's optional machine-readable emptyReason
+vocabulary for empty quota results (limitReached / noWindow / notEntitled /
+sessionWithoutPlanLimits, with unknown values rejected instead of passed
+through) and the OpenCode Go HTTP 403 → notEntitled mapping for a valid API
+key without an active Go subscription are adapted from upstream commit
+1287a8a3a42da0a5b74222778fbd94781f546e5b (2026-09-27) and re-expressed in this
+repository's assertProviderContract browser allowlist instead of a dedicated
+schema module. This repository keeps its single contract revision and does not
+introduce a schemaVersion mechanism; only the API-key path maps 403, while the
+Cookie workspace path keeps its existing failure semantics.
+
+The OpenCode Go quota path's read-only local credential discovery — selecting
+only the opencode-go integration key from OpenCode's own credential table
+through the shared read-only SQLite helper, falling back to the 1.x auth.json
+`opencode.key` entry when the table holds no Go row or cannot be read, and
+reporting a concrete store failure only when the fallback has no key either —
+is adapted from upstream commits
+166f735084a0ed55b60a1db5e8345ce38d9f6651 (2026-09-22) and
+e21bd2d6fa6058bd6f319d193e06f6dc9c7b2d50 (2026-09-26), and re-expressed in
+this repository's limits provider: local discovery is an explicit connection
+mode with a credential-scoped, hashed history identity. Manually configured
+API Key / Cookie + Workspace accounts never fall back to another local login.
+The OpenCode store stays
+strictly read-only, and the key never reaches the result, history, logs, or
+cache. Upstream's quota registry entry, schema list, disposable cache-scope
+hashing, and VIBE_USAGE_OPENCODE_DIRS override have no equivalent here; this
+repository reuses its existing KBU_USAGE_OPENCODE_DIR data-root override and
+honors its XDG_DATA_HOME resolution instead. Upstream commit
+6530c6d5f7f44c710cc324db989472dbe7a8f3cd (2026-09-27), which builds the data
+root test expectations with node:path's join and the platform delimiter so
+they hold on Windows, is reflected in the corresponding tests here.
+
+The Kimi Code quota path's support for the current CLI 2.x generation —
+probing the official OAuth credential across `$KIMI_SHARE_DIR`, then
+`$KIMI_CODE_HOME` / `~/.kimi-code`, then the legacy `~/.kimi` and keeping the
+first existing login (naming the 2.x path when no login exists), together with
+parsing the 2.x keyed `usages` response (limit_5h / limit_7d /
+limit_month_total / limit_month_code entries with used_ratio and reset
+fields) beside the legacy limits/usage arrays — is adapted from upstream
+commits 72683931ca0fad512dec2967e3362362cf07e5a0 (2026-09-19) and
+f1dd16688826e8005b7d71a14a1b4bacc3e74cfd (2026-09-26), and re-expressed in
+this repository's shared credentials loader and window-based quota contract:
+the winning login's directory also owns the device identity file and the
+OAuth refresh lock, keyed windows reuse the existing window ids for the same
+periods, hybrid responses deduplicate by window id, and monthly ratios render
+as local quota windows with a matching notice instead of upstream's separate
+meter list. The daemon source-location contract additionally captures
+KIMI_SHARE_DIR so the background service resolves the same login; upstream's
+daemon PRESERVED_SERVICE_ENV list itself has no equivalent here.
+
+The Grok CLI reader's Grok 1.0 usage.json ledger fallback — preferring the ACP
+stream's turn_completed usage and consulting the per-session ledger only when
+the stream carries none so a session reporting both is never counted twice,
+pairing the timestamp-less ledger turns with the stream's turn_completed order,
+folding the ledger's cacheCreationTokens into input because Grok publishes no
+separate cache-write rate, and attributing the ledger's modelUsage entries per
+model — together with the two silent-empty format sentinels (a Cursor export
+header check that turns an unrecognised header into a skipped run with a
+warning instead of an empty snapshot, and a Grok signals.json canary that warns
+when a session reports completed turns and models used without any readable
+usage) is adapted from upstream commit
+b4a38745785a243ea23f5130285d78624f89a9f5 (2026-09-20) and re-expressed in this
+repository's five-field mutually-exclusive token contract, KBU_USAGE_* root
+resolution, and English parser warnings carried through the shared snapshot
+collector's existing skipped/warnings fields.
 
 The adapted code has since been substantially modified for this project,
 including exclusive cache-write/cache-read/reasoning counters, canonical model
 metadata, reasoning effort and Agent version dimensions, bounded activity-hour
 slices, installation-salted session identifiers, source-level failure isolation,
 and the kimi.builders v2 sync protocol.
+
+The Codex durable token_usage_record accounting and legacy UI-mirror test
+scenarios were adapted from vibe-usage commit
+86aeaa956c6093480d49f4d2a00fede85559200b (2026-10-08), with request ownership
+and response-identity safeguards informed by the CodexBar ledger work listed
+below. This project retains its streaming, stateless scans and exclusive
+token fields rather than importing either upstream's incremental cache.
+The Windows OpenCode LOCALAPPDATA discovery is adapted from vibe-usage commit
+acb315c2d50694d71e6fb9cc1567db898a7a3332 (2026-10-08), using a shared resolver
+for scanning and explicit local Go login, with cross-store message deduplication.
 
 
 CodexBar provider integrations
@@ -56,12 +154,97 @@ particularly applies to Codex, Claude, Cursor, GitHub Copilot, OpenCode Go,
 Kiro, Qoder, Warp, Antigravity, DeepSeek, and JetBrains AI where the
 corresponding source exists upstream.
 
+The October 2026 correctness adaptations include Kimi matching-cycle counter /
+ratio reconciliation (8ab81e2ebd592589f2c4c47fccd689a00dc19e31), JetBrains monthly
+versus purchased-credit balance selection (ea2babcd31e7228fba3aafcaddf55f1e8271cadf),
+bounded same-installation idea.log quota parsing (39ba7c649da14dd5a6d9973febb3012797c1df6e),
+and Antigravity unsupported consumer OAuth client rejection before placeholder
+quota publication (9699239f0ddc16777c84e5cc6116e526e9a4f71a). Codex request identity,
+ownership, and mirror-accounting safeguards were informed by
+a555a82bad569e801e1628a43ceb507b0764b337. These are re-expressed in JavaScript
+with sanitized fixture tests and the existing provider / collector contracts;
+no account-promotion, automatic sign-in, or provider app management is included.
+
+The second October 2026 batch adapts WorkBuddy resource-summary/package-list
+request shapes from Resources/Plugins/workbuddy.ts; Claude reset inventory,
+promotional cloud credits, and verified subscription metadata from the Claude
+provider; and measured Codex turn timing rules from CostUsageScanner's turn
+performance implementation. WorkBuddy uses an explicit Cookie/User-Agent tuple
+instead of upstream browser import. Claude metadata verifies the exact account
+and organization without importing cookies. Codex performance stays local-only,
+requires complete owned durable usage, and never enters community uploads.
+
 The later GLM / Z.ai, MiniMax Coding / Token Plan, and Alibaba Coding Plan
 integrations adapt endpoint/request shapes and sanitized quota fixtures from
 the corresponding CodexBar providers. They retain separate quota units, omit
 unverifiable capacity, isolate region-specific credentials/history, and do not
 copy cross-region credential retries or custom endpoint overrides. Alibaba's
 new personal/team Token Plan and GLM team scopes are not included.
+
+The Antigravity OAuth quota path preferring the grouped model-family summary
+endpoint (v1internal:retrieveUserQuotaSummary) over the per-model fallback
+chain, with weekly-only Starter free-tier pools reported at an explicit weekly
+cadence, is adapted from upstream commit
+62acfd8ead86a3ae443ec2d76c30c93ec72e09b4 (2026-09-28) and re-expressed in this
+repository's single JavaScript provider module. The grouped summary parser
+itself already existed here for the local loopback path, so only the endpoint
+preference, its logged-out error semantics, and the fallback order were added.
+
+The Codex OAuth quota path's bounded auth.json reread — retrying the local
+credential read twice at 50 ms intervals when the file is missing, only
+partially published, or its access token is expired or about to expire, before
+reporting the login as missing or stale, without ever redeeming the CLI's own
+refresh token — together with the plan-change invalidation that stops an old
+subscription's quota/reset evidence from being presented as the new plan's
+current evidence, is adapted from upstream commit
+9013fd81b218dc211f4230188b3291d7bfa75eed (2026-09-28) and re-expressed in this
+repository's JavaScript credential loader and Codex provider. Upstream
+invalidates reset backfill and weekly reset confirmation baselines at
+publication time; the equivalent here is an optional sanitized plan identity
+on subscription-history observations (history schema v2) plus segmentation of
+pooled observation evidence by the current plan in the dashboard insights,
+where records without a plan stay unknown-plan evidence. The settings
+detection path keeps its single read, matching upstream availability probing.
+
+The Kimi monthly-membership binding cap — projecting shorter quota windows as
+blocked while a longer monthly pool is observed exhausted, carrying the
+blocking pool's reset horizon without promising an earlier recovery time, and
+clearing pace for the blocked display — together with the Z.ai / GLM explicit
+"Coding Plan usage unavailable" annotation when a quota response contains
+unsupported limit shapes or no convertible quota, is adapted from upstream
+commit e9b2823d6fd0e883d392f23b42038757f67b39ea (2026-09-28). Upstream applies
+the projection while building its menu-card model and replaces the displayed
+percentage there; the equivalent here keeps every raw provider window and
+history observation untouched and expresses the block as a derived dashboard
+display marker plus a provider notice, so no projected number is persisted as
+a provider observation and no quota amount is invented.
+
+The Kimi stale-CLI-credential recovery copy — directing an expired or rejected Kimi Code
+CLI login to run `kimi` to renew, noting that the next query rereads the credential file so
+restarting this tool is unnecessary, naming the unattended `KIMI_AUTH_TOKEN`
+environment-variable/keychain alternative, and recording that Kimi rotates refresh tokens
+so an in-memory-only refresh would invalidate the CLI's saved token while writing back can
+race with the CLI's own renewal — is adapted from upstream commit
+6dcac3df4b1b8f077ab4d3704f711797ec364e31 (2026-09-28) and re-expressed in this
+repository's provider error copy and a new Kimi Code login document. Upstream keeps
+CLI-owned credentials strictly read-only; this repository deliberately keeps its existing
+redeem-and-write-back renewal with its own process lock, reread under the lock,
+400-triggered reread, and atomic rename, so upstream's read-only stance and its
+KIMI_CODE_API_KEY setting have no equivalent here.
+
+The Cursor forbidden-request back-off — classifying a geo-blocked HTTP 403 on
+quota fetches as its own error category instead of an expired login, cooling
+the affected provider down for at least six hours on a provider-and-account
+scope so automatic refreshes stop re-requesting a region-blocked endpoint on
+every poll, and lifting the cooldown immediately on manual refresh, account or
+settings changes, and cache clears — is adapted from upstream commit
+1c0f70e3618d3c0c3c2e0e3648f0166e0530414d (2026-09-23) and re-expressed in this
+repository's Cursor-specific service error classifier and in-memory cooldown
+map. Other providers retain their authentication recovery, including MiniMax's
+same-region legacy endpoint retry on HTTP 403. The cooldown state exists only inside the running process, never
+reaches the payload, history, exports, or community sync, and upstream's
+per-provider token-publication scope signatures have no equivalent here because
+settings saves already clear this repository's whole limit cache.
 
 The implementation here translates those provider facts into JavaScript and a
 different normalized quota contract, then adds a provider allowlist, loopback-
@@ -72,6 +255,42 @@ distributed in this package.
 
 DIRECT PRODUCT AND ENGINEERING REFERENCES
 =========================================
+
+Kimi multi-account quota references
+----------------------------------
+
+Project:  llm-key-matrix
+Source:   https://github.com/JulianJin1024/llm-key-matrix
+License:  MIT; Copyright (c) 2026 LLM Key Matrix contributors
+
+Project:  KimiCodeBar
+Source:   https://github.com/xifandev/KimiCodeBar
+License:  MIT; Copyright (c) 2026 xifandev
+
+Used to cross-check Coding API-key authentication at /coding/v1/usages,
+optional weekly / five-hour / monthly response windows, and account-versus-key
+quota ownership. The JavaScript multi-account settings, installation-scoped
+HMAC identities, history isolation and dashboard controls are implemented here.
+Neither application nor account-switching/CLI-configuration-writing code is
+bundled. Retained upstream MIT terms for these protocol references:
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 Vibe Usage for macOS
 --------------------

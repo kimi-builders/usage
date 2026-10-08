@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { LIMIT_PROVIDER_CATALOG } from '../src/limits/catalog.js';
-import { assertProviderContract } from '../src/limits/contract.js';
+import { PROVIDER_EMPTY_REASONS, assertProviderContract } from '../src/limits/contract.js';
 import { parseAntigravityQuota } from '../src/limits/providers/antigravity.js';
 import { parseDeepSeekBalance } from '../src/limits/providers/deepseek.js';
 import { parseClaudeUsage } from '../src/limits/providers/claude.js';
@@ -15,6 +15,7 @@ import { parseKiroUsage } from '../src/limits/providers/kiro.js';
 import { parseOpenCodeGoUsage } from '../src/limits/providers/opencode.js';
 import { parseQoderUsage } from '../src/limits/providers/qoder.js';
 import { parseWarpUsage } from '../src/limits/providers/warp.js';
+import { parseWorkBuddyUsage } from '../src/limits/providers/workbuddy.js';
 import { parseGlmQuota } from '../src/limits/providers/glm.js';
 import { parseMiniMaxQuota } from '../src/limits/providers/minimax.js';
 import { parseAlibabaCodingQuota } from '../src/limits/providers/alibaba-coding.js';
@@ -26,6 +27,7 @@ const fixtureText = readFileSync(fixtureUrl, 'utf8');
 const fixture = JSON.parse(fixtureText);
 
 const PARSERS = {
+  workbuddy: input => parseWorkBuddyUsage(input, { now: NOW }),
   glm: input => parseGlmQuota(input, { now: NOW }),
   minimax: input => parseMiniMaxQuota(input, { now: NOW }),
   'alibaba-coding': input => parseAlibabaCodingQuota(input, { now: NOW }),
@@ -122,6 +124,50 @@ test('contract rejects duplicate windows, invalid dates, and negative quota valu
   }), /不能为负数/);
 });
 
+test('empty results carry an optional machine-readable emptyReason from a closed vocabulary', () => {
+  const base = {
+    id: 'codex', label: 'Codex', status: 'empty', updatedAt: NOW.toISOString(), windows: [],
+  };
+  // Healthy and unqualified results carry no reason at all.
+  assert.equal(assertProviderContract('codex', base).emptyReason, null);
+  for (const reason of PROVIDER_EMPTY_REASONS) {
+    assert.equal(
+      assertProviderContract('codex', { ...base, emptyReason: reason }).emptyReason,
+      reason,
+    );
+  }
+  // Unknown values fail closed instead of passing through silently.
+  assert.throws(
+    () => assertProviderContract('codex', { ...base, emptyReason: 'made-up' }),
+    (error) => error?.code === 'invalid_response' && /emptyReason/.test(error.message),
+  );
+});
+
+test('runtime contract forwards emptyReason from a provider to the dashboard payload', async () => {
+  clearLimitCache();
+  const result = await loadSubscriptionLimits({
+    force: true,
+    config: { subscriptionLimits: {
+      enabled: true,
+      providerOrder: ['opencode'],
+      providers: { opencode: { enabled: true } },
+    } },
+    historyLoader: () => ({ schemaVersion: 1, observations: [] }),
+    historyRecorder: () => {},
+    fetchers: {
+      opencode: async () => ({
+        id: 'opencode', label: 'OpenCode Go', status: 'empty', emptyReason: 'notEntitled',
+        updatedAt: NOW.toISOString(), windows: [],
+      }),
+    },
+  });
+  assert.equal(result.providers[0].status, 'empty');
+  assert.equal(result.providers[0].emptyReason, 'notEntitled');
+  // An explained empty state is neither available nor a failure.
+  assert.equal(result.summary.available, 0);
+  assert.equal(result.summary.needsAttention, 0);
+});
+
 test('contract returns an exact browser allowlist and redacts account and path hints', () => {
   const sentinel = 'sentinel-provider-secret';
   const result = assertProviderContract('codex', {
@@ -142,8 +188,8 @@ test('contract returns an exact browser allowlist and redacts account and path h
     }],
   });
   assert.deepEqual(Object.keys(result), [
-    'id', 'label', 'status', 'account', 'plan', 'source', 'notice', 'resetCredits', 'balances',
-    'updatedAt', 'windows',
+    'id', 'label', 'status', 'emptyReason', 'account', 'plan', 'source', 'notice', 'resetCredits',
+    'balances', 'creditBalance', 'cloudCredits', 'subscriptionDates', 'updatedAt', 'windows',
   ]);
   assert.deepEqual(Object.keys(result.windows[0]), [
     'id', 'label', 'usedPercent', 'remainingPercent', 'resetsAt', 'windowSeconds',
