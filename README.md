@@ -268,7 +268,7 @@ session ID 经安装级随机盐和 HMAC-SHA-256 转换，不同设备无法用�
 遇到数据缺失或格式差异，请按排障指南提供脱敏诊断。
 
 [排障与反馈](./SUPPORT.md) · [来源兼容矩阵](./docs/SOURCE_COMPATIBILITY.md) ·
-[开发路线](./docs/ROADMAP.md) · [发布说明](./docs/RELEASE_NOTES_0.6.1.md) ·
+[开发路线](./docs/ROADMAP.md) · [发布说明](./docs/RELEASE_NOTES_0.6.2.md) ·
 [参与开发](./CONTRIBUTING.md) · [安全报告](./SECURITY.zh.md) · [威胁模型](./THREAT_MODEL.zh.md)
 
 ## 从源码运行

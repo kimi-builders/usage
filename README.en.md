@@ -327,7 +327,7 @@ contract tests; Beta sources are still gaining log-format coverage. For missing
 data or format differences, follow the troubleshooting guide to share redacted diagnostics.
 
 [Troubleshooting](./SUPPORT.en.md) · [Source compatibility](./docs/SOURCE_COMPATIBILITY.en.md) ·
-[Roadmap](./docs/ROADMAP.en.md) · [Release notes](./docs/RELEASE_NOTES_0.6.1.en.md) ·
+[Roadmap](./docs/ROADMAP.en.md) · [Release notes](./docs/RELEASE_NOTES_0.6.2.en.md) ·
 [Contributing](./CONTRIBUTING.en.md) · [Security reporting](./SECURITY.md) · [Threat model](./THREAT_MODEL.md)
 
 ## Run from source

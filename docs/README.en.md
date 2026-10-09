@@ -19,6 +19,7 @@ Trust and release documentation:
 - [Security policy](../SECURITY.md)
 - [Optional kimi.builders connection and sync](./COMMUNITY_SYNC.en.md)
 - [Publishing checklist](../PUBLISHING.md)
+- [0.6.2 release notes](./RELEASE_NOTES_0.6.2.en.md)
 - [0.6.1 release notes](./RELEASE_NOTES_0.6.1.en.md)
 - [0.6.0 release notes](./RELEASE_NOTES_0.6.0.en.md)
 - [0.5.3 release notes](./RELEASE_NOTES_0.5.3.en.md)

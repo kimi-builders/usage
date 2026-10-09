@@ -1,6 +1,6 @@
 {
   "name": "@kimi.builders/usage",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Local CLI and dashboard for AI coding agent token usage, cost estimates, and activity",
   "type": "module",
   "scripts": {

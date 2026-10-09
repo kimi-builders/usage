@@ -19,6 +19,7 @@
 - [安全政策](../SECURITY.zh.md)
 - [kimi.builders 可选连接与同步](./COMMUNITY_SYNC.md)
 - [发布清单](../PUBLISHING.zh.md)
+- [0.6.2 发布说明](./RELEASE_NOTES_0.6.2.md)
 - [0.6.1 发布说明](./RELEASE_NOTES_0.6.1.md)
 - [0.6.0 发布说明](./RELEASE_NOTES_0.6.0.md)
 - [0.5.3 发布说明](./RELEASE_NOTES_0.5.3.md)
