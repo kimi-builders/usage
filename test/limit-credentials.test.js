@@ -306,10 +306,16 @@ test('OpenCode data roots follow node:path join and platform delimiter rules', (
   // Build every expectation with the platform's own rules: the provider joins
   // with node:path and splits the override on the platform delimiter, so a
   // hardcoded POSIX literal (or a `:`-joined override) would fail on Windows.
-  assert.deepEqual(openCodeDataRoots({}, '/Users/example'),
-    [join('/Users/example', '.local', 'share', 'opencode')]);
-  assert.deepEqual(openCodeDataRoots({ XDG_DATA_HOME: '/xdg-home' }, '/Users/example'),
-    [join('/xdg-home', 'opencode')]);
+  // The native Windows store supplements XDG, even when XDG is configured.
+  const home = '/Users/example';
+  const native = process.platform === 'win32'
+    ? [join(home, 'AppData', 'Local', 'opencode')] : [];
+  assert.deepEqual(openCodeDataRoots({}, home),
+    [join(home, '.local', 'share', 'opencode'), ...native]);
+  assert.deepEqual(openCodeDataRoots({ XDG_DATA_HOME: '/xdg-home' }, home),
+    [join('/xdg-home', 'opencode'), ...native]);
+  assert.deepEqual(openCodeDataRoots({ XDG_DATA_HOME: '/xdg-home', LOCALAPPDATA: '/local-app-data' }, home),
+    [join('/xdg-home', 'opencode'), ...(process.platform === 'win32' ? [join('/local-app-data', 'opencode')] : [])]);
   assert.deepEqual(
     openCodeDataRoots(
       { KBU_USAGE_OPENCODE_DIR: ['/a/opencode', '/b/opencode'].join(delimiter) },

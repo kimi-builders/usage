@@ -42,6 +42,8 @@
   regression checks for font artifacts and valid backgrounds.
 - Keep local observations, provider facts, derived estimates, and user-declared
   targets distinct. This release does not expand sync fields or default permissions.
+- Update the older OpenCode root test: Windows native storage supplements XDG,
+  while explicit directory overrides remain exclusive.
 
 ## Upgrade
 
