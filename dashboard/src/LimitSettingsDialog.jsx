@@ -7,7 +7,7 @@ import { ProviderIcon } from './SubscriptionLimits.jsx';
 import { moveEnabledProvider, reorderEnabledProviders } from './provider-order.js';
 import {
   ENTITLEMENT_TYPES, entitlementBadge, entitlementLabel, entitlementNote,
-  credentialState, hasOpenCodeCredential, idSegment, isValidOpenCodeWorkspaceId, localizedCount,
+  credentialState, hasOpenCodeCredential, idSegment, isValidOpenCodeWorkspaceId, kimiConnectionStatusText, localizedCount,
   quotaErrorMessage, quotaProviderCatalogCopy, regionalProviderPatch, regionalDraftDetection, quotaSaveFailures,
 } from './subscription-limits-utils.js';
 import { createLimitSettingsState, isLimitSettingsDirty, limitSettingsReducer } from './limit-settings-state.js';
@@ -304,16 +304,12 @@ function KimiConnectionPanel({ provider, item, updateProvider, accountSecrets, s
     updateProvider('kimi-code', { accountsInitialized: true, accounts: [...item.accounts, account], activeAccountId: item.activeAccountId || id });
     setEditorAccountId(id);
   };
-  const credentialText = (account) => account.hasSecret || credentialState(account) === 'present'
-    ? (zh ? '凭据已保存' : 'Credential saved')
-    : credentialState(account) === 'unchecked' ? (zh ? '凭据待验证' : 'Credential not checked')
-      : (zh ? '待填写凭据' : 'Credential needed');
   return <div className="kimi-accounts-config">
     <p>{zh ? '本机登录与每个 Kimi for Coding API Key 独立查询，不切换 CLI 登录。一个账户的多个 Key 共享额度，不是每个 Key 各有一份套餐。' : 'Query the local login and each Kimi for Coding API key independently without switching CLI accounts. Keys belonging to one account share its quota.'}</p>
     <div className="account-row-list">{item.accounts.map((account) => <div className={`account-row${selected?.id === account.id ? ' selected' : ''}`} key={account.id}>
       <button type="button" className="account-row-main" aria-pressed={selected?.id === account.id} onClick={() => setEditorAccountId(account.id)}>
         <b>{accountName(account, zh)}</b>
-        <small>{connectionModeLabel(account, zh)} · {credentialText(account)}</small>
+        <small>{connectionModeLabel(account, zh)} · {kimiConnectionStatusText(account, zh)}</small>
         <em className={`entitlement-badge entitlement-badge--${account.entitlementType || 'unknown'}`} title={entitlementLabel(account.entitlementType, zh)}>{entitlementBadge(account.entitlementType, zh)}</em>
         {selected?.id === account.id ? <ChevronRight size={13}/> : null}
       </button>
@@ -332,7 +328,7 @@ function KimiConnectionPanel({ provider, item, updateProvider, accountSecrets, s
       </>}
       <div className="account-editor-footer">
         <EntitlementFields className="kimi-account-entitlement" item={selected} onChange={patch => updateAccount(selected.id, patch)} zh={zh}/>
-        <RemoveAccountButton hasSavedCredential={credentialState(selected) !== 'absent'} onRemove={() => { clearDraftSecret(selected.id); const accounts = item.accounts.filter(other => other.id !== selected.id); updateProvider('kimi-code', { accountsInitialized: true, accounts, activeAccountId: item.activeAccountId === selected.id ? accounts[0]?.id || '' : item.activeAccountId }); setEditorAccountId(''); }} zh={zh}/>
+        <RemoveAccountButton hasSavedCredential={selected.authMode === 'keychain' && credentialState(selected) !== 'absent'} onRemove={() => { clearDraftSecret(selected.id); const accounts = item.accounts.filter(other => other.id !== selected.id); updateProvider('kimi-code', { accountsInitialized: true, accounts, activeAccountId: item.activeAccountId === selected.id ? accounts[0]?.id || '' : item.activeAccountId }); setEditorAccountId(''); }} zh={zh}/>
       </div>
     </fieldset> : null}
     <p>{zh ? '新套餐可能只有 5 小时和月度窗口；只展示官方返回的数据，不补造周额度。无法确认两个连接属于同一账户时，请勿把它们当成独立套餐相加。' : 'New plans may expose only 5-hour and monthly windows. Missing weekly quotas are not invented. Connections without verified identity must not be assumed to be separate plans.'}</p>

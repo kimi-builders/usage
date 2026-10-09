@@ -471,3 +471,31 @@ test('ambiguous mixed Grok turns protect checkpoints until the ledger can be rec
     saveConfig(syncConfig);
   }
 });
+
+test('untimed Grok totals stay partial across metadata updates without uploading invented date buckets', async () => {
+  const previous = process.env.KBU_USAGE_GROK_SESSIONS;
+  const oldState = readFileSync(join(stateDir, 'state.json'));
+  const sessions = join(root, 'grok-untimed');
+  const directory = join(sessions, 'demo', 'untimed');
+  mkdirSync(directory, { recursive: true });
+  process.env.KBU_USAGE_GROK_SESSIONS = sessions;
+  writeFileSync(join(directory, 'usage.json'), JSON.stringify({ session: { inputTokens: 300, outputTokens: 30 } }));
+  saveConfig({ ...syncConfig, sourcePolicies: { grok: 'private' } });
+  try {
+    const key = 'grok|grok-4.5|private|2026-01-01T00:00:00.000Z';
+    const before = readStateFile(); before.buckets[key] = 'prior';
+    writeFileSync(join(stateDir, 'state.json'), JSON.stringify(before));
+    for (const updated_at of ['2026-10-08T12:00:00Z', '2026-10-09T12:00:00Z']) {
+      writeFileSync(join(directory, 'summary.json'), JSON.stringify({ current_model_id: 'grok-4.5', created_at: '2026-10-07T23:00:00Z', updated_at }));
+      const receivedBefore = received.length;
+      const result = await runSync({ quiet: true });
+      assert.equal(result.sources.find(s => s.source === 'grok').status, 'partial');
+      assert.equal(received.slice(receivedBefore).flatMap(payload => payload.buckets || []).filter(b => b.source === 'grok').length, 0);
+      assert.equal(readStateFile().buckets[key], 'prior');
+    }
+  } finally {
+    process.env.KBU_USAGE_GROK_SESSIONS = previous;
+    writeFileSync(join(stateDir, 'state.json'), oldState);
+    saveConfig(syncConfig);
+  }
+});

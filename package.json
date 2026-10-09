@@ -9,6 +9,7 @@
     "test": "node --test",
     "test:collector": "node scripts/test-collector.mjs",
     "test:providers": "node --test test/provider-contract.test.js test/limits-http.test.js",
+    "benchmark:scan": "node scripts/benchmark-scan.mjs",
     "dashboard": "node bin/kbu-usage.js dashboard",
     "dashboard:dev": "node dashboard/scripts/dev.mjs",
     "dashboard:build": "npm --prefix dashboard run build",

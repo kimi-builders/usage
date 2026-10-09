@@ -345,7 +345,7 @@ export function normalizeLimitSettings(value) {
 }
 
 export function publicLimitSettings(settings, {
-  keychainAvailable = process.platform === 'darwin', hasSecret = () => null, detections = {},
+  keychainAvailable = process.platform === 'darwin', hasSecret = () => null, detections = {}, kimiDetections = {},
 } = {}) {
   const credential = (key) => {
     const present = hasSecret(key);
@@ -363,7 +363,15 @@ export function publicLimitSettings(settings, {
     workspaceId: safeLocalPathDisplay(provider.workspaceId),
     accounts: provider.accounts.map((account) => ({
       ...account,
-      ...credential(id === 'kimi-code' && account.legacyCredential ? id : `${id}:${account.id}`),
+      ...(id === 'kimi-code' && account.authMode !== 'keychain'
+        ? { hasSecret: null, credentialState: kimiDetections[account.id]?.state || 'unchecked' }
+        : credential(id === 'kimi-code' && account.legacyCredential ? id : `${id}:${account.id}`)),
+      ...(id === 'kimi-code' ? { connectionStatus: kimiDetections[account.id] || {
+        source: account.authMode, state: account.authMode === 'keychain'
+          ? credential(account.legacyCredential ? id : `${id}:${account.id}`).credentialState : 'unchecked',
+        connectionType: account.connectionType,
+        ...(account.authMode === 'environment' ? { environmentVariable: account.environmentVariable } : {}),
+      } } : {}),
     })),
   }]));
   return {

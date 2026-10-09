@@ -53,6 +53,33 @@ export function credentialState(item) {
   return item?.credentialState ?? (item?.hasSecret == null ? 'unchecked' : item.hasSecret ? 'present' : 'absent');
 }
 
+export function resetTabTarget(key, current, count) {
+  if (count < 1 || current < 0 || current >= count) return null;
+  if (key === 'ArrowRight') return (current + 1) % count;
+  if (key === 'ArrowLeft') return (current - 1 + count) % count;
+  if (key === 'Home') return 0;
+  if (key === 'End') return count - 1;
+  return null;
+}
+
+export function kimiConnectionStatusText(account, zh) {
+  const source = account.connectionType === 'local' ? 'local' : account.authMode;
+  const status = account.connectionStatus;
+  const matches = status?.source === source && status.connectionType === account.connectionType
+    && (source !== 'environment' || status.environmentVariable === account.environmentVariable);
+  const state = matches ? status.state : 'unchecked';
+  if (source === 'local') return state === 'present' ? (zh ? '已检测到本机登录' : 'Local login detected')
+    : state === 'expired' ? (zh ? '本机登录已过期' : 'Local login expired')
+      : state === 'absent' ? (zh ? '未检测到本机登录' : 'Local login not found')
+        : (zh ? '本机登录尚未检测' : 'Local login not checked');
+  if (source === 'environment') return state === 'present' ? (zh ? '环境变量已配置' : 'Environment variable configured')
+    : state === 'absent' ? (zh ? '环境变量未设置或为空' : 'Environment variable missing or empty')
+      : (zh ? '环境变量尚未检测' : 'Environment variable not checked');
+  return state === 'present' ? (zh ? '凭据已保存到钥匙串' : 'Credential saved in Keychain')
+    : state === 'absent' ? (zh ? '钥匙串中未保存凭据' : 'No credential saved in Keychain')
+      : (zh ? '钥匙串凭据尚未检测' : 'Keychain credential not checked');
+}
+
 export function hasOpenCodeCredential(account, savedAccount, secret, cleared = false) {
   if (typeof secret === 'string' && secret.trim()) return true;
   // Only a saved account with the same connection method may keep an unprobed secret.
@@ -263,6 +290,7 @@ export function quotaErrorMessage(provider, zh) {
   if (zh) return provider?.error?.message || '额度查询失败。';
   const label = provider?.label || 'Provider';
   const messages = {
+    refresh_required: `${label} connection changed. Refresh quotas to read this account again.`,
     not_configured: `${label} is not configured or no local login was found.`,
     unauthorized: `${label} login expired or cannot read quota.`,
     forbidden: `${label} quota access was denied (possibly region-restricted); automatic refresh is paused.`,
@@ -272,6 +300,16 @@ export function quotaErrorMessage(provider, zh) {
     provider_error: `${label} quota service returned an error.`,
   };
   return messages[provider?.error?.code] || 'Quota request failed.';
+}
+
+export function quotaUpdatedText(value, now, zh) {
+  const observedAt = Date.parse(value);
+  if (!Number.isFinite(observedAt)) return zh ? '尚未读取' : 'Not read yet';
+  const minutes = Math.max(0, Math.floor((now - observedAt) / 60_000));
+  if (minutes < 1) return zh ? '刚刚更新' : 'Updated now';
+  if (minutes < 60) return zh ? `${minutes} 分钟前更新` : `Updated ${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return zh ? `${hours} 小时前更新` : `Updated ${hours}h ago`;
 }
 
 export function quotaPageError(value, zh) {

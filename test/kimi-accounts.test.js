@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import os, { tmpdir } from 'node:os';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { normalizeLimitSettings, publicLimitSettings } from '../src/limits/catalog.js';
 import { fetchKimiLimits, parseKimiCodeUsage, parseKimiWebUsage } from '../src/limits/providers/kimi.js';
-import { clearLimitCache, loadSubscriptionLimits, saveLimitSettings } from '../src/limits/service.js';
+import { clearLimitCache, getPublicLimitSettings, loadSubscriptionLimits, saveLimitSettings } from '../src/limits/service.js';
 import { recordLimitSnapshot } from '../src/limits/history.js';
 
 const apiAccount = (id, extra = {}) => ({ id, label: id, connectionType: 'api-key', authMode: 'environment', environmentVariable: `KEY_${id.toUpperCase()}`, ...extra });
@@ -44,6 +45,56 @@ test('Kimi public settings probe each stored key independently without returning
   assert.deepEqual(publicSettings.providers['kimi-code'].accounts.map(a => a.hasSecret), [true, false]);
   const legacy = normalizeLimitSettings({ providers: { 'kimi-code': { authMode: 'keychain' } } });
   assert.equal(publicLimitSettings(legacy, { hasSecret: key => key === 'kimi-code' }).providers['kimi-code'].accounts[0].hasSecret, true);
+});
+
+test('Kimi detected account readiness follows local, environment, or Keychain independently', t => {
+  const home = temp(t);
+  t.mock.method(os, 'homedir', () => home);
+  syncBuiltinESMExports();
+  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  const settings = settingsFor([
+    { id: 'local', label: 'Local', connectionType: 'local' }, apiAccount('env'), apiAccount('empty'),
+    apiAccount('stored', { authMode: 'keychain' }), apiAccount('missing', { authMode: 'keychain' }),
+  ]);
+  for (const [login, expected, ready] of [
+    [{ found: true, fresh: true }, 'present', 3],
+    [{ found: true, fresh: false, refreshable: true }, 'present', 3],
+    [{ found: true, fresh: false, refreshable: false }, 'expired', 2],
+    [{ found: false }, 'absent', 2],
+  ]) {
+    const probes = [];
+    let localReads = 0;
+    const result = getPublicLimitSettings({ subscriptionLimits: settings }, {
+      detectCredentials: true, keychainAvailable: true,
+      environment: { KEY_ENV: 'secret-never-returned', KEY_EMPTY: '  ', PATH: '' },
+      hasSecret: key => { probes.push(key); return key === 'kimi-code:stored'; },
+      kimiCredentialLoader: () => { localReads++; return login; },
+      run: () => ({ status: 1 }), platform: 'fixture',
+    });
+    const accounts = result.providers['kimi-code'].accounts;
+    assert.deepEqual(accounts.map(a => a.credentialState), [expected, 'present', 'absent', 'present', 'absent']);
+    assert.deepEqual(accounts.map(a => a.connectionStatus.source), ['local', 'environment', 'environment', 'keychain', 'keychain']);
+    assert.deepEqual(accounts.map(a => a.hasSecret), [null, null, null, true, false]);
+    assert.equal(localReads, 1);
+    for (const id of ['local', 'env', 'empty']) assert.ok(!probes.includes(`kimi-code:${id}`));
+    assert.match(result.catalog.find(p => p.id === 'kimi-code').detection.label, new RegExp(`${ready}/5`));
+    assert.doesNotMatch(JSON.stringify(result), /secret-never-returned/);
+  }
+});
+
+test('ordinary Kimi settings reads never inspect any connection, and API-only detection does not read local login', () => {
+  const config = { subscriptionLimits: settingsFor([apiAccount('env')]) };
+  const noProbe = () => assert.fail('implicit credential probe');
+  const ordinary = getPublicLimitSettings(config, {
+    environment: { get KEY_ENV() { return noProbe(); } }, hasSecret: noProbe,
+    kimiCredentialLoader: noProbe, keychainAvailable: true,
+  });
+  assert.equal(ordinary.providers['kimi-code'].accounts[0].credentialState, 'unchecked');
+  const checked = getPublicLimitSettings(config, { detectCredentials: true, detections: {},
+    environment: { KEY_ENV: 'fixture-key' }, hasSecret: () => false, kimiCredentialLoader: noProbe,
+  });
+  assert.equal(checked.providers['kimi-code'].accounts[0].credentialState, 'present');
+  assert.equal(normalizeLimitSettings(checked).providers['kimi-code'].accounts[0].connectionStatus, undefined);
 });
 
 test('Kimi saves and removes isolated credentials, preserves blank existing secrets, validates before any mutation', () => {

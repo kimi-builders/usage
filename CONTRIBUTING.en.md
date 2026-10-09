@@ -52,6 +52,26 @@ and fixtures; they must not read the developer's real HOME. If manual verificati
 uses real local data, do not paste its output or screenshots directly into an
 issue or pull request.
 
+### Scan benchmarks and platform acceptance
+
+```bash
+npm run benchmark:scan -- --local --runs 3
+# Use the same tool against another trusted checkout:
+npm run benchmark:scan -- --local --runs 3 --checkout /absolute/path/to/baseline
+```
+
+The explicit `--local` flag enables read-only scanning of sources allowed by the current configuration.
+No uploads, configuration writes, or credential writes occur. Each run fully parses in a fresh process
+and reports total/source parsing duration, process peak RSS, and aggregate counts, without raw logs,
+project names, or paths. It **does not flush the OS file cache** and is not a disk-cold benchmark.
+Compare on the same machine, Node version, source settings, logs, and performance sample count; avoid
+concurrent builds/scans. Changing data makes direct regression claims unreliable.
+
+CI covers Collector and Provider fixtures on Linux, macOS, and Windows, not real provider logins.
+Release acceptance must separately record each platform's Node version, fixture versus real logs,
+actual login coverage, and scan/quota results. Label unexecuted checks “unverified”; a local pass
+must not be presented as a successful remote CI run.
+
 ## Repository layout
 
 ```text

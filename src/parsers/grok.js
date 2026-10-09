@@ -149,16 +149,14 @@ async function forEachJsonl(path, callback) {
 // ACP usage for old turns and ledger-only usage for new ones. Explicit ledger
 // turn numbers are 1-based; a numberless ledger can use order only when its
 // length exactly matches the complete ACP stream. Ambiguous joins stay partial.
-function emitLedgerUsage(entries, { ledger, turns, malformed, fallbackModel, project, sessionTimestamp }) {
+function emitLedgerUsage(entries, { ledger, turns, malformed, fallbackModel, project }) {
   if (!ledger) return false;
   if (malformed) return true; // A missing ACP line makes ordinal joins unsafe.
   if (!ledger.turns.length) {
-    if (turns.some((turn) => turn.accounted)) return !turns.every((turn) => turn.accounted);
-    const usage = ledgerRecordUsage(ledger.session);
-    if (!sessionTimestamp || !hasUsageCounters(usage)) return true;
-    emitTurnUsage(entries, { usage, model: fallbackModel, project, timestamp: sessionTimestamp });
-    for (const turn of turns) turn.accounted = true;
-    return false;
+    // Session totals have no occurrence time. Neither summary.updated_at nor
+    // the final completion event can assign the entire session to one bucket.
+    // Keep independently timed ACP usage, but never synthesize timed evidence.
+    return !turns.length || !turns.every((turn) => turn.accounted);
   }
   if (turns.length && (ledger.turns.length > turns.length
     || ledger.turns.some((record) => record?.turnNumber > turns.length))) return true;
@@ -171,7 +169,7 @@ function emitLedgerUsage(entries, { ledger, turns, malformed, fallbackModel, pro
     const number = record?.turnNumber;
     const numbered = Number.isSafeInteger(number) && number > 0 && counts.get(number) === 1;
     if (number != null && !numbered) { incomplete = true; continue; }
-    let timestamp = sessionTimestamp;
+    let timestamp = null;
     let turn;
     if (turns.length) {
       const ordered = number == null && ledger.turns.length === turns.length;
@@ -273,8 +271,7 @@ export async function parse({ sessionSalt, sourceOptions } = {}) {
       }
     });
     const ledger = readUsageLedger(sessionPath);
-    const ambiguous = emitLedgerUsage(entries, { ledger, turns, malformed, fallbackModel, project,
-      sessionTimestamp: toDate(summary.updated_at || summary.last_active_at || summary.created_at) });
+    const ambiguous = emitLedgerUsage(entries, { ledger, turns, malformed, fallbackModel, project });
     const incomplete = malformed > 0 || ambiguous || turns.some((turn) => !turn.accounted);
     if (incomplete) incompleteSessions.push(sessionId);
     // Canary for the next on-disk format move: a session whose signals.json
@@ -322,7 +319,7 @@ export async function parse({ sessionSalt, sourceOptions } = {}) {
         `(e.g. ${unreadSessions[0].sessionId}, ${unreadSessions[0].turnCount} turn(s)); Grok may have changed ` +
         'its on-disk usage format again. No usage was uploaded for these sessions.'] : []),
         ...(partialCount
-          ? [`grok: ${partialCount} session(s) have completed turns that could not be matched to readable usage; available turns are retained and the source is partial.`] : []),
+          ? [`grok: ${partialCount} session(s) have usage that could not be matched to reliable turn timestamps or readable counters; only independently timed turns are retained and the source is partial.`] : []),
       ],
     }),
   };

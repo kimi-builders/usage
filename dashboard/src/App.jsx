@@ -24,6 +24,7 @@ import { resolveCommunityStatus } from './device-authorization.js';
 import { isBenefitSection, isStandaloneSection, sectionFromHash, titleForSection, USAGE_SECTION_IDS } from './navigation.js';
 import { Button, PageState } from './ui.jsx';
 import { normalizeVibe } from './visual-preferences.js';
+import { createLimitResource } from './limit-resource.js';
 
 function deferredDialog(exportName) {
   const LazyDialog = lazy(() => import('./UsageDialogs.jsx').then((module) => ({ default: module[exportName] })));
@@ -179,6 +180,10 @@ export function App() {
   const [limitLoading, setLimitLoading] = useState(true);
   const [limitSaving, setLimitSaving] = useState(false);
   const [limitError, setLimitError] = useState('');
+  const [limitResource] = useState(() => createLimitResource({
+    onData: setLimitData, onSettings: setLimitSettings, onLoading: setLimitLoading,
+    onError: setLimitError, onSettingsLoading: setLimitSettingsLoading, onSettingsError: setLimitSettingsError,
+  }));
   const [activeSection, setActiveSection] = useState(() => typeof window === 'undefined' ? 'top' : sectionFromHash(window.location.hash));
   const menuButtonRef = useRef(null);
   const initialAnchorHandled = useRef(false);
@@ -251,43 +256,13 @@ export function App() {
     return next;
   }, []);
 
-  const loadLimits = async (refresh = false) => {
-    setLimitLoading(true); setLimitError('');
-    try {
-      const response = await fetch(`/api/limits${refresh ? '?refresh=1' : ''}`, { credentials: 'same-origin', cache: 'no-store' });
-      if (!response.ok) throw new Error(`Limit request failed (${response.status})`);
-      const next = await response.json(); setLimitData(next); return next;
-    } catch (reason) { setLimitError(reason?.message || String(reason)); }
-    finally { setLimitLoading(false); }
-  };
-
-  const loadLimitSettings = async ({ detectCredentials = false } = {}) => {
-    setLimitSettingsLoading(true); setLimitSettingsError('');
-    try {
-      const response = await fetch(`/api/limits/settings${detectCredentials ? '?detect=1' : ''}`, { credentials: 'same-origin', cache: 'no-store' });
-      if (!response.ok) throw new Error(`Limit settings request failed (${response.status})`);
-      const next = await response.json(); setLimitSettings(next); return next;
-    } catch (reason) {
-      setLimitSettingsError(reason?.message || String(reason));
-      return null;
-    } finally {
-      setLimitSettingsLoading(false);
-    }
-  };
+  const loadLimits = limitResource.load;
+  const loadLimitSettings = limitResource.loadSettings;
 
   const saveLimitPreferences = async (payload, { onSaved } = {}) => {
     setLimitSaving(true);
     try {
-      const response = await fetch('/api/limits/settings', {
-        method: 'POST', credentials: 'same-origin', cache: 'no-store',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-      });
-      if (!response.ok) throw new Error(await response.text() || `Settings save failed (${response.status})`);
-      const savedSettings = await response.json();
-      setLimitSettings(savedSettings);
-      onSaved?.(savedSettings);
-      setLimitSettingsError('');
-      return await loadLimits(true);
+      return await limitResource.save(payload, { onSaved });
     } finally { setLimitSaving(false); }
   };
 
@@ -299,8 +274,9 @@ export function App() {
     const next = await response.json();
     if (!response.ok) throw new Error(next?.error?.message || `Copilot device authorization failed (${response.status})`);
     if (next.status === 'connected') {
-      const [connectedSettings] = await Promise.all([loadLimitSettings(), loadLimits(true)]);
+      const connectedSettings = await loadLimitSettings();
       if (!connectedSettings) throw Object.assign(new Error('Could not confirm the connected account settings. Retry authorization status before saving.'), { code: 'account_settings_unconfirmed' });
+      await loadLimits(true);
     }
     return next;
   }, []);

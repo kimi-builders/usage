@@ -10,7 +10,7 @@ import { compactNumber, displayDollars, pluralUnit } from './format.js';
 import {
   ENTITLEMENT_TYPES, PROVIDER_TONES, entitlementLabel, entitlementNote, idSegment,
   localizedCompact, localizedCount, quotaEmptyPresentation, quotaErrorMessage, quotaPageError, quotaProviderNotice,
-  quotaSourceDisplay, quotaWindowDetail, quotaWindowLabel, resetCreditPresentation,
+  quotaSourceDisplay, quotaUpdatedText, quotaWindowDetail, quotaWindowLabel, resetCreditPresentation, resetTabTarget,
 } from './subscription-limits-utils.js';
 import {
   buildBenefitCapacityOverview, buildSubscriptionInsights,
@@ -32,6 +32,7 @@ const SELECTED_BENEFIT_KEY = 'kbu.benefit.selected.v1';
 const SELECTED_BENEFIT_ACCOUNTS_KEY = 'kbu.benefit.accounts.v1';
 const OVERVIEW_PROVIDER_PANEL_ID = 'subscription-limit-panel';
 const BENEFIT_RESET_PANEL_ID = 'benefit-reset-window-panel';
+const RESET_BANDS = [['five-hour', '5H', '5H'], ['weekly', '每周', 'Weekly']];
 
 function benefitResetTabId(band) {
   return `benefit-reset-tab-${band}`;
@@ -61,7 +62,7 @@ function AccountPicker({ provider, onChange, zh }) {
     <select value={provider.activeAccountId || ''} onChange={(event) => onChange(event.target.value)}>
       {provider.accounts.map((account) => <option value={account.accountId} key={account.accountId}>
         {account.accountLabel || account.account || account.accountId}
-        {account.status === 'error' ? (zh ? ' · 查询失败' : ' · Query failed') : ''}
+        {account.error?.code === 'refresh_required' ? (zh ? ' · 待刷新' : ' · Refresh needed') : account.status === 'error' ? (zh ? ' · 查询失败' : ' · Query failed') : ''}
         {account.duplicateOf ? (zh ? ' · 共享额度' : ' · Shared quota') : ''}
       </option>)}
     </select>
@@ -91,14 +92,6 @@ function resetText(value, now, zh) {
   if (hours) parts.push(`${hours}${zh ? '小时' : 'h'}`);
   if (!days && mins) parts.push(`${mins}${zh ? '分' : 'm'}`);
   return `${zh ? '重置于' : 'Resets in'} ${parts.join(' ')}`;
-}
-
-function relativeUpdated(value, now, zh) {
-  const minutes = Math.max(0, Math.floor((now - Date.parse(value)) / 60_000));
-  if (!Number.isFinite(minutes) || minutes < 1) return zh ? '刚刚更新' : 'Updated now';
-  if (minutes < 60) return zh ? `${minutes} 分钟前更新` : `Updated ${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  return zh ? `${hours} 小时前更新` : `Updated ${hours}h ago`;
 }
 
 function confidenceLabel(value, zh) {
@@ -195,6 +188,13 @@ function BenefitOverview({ overview, summary, providers, now, zh, error, onOpenA
   const paid = summary.entitlementCounts.paid;
   const nonPaid = summary.benefitProviders;
   const [resetBand, setResetBand] = useState('five-hour');
+  const onResetKeyDown = (event, index) => {
+    const target = resetTabTarget(event.key, index, RESET_BANDS.length);
+    if (target == null) return;
+    event.preventDefault();
+    setResetBand(RESET_BANDS[target][0]);
+    event.currentTarget.parentElement?.querySelectorAll('[role="tab"]')[target]?.focus();
+  };
   const resetRows = overview.resetRows.filter((row) => row.band === resetBand);
   const resetBandLabel = resetBand === 'five-hour' ? '5H' : (zh ? '每周' : 'weekly');
   return <section className="subscription-center subscription-center--overview" id="subscriptions">
@@ -213,7 +213,7 @@ function BenefitOverview({ overview, summary, providers, now, zh, error, onOpenA
       <article data-tone="coverage"><span>{zh ? '账户重置覆盖' : 'ACCOUNT RESET COVERAGE'}</span><strong>{overview.resetAccountCount}<small> / {overview.accountCount}</small></strong><p>{zh ? `${summary.subscriptionAccounts} 个账户权益 · ${paid} 个付费 · ${nonPaid} 个非付费` : `${summary.subscriptionAccounts} benefits · ${paid} paid · ${nonPaid} non-paid`}</p></article>
     </section>
     <section className="panel benefit-reset-board">
-      <header className="panel-header"><div><h2>{zh ? '账户重置进度' : 'Account reset progress'}</h2><p>{zh ? '按最近重置时间排列；进度条表示当前额度周期已经过了多少。' : 'Sorted by next reset; bars show how much of the current quota cycle has elapsed.'}</p></div><div className="benefit-reset-actions"><div className="benefit-record-kind benefit-reset-tabs" role="tablist" aria-label={zh ? '重置周期' : 'Reset window'}>{[['five-hour', '5H', '5H'], ['weekly', '每周', 'Weekly']].map(([band, zhLabel, enLabel]) => <button id={benefitResetTabId(band)} type="button" role="tab" aria-selected={resetBand === band} aria-controls={BENEFIT_RESET_PANEL_ID} className={resetBand === band ? 'active' : ''} key={band} onClick={() => setResetBand(band)}>{zh ? zhLabel : enLabel}</button>)}</div><button type="button" className="ghost-btn" disabled={!providers.length} onClick={() => onOpenAccount(providers[0]?.id)}><WalletCards size={14}/>{zh ? '查看账号' : 'View accounts'}<ChevronRight size={13}/></button></div></header>
+      <header className="panel-header"><div><h2>{zh ? '账户重置进度' : 'Account reset progress'}</h2><p>{zh ? '按最近重置时间排列；进度条表示当前额度周期已经过了多少。' : 'Sorted by next reset; bars show how much of the current quota cycle has elapsed.'}</p></div><div className="benefit-reset-actions"><div className="benefit-record-kind benefit-reset-tabs" role="tablist" aria-label={zh ? '重置周期' : 'Reset window'}>{RESET_BANDS.map(([band, zhLabel, enLabel], index) => <button id={benefitResetTabId(band)} type="button" role="tab" aria-selected={resetBand === band} tabIndex={resetBand === band ? 0 : -1} onKeyDown={event => onResetKeyDown(event, index)} aria-controls={BENEFIT_RESET_PANEL_ID} className={resetBand === band ? 'active' : ''} key={band} onClick={() => setResetBand(band)}>{zh ? zhLabel : enLabel}</button>)}</div><button type="button" className="ghost-btn" disabled={!providers.length} onClick={() => onOpenAccount(providers[0]?.id)}><WalletCards size={14}/>{zh ? '查看账号' : 'View accounts'}<ChevronRight size={13}/></button></div></header>
       {resetRows.length ? <ol id={BENEFIT_RESET_PANEL_ID} role="tabpanel" aria-labelledby={benefitResetTabId(resetBand)}>{resetRows.map((row, index) => {
         const summaryValue = row.remainingTokens == null
           ? (row.remainingPercent == null ? '—' : `${row.remainingPercent.toFixed(row.remainingPercent % 1 ? 1 : 0)}%`)
@@ -435,7 +435,7 @@ function ProviderCard({ provider, zh, currency, onSettings }) {
       <div><dt>{zh ? '主要模型' : 'TOP MODEL'}</dt><dd>{provider.modelRows[0]?.label || '—'}</dd></div>
       <div><dt>{zh ? '个人月均支出' : 'PERSONAL MONTHLY SPEND'}</dt><dd>{provider.subscription.isPaid ? (provider.subscription.monthlyPrice == null ? (zh ? '待填写' : 'Not set') : subscriptionMoney(provider.subscription.monthlyPrice, provider.subscription.currency, zh ? '/月' : '/mo')) : (zh ? '不计入' : 'Excluded')}</dd></div>
       <div><dt>{zh ? '近 30 天 API 等价价值' : '30D API EQUIVALENT'}</dt><dd>{localLinked ? displayDollars(provider.recentTotals.costMicros / 1_000_000, currency) : '—'}</dd></div>
-      <div><dt>{zh ? '更新' : 'Updated'}</dt><dd>{relativeUpdated(provider.updatedAt, now, zh)}</dd></div>
+      <div><dt>{zh ? '更新' : 'Updated'}</dt><dd>{quotaUpdatedText(provider.updatedAt, now, zh)}</dd></div>
       <div><dt>{zh ? '来源' : 'Source'}</dt><dd>{quotaSourceDisplay(provider.source, zh)}</dd></div>
       {provider.dashboardUrl ? <div><dt>{zh ? '官方用量中心' : 'OFFICIAL USAGE CENTER'}</dt><dd><a className="provider-official-link" href={provider.dashboardUrl} target="_blank" rel="noreferrer">{zh ? '打开查看' : 'Open usage'}<ExternalLink size={11}/></a></dd></div> : null}
     </dl>

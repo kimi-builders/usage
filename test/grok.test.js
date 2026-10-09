@@ -168,7 +168,7 @@ const completed = (timestamp, usage) => ({ timestamp, params: { update: {
   sessionUpdate: 'turn_completed', ...(usage ? { usage } : {}),
 } } });
 
-async function parseMixedFixture(updates, ledger) {
+async function parseMixedFixture(updates, ledger, summary = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'kbu-grok-mixed-'));
   const previous = process.env.KBU_USAGE_GROK_SESSIONS;
   process.env.KBU_USAGE_GROK_SESSIONS = directory;
@@ -176,7 +176,7 @@ async function parseMixedFixture(updates, ledger) {
     const session = join(directory, 'demo', 'mixed-session');
     mkdirSync(session, { recursive: true });
     writeFileSync(join(session, 'summary.json'), JSON.stringify({
-      current_model_id: 'grok-4.5', updated_at: '2026-10-08T12:00:00Z',
+      current_model_id: 'grok-4.5', updated_at: '2026-10-08T12:00:00Z', ...summary,
     }));
     writeFileSync(join(session, 'updates.jsonl'), updates.map((value) => typeof value === 'string' ? value : JSON.stringify(value)).join('\n') + '\n');
     writeFileSync(join(session, 'signals.json'), JSON.stringify({ turnCount: updates.length, modelsUsed: ['grok-4.5'] }));
@@ -260,4 +260,29 @@ test('numeric-string ACP counters are not re-added from the ledger', async () =>
   ], { turns: [{ turnNumber: 1, ...oldTurnUsage }, { turnNumber: 2, ...newTurnUsage }] });
   assert.equal(result.skipped, undefined);
   assert.equal(result.buckets.reduce((sum, row) => sum + row.inputTokens + row.outputTokens, 0), 330);
+});
+
+test('cumulative or untimed ledger usage never moves with session metadata timestamps', async () => {
+  for (const ledger of [
+    { session: { inputTokens: 300, outputTokens: 30 } },
+    { turns: [{ turnNumber: 1, ...oldTurnUsage }, { turnNumber: 2, ...newTurnUsage }] },
+  ]) {
+    for (const updates of [[], [completed(null), completed('invalid')]]) {
+      for (const updated_at of ['2026-10-08T12:00:00Z', '2026-10-09T12:00:00Z']) {
+        const result = await parseMixedFixture(updates, ledger, { created_at: '2026-10-07T23:00:00Z', updated_at });
+        assert.deepEqual(result.buckets, [], 'summary metadata cannot establish Token occurrence times');
+        assert.equal(result.skipped, true);
+        assert.match(result.warnings.join(' '), /partial/);
+        assert.ok(result.sessions.length > 0, 'session metadata remains available independently');
+      }
+    }
+  }
+});
+
+test('even timestamped completion events cannot distribute session totals across turns or days', async () => {
+  const result = await parseMixedFixture([
+    completed('2026-10-07T23:59:00Z'), completed('2026-10-08T00:01:00Z'),
+  ], { session: { inputTokens: 300, outputTokens: 30 } });
+  assert.deepEqual(result.buckets, []);
+  assert.equal(result.skipped, true);
 });

@@ -57,6 +57,7 @@ let cachedResult = null;
 let cacheKey = '';
 let cacheExpiresAt = 0;
 let inFlight = null;
+let cacheGeneration = 0;
 
 // 仅 Cursor HTTP 403（常见于地域封锁）冷却；其他供应商保留各自的认证恢复流程。
 // 手动刷新、账户/设置变更与 clearLimitCache 立即解除；状态只存在于本进程内存，不持久化、不进导出。
@@ -188,12 +189,6 @@ function detectLocalProvider(providerId, providerSettings, environment, options 
         : value.found ? detected('expired', 'Claude 登录已过期', '运行 claude 重新登录')
           : detected('needs_login', '请先登录 Claude Code', '运行 claude 并完成登录');
     }
-    if (providerId === 'kimi-code') {
-      const value = loadKimiCredentials(environment);
-      return value.found && (value.fresh || value.refreshable) ? detected('detected', '已检测到 Kimi Code 登录')
-        : value.found ? detected('expired', 'Kimi 登录已过期', '运行 kimi 重新登录，下次查询自动重读，无需重启')
-          : detected('needs_login', '请先登录 Kimi Code', '运行 kimi 并完成登录');
-    }
     if (providerId === 'cursor') {
       const value = loadCursorCredentials(environment);
       return value.found && value.fresh ? detected('detected', '已检测到 Cursor 桌面端登录')
@@ -233,17 +228,48 @@ function detectLocalProvider(providerId, providerSettings, environment, options 
   return null;
 }
 
-function providerDetection(provider, settings, { environment, hasKeychainSecret, hasSecret, run, platform }) {
+function kimiAccountDetections(settings, { environment, hasSecret, detectCredentials, kimiCredentialLoader = loadKimiCredentials }) {
+  let localState;
+  return Object.fromEntries(settings.accounts.map(account => {
+    const source = account.connectionType === 'local' ? 'local' : account.authMode;
+    let state = 'unchecked';
+    if (detectCredentials === true) {
+      if (source === 'local') {
+        if (!localState) {
+          try {
+            const login = kimiCredentialLoader(environment);
+            localState = !login.found ? 'absent' : login.fresh || login.refreshable ? 'present' : 'expired';
+          } catch { localState = 'unchecked'; }
+        }
+        state = localState;
+      } else if (source === 'environment') {
+        state = environmentSecret(account.environmentVariable, environment) ? 'present' : 'absent';
+      } else {
+        state = hasSecret(account.legacyCredential ? 'kimi-code' : providerAccountCredentialKey('kimi-code', account.id)) ? 'present' : 'absent';
+      }
+    }
+    // Bind status to the inspected connection, so editing a draft cannot reuse
+    // readiness from another auth mode or environment variable. No secret values.
+    return [account.id, { source, state, connectionType: account.connectionType,
+      ...(source === 'environment' ? { environmentVariable: account.environmentVariable } : {}) }];
+  }));
+}
+
+function providerDetection(provider, settings, { environment, hasKeychainSecret, hasSecret, run, platform, kimiDetections }) {
   if (provider.quotaSupport === 'unavailable') return detected('unavailable', '订阅额度暂不可查');
-  const local = detectLocalProvider(provider.id, settings, environment, { run, platform });
   if (provider.id === 'kimi-code') {
     const accounts = settings.accounts || [];
-    if (accounts.length === 1 && accounts[0].connectionType === 'local') return local;
-    const ready = accounts.filter(account => account.connectionType === 'local' ? local?.state === 'detected'
-      : account.authMode === 'environment' ? Boolean(environmentSecret(account.environmentVariable, environment))
-        : hasSecret(account.legacyCredential ? provider.id : providerAccountCredentialKey(provider.id, account.id))).length;
+    if (accounts.length === 1 && accounts[0].connectionType === 'local') {
+      const state = kimiDetections[accounts[0].id].state;
+      return state === 'present' ? detected('detected', '已检测到 Kimi Code 登录')
+        : state === 'expired' ? detected('expired', 'Kimi 登录已过期', '运行 kimi 重新登录，下次查询自动重读，无需重启')
+          : state === 'unchecked' ? detected('unchecked', '本机登录尚未确认')
+            : detected('needs_login', '请先登录 Kimi Code', '运行 kimi 并完成登录');
+    }
+    const ready = accounts.filter(account => kimiDetections[account.id].state === 'present').length;
     return detected(ready ? 'configured' : 'manual', `${ready}/${accounts.length} 个 Kimi 账户已配置`, '本机登录与 API Key 分开查询；不会切换 CLI 登录');
   }
+  const local = detectLocalProvider(provider.id, settings, environment, { run, platform });
   if (local?.state === 'detected') return local;
   if (provider.id === 'opencode') {
     if (local) return local;
@@ -283,15 +309,16 @@ export function getPublicLimitSettings(config = loadConfig(), options = {}) {
     return checkedSecrets.get(key);
   };
   const secretStates = Object.fromEntries(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id, hasSecret(regionalCredentialKey(provider.id, settings.providers[provider.id]))]));
+  const kimiDetections = kimiAccountDetections(settings.providers['kimi-code'], { ...options, environment, hasSecret });
   const detections = options.detections || Object.fromEntries(LIMIT_PROVIDER_CATALOG.map((provider) => [provider.id,
     options.detectCredentials === true ? providerDetection(provider, settings.providers[provider.id], {
       environment, hasKeychainSecret: secretStates[provider.id], hasSecret,
-      run: options.run, platform: options.platform,
+      run: options.run, platform: options.platform, kimiDetections,
     }) : { state: 'unchecked', label: '尚未检测本机登录' },
   ]));
   return publicLimitSettings(settings, {
     keychainAvailable: options.keychainAvailable ?? keychainAvailable(),
-    hasSecret, detections,
+    hasSecret, detections, kimiDetections,
   });
 }
 
@@ -345,32 +372,39 @@ export function saveLimitSettings(payload, {
     if (!(typeof secret === 'string' && secret.trim()) && !unchanged) throw new Error('新增或更换 Kimi 连接方式时，请重新填写该账户的凭据。');
     if (secret && (secret.length > 32_768 || /[\s\x00-\x1f]/.test(secret.trim()))) throw new Error('Kimi 凭据格式无效，请只粘贴 API Key 或登录令牌。');
   }
+  // Build and validate the entire change set before touching Keychain. A late
+  // invalid provider must not replace/remove an earlier provider's credentials.
+  const credentialChanges = [];
   for (const provider of LIMIT_PROVIDER_CATALOG) {
     const credentialKey = regionalCredentialKey(provider.id, settings.providers[provider.id]);
-    if (clearSecrets.has(provider.id)) deleteSecret(credentialKey);
+    if (clearSecrets.has(provider.id)) credentialChanges.push({ key: credentialKey, remove: true });
     if (typeof secrets[provider.id] === 'string' && secrets[provider.id].trim()) {
       if (!provider.authModes.includes('keychain')) throw new Error(`${provider.label} 不支持手动钥匙串凭据。`);
       if (provider.id === 'workbuddy') parseWorkBuddyCredential(secrets[provider.id]);
-      writeSecret(credentialKey, secrets[provider.id]);
+      credentialChanges.push({ key: credentialKey, value: secrets[provider.id] });
     }
     const priorAccounts = new Set(current.providers[provider.id]?.accounts?.map((account) => account.id) || []);
     const nextAccounts = new Set(settings.providers[provider.id]?.accounts?.map((account) => account.id) || []);
     for (const accountId of priorAccounts) {
       const prior = current.providers[provider.id].accounts.find(account => account.id === accountId);
-      if (!nextAccounts.has(accountId)) deleteSecret(provider.id === 'kimi-code' && prior.legacyCredential ? provider.id : providerAccountCredentialKey(provider.id, accountId));
+      if (!nextAccounts.has(accountId)) credentialChanges.push({ key: provider.id === 'kimi-code' && prior.legacyCredential ? provider.id : providerAccountCredentialKey(provider.id, accountId), remove: true });
     }
     for (const account of settings.providers[provider.id]?.accounts || []) {
       const key = provider.id === 'kimi-code' && account.legacyCredential ? provider.id : providerAccountCredentialKey(provider.id, account.id);
       if (provider.id === 'kimi-code') {
         const prior = current.providers[provider.id].accounts.find(item => item.id === account.id);
         if (prior && (prior.connectionType !== account.connectionType || prior.legacyCredential !== account.legacyCredential)) {
-          deleteSecret(prior.legacyCredential ? provider.id : providerAccountCredentialKey(provider.id, account.id));
+          credentialChanges.push({ key: prior.legacyCredential ? provider.id : providerAccountCredentialKey(provider.id, account.id), remove: true });
         }
       }
-      if (clearAccountSecrets.has(key)) deleteSecret(key);
+      if (clearAccountSecrets.has(key)) credentialChanges.push({ key, remove: true });
       const secret = accountSecrets?.[provider.id]?.[account.id];
-      if (typeof secret === 'string' && secret.trim()) writeSecret(key, secret);
+      if (typeof secret === 'string' && secret.trim()) credentialChanges.push({ key, value: secret });
     }
+  }
+  for (const change of credentialChanges) {
+    if (change.remove) deleteSecret(change.key);
+    else writeSecret(change.key, change.value);
   }
   save({ ...config, subscriptionLimits: settings,
     ...(kimi.enabled && !config.sessionSalt && !config.quotaIdentitySalt ? { quotaIdentitySalt: createSessionSalt() } : {}) });
@@ -471,6 +505,8 @@ export function createCopilotDeviceController({
 }
 
 export function clearLimitCache() {
+  cacheGeneration += 1;
+  inFlight = null;
   cachedResult = null;
   cacheKey = '';
   cacheExpiresAt = 0;
@@ -514,7 +550,7 @@ async function fetchEnabled(settings, options = {}) {
             return accountResult(provider, account, assertProviderContract(provider.id, result));
           } catch (error) {
             error = classifyProviderError(provider.id, error);
-            if (error?.code === 'forbidden') recordForbiddenCooldown(provider.id, account.id, cooldownTtlMs, at);
+            if (error?.code === 'forbidden' && options.isCurrentRequest?.() !== false) recordForbiddenCooldown(provider.id, account.id, cooldownTtlMs, at);
             return accountResult(provider, account, providerError(provider, error));
           }
         }));
@@ -560,7 +596,7 @@ async function fetchEnabled(settings, options = {}) {
       };
     } catch (error) {
       error = classifyProviderError(provider.id, error);
-      if (error?.code === 'forbidden') recordForbiddenCooldown(provider.id, '', cooldownTtlMs, at);
+      if (error?.code === 'forbidden' && options.isCurrentRequest?.() !== false) recordForbiddenCooldown(provider.id, '', cooldownTtlMs, at);
       return providerError(provider, error);
     }
   }));
@@ -595,6 +631,7 @@ export async function loadSubscriptionLimits({ force = false, config = loadConfi
     try { return historyLoader(); } catch { return { schemaVersion: 1, observations: [] }; }
   };
   if (!settings.enabled) {
+    clearLimitCache();
     return {
       schemaVersion: 1, enabled: false, generatedAt: new Date().toISOString(),
       refreshMinutes: settings.refreshMinutes, providers: [],
@@ -611,15 +648,21 @@ export async function loadSubscriptionLimits({ force = false, config = loadConfi
   if (force) forbiddenCooldowns.clear();
   const nextKey = JSON.stringify(settings);
   if (!force && cachedResult && cacheKey === nextKey && clock() < cacheExpiresAt) return cachedResult;
-  if (!force && inFlight) return inFlight;
-  inFlight = fetchEnabled(settings, { ...options, identitySalt: config?.quotaIdentitySalt || config?.sessionSalt || options.identitySalt })
+  if (!force && inFlight?.key === nextKey && inFlight.generation === cacheGeneration) return inFlight.promise;
+  const request = { key: nextKey, generation: cacheGeneration };
+  // A forced refresh supersedes an older query even without settings changes.
+  inFlight = request;
+  request.promise = fetchEnabled(settings, { ...options,
+    isCurrentRequest: () => request.generation === cacheGeneration && inFlight === request,
+    identitySalt: config?.quotaIdentitySalt || config?.sessionSalt || options.identitySalt })
     .then((result) => {
+      if (request.generation !== cacheGeneration || inFlight !== request) return { ...result, history: history() };
       try { historyRecorder(result); } catch { /* Quota display must survive history I/O failures. */ }
       cachedResult = { ...result, history: history() };
       cacheKey = nextKey;
       cacheExpiresAt = clock() + settings.refreshMinutes * 60_000;
       return cachedResult;
     })
-    .finally(() => { inFlight = null; });
-  return inFlight;
+    .finally(() => { if (inFlight === request) inFlight = null; });
+  return request.promise;
 }

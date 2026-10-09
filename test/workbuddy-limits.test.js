@@ -5,12 +5,52 @@ import { assertProviderContract } from '../src/limits/contract.js';
 import { defaultLimitSettings } from '../src/limits/catalog.js';
 import { buildSubscriptionInsights } from '../dashboard/src/subscription-insights.js';
 import { compactLimitHistory } from '../src/limits/history.js';
+import { saveLimitSettings } from '../src/limits/service.js';
 
 const now = new Date('2026-10-08T12:00:00Z');
 const item = (extra = {}) => ({ CapacityUnit: 'credits', CycleTotalCapacity: '100', CycleRemainCapacity: '70', CycleFrozenCapacity: '5', ...extra });
 const payload = (...packages) => ({ code: 0, data: { Packages: packages, SubscriptionPackageName: 'Pro', UIN: 'private-uin' } });
 const response = (body, status = 200) => new Response(JSON.stringify(body), { status });
 const options = { settings: { authMode: 'environment', environmentVariable: 'WB_TEST' }, environment: { WB_TEST: JSON.stringify({ cookie: 'fixture=private', userAgent: 'FixtureBrowser' }) }, now };
+
+test('invalid credentials abort the entire settings draft before any provider write or deletion', () => {
+  for (const invalidSecrets of [
+    { workbuddy: JSON.stringify({ cookie: 'fixture-cookie' }) },
+    { 'jetbrains-ai': 'unsupported-manual-credential' },
+  ]) {
+    const current = defaultLimitSettings();
+    current.providers.copilot.accounts = [{ id: 'old', label: 'Old GitHub account' }];
+    const settings = structuredClone(current);
+    settings.providers.copilot.accounts = []; // Would delete an unrelated credential.
+    const original = { subscriptionLimits: current };
+    const stored = new Map([['claude-code', 'original-claude'], ['copilot:old', 'original-github']]);
+    const calls = [];
+    assert.throws(() => saveLimitSettings({ settings,
+      secrets: { 'claude-code': 'replacement-claude', ...invalidSecrets },
+      clearSecrets: ['codex'], clearAccountSecrets: ['copilot:old'],
+    }, { config: original,
+      writeSecret: (key, value) => { calls.push('write'); stored.set(key, value); },
+      deleteSecret: key => { calls.push('delete'); stored.delete(key); },
+      save: () => calls.push('save'),
+    }));
+    assert.deepEqual(calls, []);
+    assert.deepEqual([...stored], [['claude-code', 'original-claude'], ['copilot:old', 'original-github']]);
+    assert.deepEqual(original.subscriptionLimits, current);
+  }
+});
+
+test('valid cross-provider credentials and account removals still apply after preflight', () => {
+  const settings = defaultLimitSettings();
+  const calls = [];
+  const tuple = JSON.stringify({ cookie: 'fixture-cookie', userAgent: 'FixtureBrowser' });
+  saveLimitSettings({ settings, secrets: { 'claude-code': 'fixture-claude', workbuddy: tuple }, clearSecrets: ['warp'] }, {
+    config: {}, writeSecret: key => calls.push(`write:${key}`), deleteSecret: key => calls.push(`delete:${key}`), save: () => calls.push('save'),
+  });
+  assert.ok(calls.includes('write:claude-code'));
+  assert.ok(calls.includes('write:workbuddy'));
+  assert.ok(calls.includes('delete:warp'));
+  assert.equal(calls.at(-1), 'save');
+});
 
 test('WorkBuddy adds credit packages only, keeps reserved separate and strips account identifiers', () => {
   const result = assertProviderContract('workbuddy', parseWorkBuddyUsage(payload(item(), item({ CycleTotalCapacity: 50, CycleRemainCapacity: 40 }), { CapacityUnit: 'tokens' }), { now }));
@@ -70,7 +110,7 @@ test('WorkBuddy failures never retry another credential and rotated cookies isol
 
 test('WorkBuddy credits do not infer a 30-day cycle or attribute local Tokens to an unverified account', () => {
   const provider = assertProviderContract('workbuddy', parseWorkBuddyUsage(payload(item()), { now, resetsAt: '2026-10-31T16:00:00Z' }));
-  const settings = defaultLimitSettings(); settings.providers.workbuddy.enabled = true;
+  const settings = defaultLimitSettings(); settings.enabled = true; settings.providers.workbuddy.enabled = true;
   const insights = buildSubscriptionInsights({ buckets: [], sessions: [] }, { providers: [provider] }, { settings, now: +now });
   assert.equal(insights.providers[0].localAttributionAvailable, false);
   assert.equal(insights.providers[0].windows[0].windowSeconds, null);

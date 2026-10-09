@@ -72,7 +72,9 @@ test('dirty guard intercepts close and escape instead of discarding silently', a
 test('settings acknowledgment precedes quota refresh and cannot be mistaken for a failed write', async () => {
   const app = await read('../src/App.jsx');
   const jsx = await dialog();
-  assert.match(app, /onSaved\?\.\(savedSettings\);[\s\S]*?return await loadLimits\(true\)/);
+  assert.match(app, /return await limitResource\.save\(payload, \{ onSaved \}\)/);
+  const resource = await readFile(new URL('../src/limit-resource.js', import.meta.url), 'utf8');
+  assert.match(resource, /onSaved\?\.\(next\);\s*return load\(true\)/);
   assert.match(jsx, /onSaved: savedSettings => \{\s*dispatch\(\{ type: 'saved', settings: savedSettings, submitted: form \}\)/);
   assert.match(jsx, /设置已保存，但额度刷新失败/);
   assert.match(jsx, /disabled=\{saving \|\| copilotAuthorization !== 'idle'\}/);

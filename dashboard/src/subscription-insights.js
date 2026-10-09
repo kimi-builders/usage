@@ -1,4 +1,5 @@
 import { TOKEN_FIELDS, sumBuckets, tokenTotal } from './analytics.js';
+import { reconcileLimitSnapshot } from './limit-resource.js';
 import {
   buildCycleCapacityStats, buildPortfolioReview, buildRenewalReview,
 } from './subscription-review.js';
@@ -828,6 +829,7 @@ function decisionSignals(provider) {
 export function buildSubscriptionInsights(snapshot, limits, {
   now = null, settings = null,
 } = {}) {
+  limits = reconcileLimitSnapshot(limits, settings);
   const catalogById = new Map((settings?.catalog || []).map((provider) => [provider.id, provider]));
   const explicitNow = Number.isFinite(now) ? now : null;
   const usageGeneratedAt = timestamp(snapshot?.generatedAt);
@@ -879,11 +881,11 @@ export function buildSubscriptionInsights(snapshot, limits, {
     const subscriptionFacts = normalizedSubscriptionFacts(subscription);
     const { monthlyPrice } = subscriptionFacts;
     const normalizedHistoryStart = Number.isFinite(sourceHistoryStart) ? sourceHistoryStart : null;
-    const history = historyWindows(
+    const history = provider.quotaInvalidated ? new Map() : historyWindows(
       limits?.history, provider.id, provider.historyAccountId || provider.accountId || null,
       buckets, normalizedHistoryStart, usageObservedAt, provider.plan || null,
     );
-    const evidence = historyWindows(
+    const evidence = provider.quotaInvalidated ? new Map() : historyWindows(
       limits?.history, provider.id, provider.historyAccountId || provider.accountId || null,
       buckets, normalizedHistoryStart, usageObservedAt, provider.plan || null, true, provider.status === 'error',
     );

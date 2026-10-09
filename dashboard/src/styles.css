@@ -847,6 +847,8 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
   .account-editor-footer .remove-account-btn, .account-editor-footer .remove-account-confirm { justify-self: stretch; }
   .account-editor-footer .remove-account-confirm button { flex: 1; min-height: 40px; }
   .account-row-main { gap: 7px; grid-template-columns: minmax(0, 1fr) auto auto; }.account-row-main > small { display: none; }
+  .kimi-accounts-config .account-row-main > small { display: block; grid-column: 1 / -1; grid-row: 2; white-space: normal; overflow-wrap: anywhere; }
+  .kimi-accounts-config .account-row-main > b, .kimi-accounts-config .account-row-main > em, .kimi-accounts-config .account-row-main > svg { grid-row: 1; }
   .opencode-rows .account-row-main { grid-template-columns: minmax(0, 1fr) auto auto; }
   .provider-tabs { flex-wrap: wrap; gap: 8px; }
   .benefit-account-picker { width: 100%; grid-template-columns: auto 1fr; margin: 0; }

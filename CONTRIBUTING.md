@@ -48,6 +48,23 @@ npm run release:check
 测试应通过环境变量、临时目录和 fixture 隔离，不得读取开发者真实 HOME。需要手工查看真实
 本机数据时，不要把输出或截图直接放进 Issue/PR。
 
+### 扫描性能基准与平台验收
+
+```bash
+npm run benchmark:scan -- --local --runs 3
+# 同一工具也能测量另一个可信版本的 checkout：
+npm run benchmark:scan -- --local --runs 3 --checkout /absolute/path/to/baseline
+```
+
+此命令仅在显式传入 `--local` 后扫描当前配置允许的本机来源，不上传、不写配置或凭据。
+每次使用新进程全量解析，输出总耗时、各来源解析耗时、进程峰值 RSS 和汇总数量，不输出日志、
+项目名或路径。它**不清除操作系统文件缓存**，不是严格的磁盘冷缓存测试。对比时保持 Node、
+机器、来源设置、日志和性能样本数一致，避免并行跑构建或其他扫描；数据变化时不要直接判定回归。
+
+CI 已覆盖 Linux/macOS/Windows 的 Collector 和 Provider fixture；这不等于真机供应商登录验收。
+发布验收需单独记录每个平台的 Node 版本、fixture/真实日志、是否实际登录、扫描和额度查询结果；
+没有运行的项目标为“未验证”，不要把本地通过等同于线上 CI 通过。
+
 ## 仓库结构
 
 ```text
