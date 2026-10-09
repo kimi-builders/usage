@@ -60,7 +60,11 @@ export function matchLocalPrice(bucket) {
     const claudeVersionAlias = normalized.startsWith('claude-')
       ? normalized.replace(/-(\d+)\.(\d+)(?=-|$)/g, '-$1-$2')
       : normalized;
-    return [name, normalized, claudeVersionAlias];
+    // Resolve the decimal version before prefix matching: Opus 5.5 must not
+    // match the older Opus 5 row before we try its canonical 5-5 spelling.
+    return claudeVersionAlias !== normalized
+      ? [claudeVersionAlias, name, normalized]
+      : [name, normalized];
   }))];
   const catalog = numericCatalogEntries(getActivePriceCatalog().catalog);
   for (const candidate of candidates) {
@@ -114,15 +118,29 @@ export function estimateLocalBucketCost(bucket) {
       pricedTokens += tokens;
     }
   }
-  const assumedTokens = !bucket.contextTier && price.contextTier === 'short'
-    ? totalTokens
-    : 0;
+  // Keep the community estimator's assumptions explicit; estimates are not bills.
+  const priceAssumptions = [];
+  let assumedTokens = 0;
+  if (!bucket.contextTier && price.contextTier === 'short') {
+    priceAssumptions.push('short-context');
+    assumedTokens += totalTokens;
+  }
+  if (price.provisional) {
+    priceAssumptions.push('provisional-price');
+    assumedTokens += totalTokens;
+  }
+  if (unclassifiedCacheWrite > 0 && price.cacheWrite5m !== null
+    && price.cacheWrite1h !== null && price.cacheWrite5m !== price.cacheWrite1h) {
+    priceAssumptions.push('cache-write-ttl');
+    assumedTokens += unclassifiedCacheWrite;
+  }
   return {
     costMicros,
     status: unpricedTokens > 0 ? 'partial' : 'priced',
     pricedTokens,
     unpricedTokens,
-    assumedTokens,
+    assumedTokens: Math.min(totalTokens, assumedTokens),
+    priceAssumptions,
     priceVersion: price.version,
     pricePattern: price.pattern,
     priceSourceUrl: price.sourceUrl,

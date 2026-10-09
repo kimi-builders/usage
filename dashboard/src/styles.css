@@ -345,6 +345,13 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .tool-glyph img { display: block; object-fit: contain; }
 .tool-glyph svg { display: block; width: 1em; height: 1em; }
 .tool-glyph--kimi { --tool-ink: var(--paper-strong); }
+.tool-glyph--model { --tool-ink: var(--paper-strong); }
+.model-label { display: inline-flex; align-items: center; gap: 6px; }
+.pricing-match .pricing-version { display: block; margin-top: 4px; color: var(--grey); }
+.pricing-match .pricing-detail-row td { white-space: normal; }
+.pricing-detail-row p { margin: 4px 0; max-width: calc(100vw - 100px); line-height: 1.6; overflow-wrap: anywhere; }
+.pricing-detail-row a { color: var(--blue); }
+.distribution-pricing-note { padding: 8px 20px 12px; color: var(--grey); font-size: 11px; line-height: 1.5; }
 .tool-glyph--claude { --tool-ink: #d97757; }
 .tool-glyph--codex { --tool-ink: #10a37f; }
 .tool-glyph--gemini { --tool-ink: #7c8cff; }
@@ -428,7 +435,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .export-options small { display: block; margin-top: 7px; color: var(--grey); font-size: 11px; }
 .export-summary { display: flex; gap: 20px; padding: 0 20px 20px; color: var(--grey); font-size: 11px; }
 .export-summary b { color: var(--paper); font-family: 'JetBrains Mono', monospace; }
-.method-copy { display: grid; gap: 0; padding: 7px 22px 12px; }
+.method-copy { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 7px 22px 12px; }
 .method-copy article { padding: 13px 0; border-bottom: 1px solid var(--line); }
 .method-copy article:last-child { border-bottom: 0; }
 .method-copy b { font-size: 11px; }

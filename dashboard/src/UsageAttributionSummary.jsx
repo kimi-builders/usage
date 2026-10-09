@@ -2,6 +2,7 @@ import { tokenTotal } from './analytics.js';
 import { knownDimension, measurementCoverage } from './attribution.js';
 import { compactNumber, displayMoney, percent, sourceLabel } from './format.js';
 import { ToolGlyph } from './tool-glyphs.js';
+import { modelDisplayName, modelGlyphId } from './model-meta.js';
 
 function clamp(value) {
   return Math.max(0, Math.min(1, value));
@@ -74,7 +75,7 @@ export function UsageAttributionSummary({ report, zh, currency }) {
 
   const topRows = [
     agents[0] ? { id: 'agent', label: 'Agent', value: sourceLabel(agents[0].values[0]), share: agents[0].share, icon: agents[0].values[0] } : null,
-    models[0] ? { id: 'model', label: zh ? '模型' : 'Model', value: models[0].values[0], share: models[0].share } : null,
+    models[0] ? { id: 'model', label: zh ? '模型' : 'Model', value: modelDisplayName(models[0].values[0]), detail: models[0].values[0], share: models[0].share, icon: modelGlyphId(models[0].values[0]) } : null,
     projects[0] ? { id: 'project', label: zh ? '项目' : 'Project', value: projects[0].values[0], share: projects[0].share } : null,
   ].filter(Boolean);
 
@@ -82,7 +83,7 @@ export function UsageAttributionSummary({ report, zh, currency }) {
     agentModels[0] ? {
       id: 'agent-model',
       label: zh ? 'Agent × 模型' : 'Agent × model',
-      value: `${sourceLabel(agentModels[0].values[0])} × ${agentModels[0].values[1]}`,
+      value: `${sourceLabel(agentModels[0].values[0])} × ${modelDisplayName(agentModels[0].values[1])}`,
       share: agentModels[0].share,
     } : null,
     agentProjects[0] ? {
@@ -94,7 +95,7 @@ export function UsageAttributionSummary({ report, zh, currency }) {
     modelProjects[0] ? {
       id: 'model-project',
       label: zh ? '模型 × 项目' : 'Model × project',
-      value: `${modelProjects[0].values[0]} × ${modelProjects[0].values[1]}`,
+      value: `${modelDisplayName(modelProjects[0].values[0])} × ${modelProjects[0].values[1]}`,
       share: modelProjects[0].share,
     } : null,
   ].filter(Boolean);
@@ -112,7 +113,7 @@ export function UsageAttributionSummary({ report, zh, currency }) {
     <div className="attribution-layout">
       <div className="attribution-contributors">
         <span className="attribution-kicker">{zh ? '最大贡献者 · 可归因数据内占比' : 'TOP CONTRIBUTORS · SHARE OF ATTRIBUTABLE DATA'}</span>
-        <dl>{topRows.map((row) => <div key={row.id}><dt>{row.label}</dt><dd>{row.icon ? <ToolGlyph id={row.icon} context="chart"/> : null}<span title={row.value}>{row.value}</span></dd><dd>{percent(row.share)}</dd></div>)}</dl>
+        <dl>{topRows.map((row) => <div key={row.id}><dt>{row.label}</dt><dd>{row.icon ? <ToolGlyph id={row.icon} context="chart"/> : null}<span title={row.detail || row.value}>{row.value}</span></dd><dd>{percent(row.share)}</dd></div>)}</dl>
         {pairRows.length ? <div className="attribution-pairs">{pairRows.map((row) => <p key={row.id}><span>{row.label}</span><b title={row.value}>{row.value}</b><em>{percent(row.share)}</em></p>)}</div> : null}
       </div>
       <div className="efficiency-grid">

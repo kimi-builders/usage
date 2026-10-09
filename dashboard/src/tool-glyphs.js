@@ -17,12 +17,16 @@ import zaiMono from '@lobehub/icons-static-svg/icons/zai.svg?raw';
 import grokMono from '@lobehub/icons-static-svg/icons/grok.svg?raw';
 import minimaxIcon from '@lobehub/icons-static-svg/icons/minimax-color.svg';
 import bailianIcon from '@lobehub/icons-static-svg/icons/bailian-color.svg';
+import mimoMono from '@lobehub/icons-static-svg/icons/xiaomimimo.svg?raw';
+import stepfunMono from '@lobehub/icons-static-svg/icons/stepfun.svg?raw';
 import { createElement } from 'react';
 
 /* Agent glyph registry — mirrors the site's components/AgentIcon.tsx split:
    Color brand marks render as <img>; Mono marks are inlined raw SVG so
    currentColor follows the tone ink (and the theme) like the site's Mono icons. */
 const TOOL_ICONS = {
+  xiaomimimo: { svg: mimoMono, tone: 'model', label: 'MiMo' },
+  stepfun: { svg: stepfunMono, tone: 'model', label: 'StepFun' },
   'kimi-code': { svg: kimiMono, tone: 'kimi', label: 'Kimi Code' },
   'claude-code': { src: claudeCodeIcon, tone: 'claude', label: 'Claude Code' },
   codex: { src: codexIcon, tone: 'codex', label: 'Codex' },

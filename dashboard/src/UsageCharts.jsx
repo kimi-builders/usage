@@ -6,6 +6,8 @@ import { addLocalWeeks, firstDataWeekStart, localWeekEnd, localWeekStart, weekLa
 import { CHART_COLORS as COLORS } from './chart-colors.js';
 import { compactMoney, compactNumber, displayMoney, distributionShare, duration, percent, pluralUnit, sourceLabel } from './format.js';
 import { ToolGlyph } from './tool-glyphs.js';
+import { ModelGlyph } from './ModelGlyph.jsx';
+import { modelDisplayName } from './model-meta.js';
 
 const METRICS = [
   { id: 'tokens', zh: 'Token', en: 'Token' },
@@ -31,6 +33,10 @@ function MetricTabs({ active, onChange, zh, prompts = false, controlsId, items, 
 }
 
 function costText(micros, currency) { return displayMoney(micros, currency); }
+function distributionCostText(row, currency, zh) {
+  if (row.unpricedTokens > 0 && !row.pricedTokens) return zh ? '未定价' : 'Unpriced';
+  return `${costText(row.costMicros, currency)}${row.unpricedTokens > 0 ? '*' : ''}`;
+}
 function compact(value, zh) { return compactNumber(value, zh ? 'zh' : 'en'); }
 
 function timezoneLabel() {
@@ -343,6 +349,6 @@ export function DistributionCard({ type, rows, zh, currency }) {
   const shown = [...rows].sort((a, b) => metric === 'cost' ? b.costMicros - a.costMicros : b.totalTokens - a.totalTokens).slice(0, 5);
   return <section className="panel distribution-card"><header className="panel-header"><div><h2><Icon size={14}/>{labels[type]}</h2><p>{zh ? '来源：当前筛选范围 · 可归因事实' : 'Source: current filters · attributable facts'}</p></div><MetricTabs active={metric} onChange={setMetric} zh={zh} items={DIST_METRICS} className="tiny-tabs" controlsId={metricPanelId}/></header><div className="distribution-list" id={metricPanelId} role="tabpanel" aria-labelledby={`${metricPanelId}-${metric}-tab`} tabIndex={0}>{shown.length ? shown.map((row, index) => {
     const share = distributionShare(rows, row, metric);
-    return <div className={`distribution-row ${index === 0 ? 'is-focus' : ''}`} key={row.id}><span className="rank">{String(index + 1).padStart(2, '0')}</span><span className="distribution-name">{type === 'source' ? <ToolGlyph id={row.id} context="chart"/> : null}<b title={row.label || row.id}>{type === 'source' ? sourceLabel(row.id) : row.label || row.id || (zh ? '未上传' : 'Not uploaded')}</b></span><span className="distribution-value"><b>{metric === 'cost' ? costText(row.costMicros, currency) : compact(row.totalTokens, zh)}<small> · {percent(share)}</small></b><em>{metric === 'cost' ? `${compact(row.totalTokens, zh)} tokens` : costText(row.costMicros, currency)}</em></span><span className="distribution-track"><i style={{ width: `${Math.max(2, share * 100)}%` }}/></span></div>;
-  }) : <p className="empty">{type === 'project' ? (zh ? '项目名未采集；本地日志仍保持私有' : 'Project names were not collected; local logs remain private') : (zh ? '当前范围暂无数据' : 'No data in this range')}</p>}</div></section>;
+    return <div className={`distribution-row ${index === 0 ? 'is-focus' : ''}`} key={row.id}><span className="rank">{String(index + 1).padStart(2, '0')}</span><span className="distribution-name">{type === 'source' ? <ToolGlyph id={row.id} context="chart"/> : type === 'model' ? <ModelGlyph model={row.id} context="chart"/> : null}<b title={row.label || row.id}>{type === 'source' ? sourceLabel(row.id) : type === 'model' ? modelDisplayName(row.label || row.id) : row.label || row.id || (zh ? '未上传' : 'Not uploaded')}</b></span><span className="distribution-value"><b>{metric === 'cost' ? distributionCostText(row, currency, zh) : compact(row.totalTokens, zh)}<small> · {percent(share)}</small></b><em>{metric === 'cost' ? `${compact(row.totalTokens, zh)} tokens` : distributionCostText(row, currency, zh)}</em></span><span className="distribution-track"><i style={{ width: `${Math.max(2, share * 100)}%` }}/></span></div>;
+  }) : <p className="empty">{type === 'project' ? (zh ? '项目名未采集；本地日志仍保持私有' : 'Project names were not collected; local logs remain private') : (zh ? '当前范围暂无数据' : 'No data in this range')}</p>}</div>{rows.some(row => row.unpricedTokens > 0) ? <footer className="distribution-pricing-note">{zh ? '* 部分计价，仅包含已知单价；未定价不代表免费。' : '* partial estimate: known rates only; unpriced does not mean free.'}</footer> : null}</section>;
 }
