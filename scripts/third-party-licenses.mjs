@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const targets = ['THIRD_PARTY_LICENSES.txt', 'dashboard/public/THIRD_PARTY_LICENSES.txt'];
-const bundled = ['@fontsource/jetbrains-mono', '@lobehub/icons-static-svg', 'html-to-image', 'lucide-react', 'react', 'react-dom', 'scheduler', 'vite'];
+const bundled = ['@fontsource/inter', '@fontsource/jetbrains-mono', '@lobehub/icons-static-svg', 'html-to-image', 'lucide-react', 'react', 'react-dom', 'scheduler', 'vite'];
 const cleanLicenseText = (value) => value.trim().replace(/[ \t]+$/gm, '');
 
 export function thirdPartyLicenses() {
@@ -21,7 +21,9 @@ export function thirdPartyLicenses() {
     // The distributed font's name table includes this copyright separately
     // from the Fontsource package license. Preserve both notices.
     const fontCopyright = name === '@fontsource/jetbrains-mono'
-      ? 'Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)\n\n' : '';
+      ? 'Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)\n\n'
+      : name === '@fontsource/inter'
+        ? 'Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)\n\n' : '';
     return `${name} ${manifest.version}\n${'='.repeat(72)}\n${fontCopyright}${cleanLicenseText(license)}\n`;
   });
   for (const [name, path] of [['CodexBar adaptations', 'licenses/CodexBar-MIT.txt'], ['Vibe Usage adaptations', 'licenses/vibe-usage-MIT.txt']]) {

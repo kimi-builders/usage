@@ -88,3 +88,11 @@ test('range segments use the 44px touch shell while compact controls stay 36px',
   assert.ok(group, 'expected the standalone control-height group');
   assert.doesNotMatch(group, /range-segment button|benefit-record-kind button/);
 });
+
+test('milestone celebration uses one solid tinted background rather than comma-separated colors', async () => {
+  const css = await read('../src/styles.css');
+  const block = css.match(/\.usage-insight-alert\.celebration\s*\{[^}]*\}/)?.[0] ?? '';
+  assert.ok(block, 'expected the milestone celebration rule');
+  assert.match(block, /background:\s*color-mix\(in srgb, var\(--green\) 5%, var\(--card\)\);/);
+  assert.doesNotMatch(block, /gradient\(|background-color:/);
+});
