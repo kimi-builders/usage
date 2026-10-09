@@ -366,10 +366,10 @@ function englishDetection(provider) {
   const kimiAccounts = raw.match(/^(\d+)\/(\d+) 个 Kimi 账户已配置$/);
   const environment = raw.match(/^已配置环境变量 (.+)$/);
   if (kimiAccounts) label = `${kimiAccounts[1]}/${kimiAccounts[2]} Kimi accounts configured`;
-  else if (connectedAccounts) label = `${connectedAccounts[1]} GitHub accounts connected`;
+  else if (connectedAccounts) label = `${connectedAccounts[1]} GitHub account${connectedAccounts[1] === '1' ? '' : 's'} connected`;
   else if (configuredAccounts) label = configuredAccounts[2]
     ? `${configuredAccounts[1]}/${configuredAccounts[2]} OpenCode Go accounts configured`
-    : `${configuredAccounts[1]} OpenCode Go accounts configured`;
+    : `${configuredAccounts[1]} OpenCode Go account${configuredAccounts[1] === '1' ? '' : 's'} configured`;
   else if (environment) label = `Environment variable ${environment[1]} configured`;
   else if (raw === '已安全保存到 macOS 钥匙串') label = 'Saved securely in macOS Keychain';
   else if (state === 'unchecked') label = 'Local login has not been checked';

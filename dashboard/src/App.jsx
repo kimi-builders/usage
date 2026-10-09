@@ -275,7 +275,7 @@ export function App() {
     }
   };
 
-  const saveLimitPreferences = async (payload) => {
+  const saveLimitPreferences = async (payload, { onSaved } = {}) => {
     setLimitSaving(true);
     try {
       const response = await fetch('/api/limits/settings', {
@@ -283,7 +283,9 @@ export function App() {
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
       if (!response.ok) throw new Error(await response.text() || `Settings save failed (${response.status})`);
-      setLimitSettings(await response.json());
+      const savedSettings = await response.json();
+      setLimitSettings(savedSettings);
+      onSaved?.(savedSettings);
       setLimitSettingsError('');
       return await loadLimits(true);
     } finally { setLimitSaving(false); }
@@ -297,7 +299,8 @@ export function App() {
     const next = await response.json();
     if (!response.ok) throw new Error(next?.error?.message || `Copilot device authorization failed (${response.status})`);
     if (next.status === 'connected') {
-      await Promise.all([loadLimitSettings(), loadLimits(true)]);
+      const [connectedSettings] = await Promise.all([loadLimitSettings(), loadLimits(true)]);
+      if (!connectedSettings) throw Object.assign(new Error('Could not confirm the connected account settings. Retry authorization status before saving.'), { code: 'account_settings_unconfirmed' });
     }
     return next;
   }, []);
