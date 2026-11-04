@@ -1,5 +1,5 @@
 const SOURCE_IDS = new Set([
-  'qoder', 'qoder-cn', 'dsh',
+  'qoder', 'qoder-cn', 'dsh', 'stepcode',
   'kimi-code', 'claude-code', 'codex', 'gemini-cli', 'opencode', 'copilot-cli',
   'grok', 'craft-agent', 'cursor', 'dimagent', 'openclaw', 'omp',
   'pi-coding-agent', 'qwen-code', 'amp', 'droid', 'antigravity', 'trae-cli',

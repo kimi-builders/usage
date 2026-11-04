@@ -2,7 +2,7 @@
 
 > [中文](./SOURCE_COMPATIBILITY.md)
 >
-> Last reviewed: 2026-09-11 · Collector `0.6.1` release candidate (not yet published)
+> Incremental review: 2026-11-03 · Unreleased work based on `0.6.2`; other sources retain their existing evidence.
 
 This matrix describes the compatibility evidence available for each parser; it
 is not an official support claim by any Agent vendor. Every source reads local
@@ -35,7 +35,7 @@ retain their existing compatibility behavior.
 | Codex | Stable | Yes | Current/archived sessions, streaming huge JSONL, cross-directory copy deduplication, reasoning effort, context/processing tier, sub-agents | Events without usage never produce guessed Tokens |
 | OpenCode | Stable | Yes | SQLite, legacy JSON, Token mapping, malformed records | SQLite schema drift is isolated as a source failure |
 | Gemini CLI | Stable | Yes | JSONL, legacy JSON, nested sub-agents, malformed records | Reads only existing usage metadata; never estimates from text |
-| Antigravity | Stable | Yes | App/standalone IDE/CLI offline databases, model and Token mapping | Locked or changed databases may be partially readable |
+| Antigravity | Stable | Yes | App/standalone IDE/CLI offline databases; generator/steps/retry identity deduplication, exclusive output/reasoning and cache writes | Missing exact clocks or unprovable overlap produce incomplete diagnostics; corrupt databases/records protect previous sync state |
 | GitHub Copilot CLI | Stable | Yes | Session discovery, mutually exclusive cache/input classification | Some versions retain sessions without usable Token counts |
 | Roo Code | Stable | Yes | VS Code task history, cache fields, time events | Covers only task data still retained locally |
 | Pi Coding Agent | Beta | Yes | JSONL sessions, current/legacy reasoning fields, custom sessionDir, empty/malformed records | Version matrix and cross-directory copy deduplication evidence are still expanding |
@@ -46,6 +46,7 @@ retain their existing compatibility behavior.
 | MiniMax Code | Beta | Yes | SQLite schema allowlist, Token ledger, separate cache/reasoning fields | Reads only Token/workspace metadata, never message payloads; Node 20 may need `sqlite3` |
 | Qoder / Qoder CN | Beta | Yes | Separate roots; IDE tokens, CLI/app sessions; cross-file deduplication, conflicting copies, scan budgets | Credits are not tokens; routing tiers stay unpriced; 64 MiB per JSONL / 256 MiB total read; real-device and cross-platform samples remain limited |
 | DeepSeek Harness (DSH) | Beta | Yes | V0–V3, multi-frame Zstd, parent replay deduplication; corrupt/torn records report partial and protect checkpoints | 64 MiB input / 128 MiB decoded cap; compressed logs require Node ≥22.15 or `zstd`; future formats explicitly fail |
+| StepCode | Beta | Yes | Official JSONL sessions, exclusive Tokens, compaction usage, local sample and physical-copy deduplication; official custom session roots and background-runtime paths | Forks and unsupported incremental compaction are reported partial; sub-sessions, platforms and older versions need more evidence; new source defaults to local only |
 | Cursor | Dashboard-validated CSV or explicit CLI opt-in | No | Official Usage CSV references, Token categories, quoted fields | Supports user-exported CSV only; does not read editor conversations or private databases |
 
 ## Platforms and Node.js

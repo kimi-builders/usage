@@ -8,6 +8,7 @@ const configDir = mkdtempSync(join(tmpdir(), 'kbu-october-pricing-'));
 process.env.KBU_USAGE_CONFIG_DIR = configDir;
 const { estimateLocalBucketCost, matchLocalPrice } = await import('../src/local/pricing.js');
 const { EMBEDDED_PRICE_CATALOG } = await import('../src/pricing/catalog.js');
+const { aggregateToBuckets } = await import('../src/parsers/index.js');
 test.after(() => rmSync(configDir, { recursive: true, force: true }));
 
 function bucket(model, overrides = {}) {
@@ -15,6 +16,53 @@ function bucket(model, overrides = {}) {
     inputTokens: 1_000_000, outputTokens: 0, cacheReadInputTokens: 0,
     cacheWriteInputTokens: 0, reasoningOutputTokens: 0, ...overrides };
 }
+
+test('new official prices preserve model, context, effective date and cache boundaries', () => {
+  const at = '2026-10-29T12:00:00Z';
+  for (const [model, input, read, write, output] of [
+    ['kimi-k3.1-pro', 2, .2, 2, 10],
+    ['kimi-k3.1-pro-highspeed', 4, .2, 4, 20],
+    ['gemini-4-argon', 2, .1, null, 10],
+  ]) {
+    const price = matchLocalPrice(bucket(`vendor/${model}`, { bucketStart: at }));
+    assert.deepEqual([price.input, price.cacheRead, price.cacheWrite, price.output], [input, read, write, output]);
+  }
+  for (const [tier, rates] of [['short', [1, .05, 1.25, 5]], ['long', [2, .1, 2.5, 7.5]]]) {
+    const price = matchLocalPrice(bucket('gpt-6.1-terra', { bucketStart: at, contextTier: tier }));
+    assert.deepEqual([price.input, price.cacheRead, price.cacheWrite, price.output], rates);
+  }
+  assert.equal(matchLocalPrice(bucket('kimi-k3.1-pro', { bucketStart: '2026-10-23T15:59:59Z' })), null);
+  assert.equal(matchLocalPrice(bucket('kimi-k3.1-pro', { bucketStart: '2026-10-23T16:00:00Z' })).input, 2);
+  assert.equal(matchLocalPrice(bucket('kimi-k3.1-pro-highspeed', { bucketStart: '2026-10-23T16:00:00Z' })).input, 4);
+  assert.equal(matchLocalPrice(bucket('kimi-k3.1-unknown', { bucketStart: at })), null);
+  assert.equal(matchLocalPrice(bucket('gemini-4', { bucketStart: at })), null);
+  assert.equal(matchLocalPrice(bucket('gemini-4-argon', { bucketStart: '2026-11-30T23:59:59Z' })).input, 2);
+  assert.equal(matchLocalPrice(bucket('gemini-4-argon', { bucketStart: '2026-12-01T00:00:00Z' })).input, 4);
+  assert.equal(matchLocalPrice(bucket('gemini-3.6-flash', { bucketStart: at })).input, .75);
+  assert.equal(matchLocalPrice(bucket('gemini-3.6-flash', { bucketStart: '2027-01-01T00:00:00Z' })).input, 1.5);
+  const unknownTtl = estimateLocalBucketCost(bucket('kimi-k3.1-pro', {
+    bucketStart: at, inputTokens: 0, cacheWriteInputTokens: 1_000_000, cacheWrite1hInputTokens: 1_000_000,
+  }));
+  assert.equal(unknownTtl.status, 'partial');
+  assert.equal(unknownTtl.unpricedTokens, 1_000_000);
+  const unspecifiedTtl = estimateLocalBucketCost(bucket('kimi-k3.1-pro', {
+    bucketStart: at, inputTokens: 0, cacheWriteInputTokens: 1_000_000,
+  }));
+  assert.equal(unspecifiedTtl.costMicros, 2_000_000);
+  assert.ok(unspecifiedTtl.priceAssumptions.includes('cache-write-ttl'));
+});
+
+test('a real-shaped Kimi Code K3.1 observation on launch day is priced', () => {
+  const [observed] = aggregateToBuckets([{ source: 'kimi-code', model: 'kimi-code/k3.1-pro',
+    timestamp: new Date('2026-10-23T18:30:00Z'), project: 'fixture', inputTokens: 1_000_000,
+    outputTokens: 1_000_000, cacheReadInputTokens: 1_000_000, cacheWriteInputTokens: 0,
+    reasoningOutputTokens: 0, requestCount: 1 }]);
+  assert.equal(observed.modelCanonical, 'kimi-k3.1-pro');
+  const estimate = estimateLocalBucketCost(observed);
+  assert.equal(estimate.status, 'priced');
+  assert.equal(estimate.pricePattern, 'kimi-k3.1-pro');
+  assert.equal(estimate.costMicros, 12_200_000);
+});
 
 test('October catalog matches new model, context and processing-tier rate fixtures', () => {
   const cases = [
@@ -32,7 +80,7 @@ test('October catalog matches new model, context and processing-tier rate fixtur
     ['grok-4.7', 'long', 'standard', 4, 1, null, 12],
     ['glm-5.3-flash', '', 'standard', .15, .03, null, .5],
     ['glm-5.3-flashx', '', 'standard', .37, .075, null, 1.25],
-    ['qwen3.8-flash', '', 'standard', .113, null, .14125, .382],
+    ['qwen3.8-flash', '', 'standard', .113, .014, .177, .382],
     ['minimax-m3', 'short', 'standard', .3, .06, null, 1.2],
     ['minimax-m3', 'long', 'standard', .6, .12, null, 2.4],
     ['minimax-m3', 'short', 'priority', .45, .09, null, 1.8],
@@ -100,12 +148,12 @@ test('cache TTL is priced separately and missing TTL is an explicit bounded assu
   assert.equal(estimateLocalBucketCost(bucket('claude-opus-5-5', { inputTokens: 0, cacheWriteInputTokens: 1_000_000, cacheWrite1hInputTokens: 1_000_000 })).costMicros, 8_000_000);
 });
 
-test('unknown Qwen cache price is unpriced, not a free rate', () => {
+test('Qwen cache price uses the official Model Studio rate', () => {
   const estimate = estimateLocalBucketCost(bucket('qwen3.8-flash', { cacheReadInputTokens: 1_000_000 }));
-  assert.equal(estimate.status, 'partial');
-  assert.equal(estimate.costMicros, 113_000);
-  assert.equal(estimate.unpricedTokens, 1_000_000);
-  assert.equal(estimate.priceCacheRead, null);
+  assert.equal(estimate.status, 'priced');
+  assert.equal(estimate.costMicros, 127_000);
+  assert.equal(estimate.unpricedTokens, 0);
+  assert.equal(estimate.priceCacheRead, .014);
 });
 
 test('MiMo 2.6 variants and batch prices are exact with explicit temporary cache-write terms', () => {

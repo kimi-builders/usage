@@ -13,6 +13,7 @@ function legacyEnabled(config, source) {
 }
 
 function defaultMode(config, source, explicit) {
+  if (source.newLocalOnly && !explicit) return 'local';
   if (explicit) return source.tier === 'explicit-opt-in' ? 'off' : 'local';
   if (!legacyEnabled(config, source)) return 'off';
   return config?.apiKey && config?.sessionSalt ? 'private' : 'local';

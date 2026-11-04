@@ -6,7 +6,7 @@ import {
 
 const PROVIDER_SOURCES = {
   // A model name or Agent does not establish which Coding Plan paid for it.
-  glm: [], minimax: [], 'alibaba-coding': [], workbuddy: [],
+  glm: [], minimax: [], 'alibaba-coding': [], workbuddy: [], stepfun: [],
   'kimi-code': ['kimi-code'],
   codex: ['codex'],
   'claude-code': ['claude-code'],

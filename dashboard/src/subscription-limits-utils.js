@@ -131,6 +131,7 @@ const QUOTA_WINDOW_LABELS = {
     pooled: ['团队共享额度', 'Team shared allowance'],
     'plan-auto': ['Auto Credits', 'Auto credits'], 'plan-api': ['API Credits', 'API credits'],
     'on-demand': ['按需用量', 'On-demand usage'],
+    'unified-weekly': ['共享每周额度', 'Shared weekly allowance'],
   },
   copilot: {
     premium: ['Premium Requests', 'Premium Requests'], chat: ['Chat', 'Chat'],
@@ -142,6 +143,7 @@ const QUOTA_WINDOW_LABELS = {
   kiro: {
     monthly: ['月度 Credits', 'Monthly credits'], overage: ['超额 Credits', 'Overage credits'],
   },
+  stepfun: { five_hour: ['5 小时', '5 hours'], weekly: ['每周', 'Weekly'] },
   warp: {
     credits: ['月度 Credits', 'Monthly credits'], bonus: ['附加 Credits', 'Bonus credits'],
   },
@@ -162,6 +164,8 @@ function englishWindowLabel(value) {
     ['团队共享额度', 'Team shared allowance'],
     ['套餐 Credits', 'Plan credits'],
     ['月度 Credits', 'Monthly credits'],
+    ['订阅 Credit', 'Subscription credit'],
+    ['加购 Credit', 'Top-up credit'],
     ['附加 Credits', 'Bonus credits'],
     ['当前 Credits', 'Current credits'],
     ['额外额度', 'Additional quota'],
@@ -218,6 +222,8 @@ export function quotaWindowDetail(providerId, window, zh) {
 }
 
 const ENGLISH_PROVIDER_NOTICES = new Map([
+  ['Step Plan 官方额度；Credit 与 Token 不等价，本机用量不代表账号全部消耗。', 'Official Step Plan quota. Credits are not Tokens, and local usage does not represent all account consumption.'],
+  ['Step Plan 官方额度；Credit 与 Token 不等价，本机用量不代表账号全部消耗。 部分额度暂不可用。', 'Official Step Plan quota. Credits are not Tokens, and local usage does not represent all account consumption. Some quota details are unavailable.'],
   ['WorkBuddy 官方 Credits；预留数不重复扣减，Credits 不等于 Token，也不会自动归属本机账号用量。', 'Official WorkBuddy credits; reserved credits are not deducted again. Credits are not Tokens and local usage is not automatically attributed to this account.'],
   ['Kimi Code 本机登录可读取会员等级与 5 小时、每周及月度额度。', 'The local Kimi Code login exposes membership level and 5-hour, weekly, and monthly quotas.'],
   ['Kimi Code 账户额度由该账户的设备和 API Key 共享；只显示接口返回的窗口，未返回周额度不代表查询失败。', 'A Kimi Code account shares quota across its devices and API keys. Only reported windows are shown; a missing weekly window is not a query failure.'],
@@ -320,6 +326,10 @@ export function quotaPageError(value, zh) {
 }
 
 const ENGLISH_CATALOG_COPY = {
+  stepfun: {
+    description: 'Step Plan 5-hour, weekly or subscription-credit quota',
+    localHint: 'Reads the personal Step Plan login from StepCode. API keys and pay-as-you-go profiles cannot query subscription quota. Local usage remains available if the endpoint is unavailable.',
+  },
   workbuddy: {
     description: 'Website monthly credits, reserved credits, and cycle end',
     localHint: 'Provide Cookie and User-Agent from the same website request. No browser import or desktop credential decryption. Credits are not Tokens.',
@@ -437,6 +447,7 @@ function englishDetection(provider) {
   else if (provider.id === 'copilot' && state === 'needs_login') detail = 'Run gh auth login';
   else if (provider.id === 'kiro' && state === 'needs_login') detail = 'Run kiro-cli login';
   else if (provider.id === 'kiro' && state === 'expired') detail = 'Run kiro-cli login again';
+  else if (provider.id === 'stepfun' && ['needs_login', 'expired'].includes(state)) detail = 'Sign in to a personal Step Plan in StepCode';
   else if (provider.id === 'antigravity' && state === 'detected' && String(detection.detail || '').includes('127.0.0.1')) detail = 'The local 127.0.0.1 quota service is preferred when available';
   else if (provider.id === 'antigravity' && state === 'not_detected') detail = 'Start and sign in to Antigravity, or run agy';
   else if (provider.id === 'opencode' && state === 'manual') detail = 'Each account needs a name and either an API key or Cookie + Workspace ID';

@@ -1049,7 +1049,9 @@ test('Antigravity OAuth path prefers the grouped quota summary endpoint with Sta
       id_token: idTokenWith({ email: 'builder@example.com' }),
     }) },
     fetcher: async (url, init) => {
-      requested.push(String(url).replace('https://cloudcode-pa.googleapis.com', ''));
+      requested.push(new URL(url).pathname);
+      assert.equal(new URL(url).hostname, String(url).includes('retrieveUserQuotaSummary')
+        ? 'daily-cloudcode-pa.googleapis.com' : 'cloudcode-pa.googleapis.com');
       assert.equal(init.headers.Authorization, 'Bearer synthetic-access-token');
       if (String(url).includes('loadCodeAssist')) {
         return new Response(JSON.stringify({ planInfo: { planType: 'starter' } }), { status: 200 });
@@ -1083,7 +1085,9 @@ test('Antigravity OAuth path falls back to the per-model chain when the summary 
     settings: { authMode: 'environment', environmentVariable: 'ANTIGRAVITY_TEST_OAUTH' },
     environment: { ANTIGRAVITY_TEST_OAUTH: JSON.stringify({ access_token: 'synthetic-access-token' }) },
     fetcher: async (url) => {
-      const endpoint = String(url).replace('https://cloudcode-pa.googleapis.com', '');
+      const endpoint = new URL(url).pathname;
+      assert.equal(new URL(url).hostname, endpoint.includes('retrieveUserQuotaSummary')
+        ? 'daily-cloudcode-pa.googleapis.com' : 'cloudcode-pa.googleapis.com');
       requested.push(endpoint);
       if (endpoint.includes('loadCodeAssist')) {
         return new Response(JSON.stringify({ planInfo: { planType: 'pro' } }), { status: 200 });
@@ -1111,7 +1115,7 @@ test('Antigravity OAuth path keeps a logged-out summary response instead of degr
     settings: { authMode: 'environment', environmentVariable: 'ANTIGRAVITY_TEST_OAUTH' },
     environment: { ANTIGRAVITY_TEST_OAUTH: JSON.stringify({ access_token: 'synthetic-access-token' }) },
     fetcher: async (url) => {
-      requested.push(String(url).replace('https://cloudcode-pa.googleapis.com', ''));
+      requested.push(new URL(url).pathname);
       if (String(url).includes('loadCodeAssist')) {
         return new Response(JSON.stringify({}), { status: 200 });
       }

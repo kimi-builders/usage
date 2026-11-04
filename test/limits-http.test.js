@@ -58,6 +58,12 @@ test('quota HTTP layer blocks undeclared origins before invoking fetch', async (
     (error) => error.code === 'blocked_endpoint',
   );
   assert.equal(called, false);
+  await assert.rejects(
+    requestJson('https://daily-cloudcode-pa.googleapis.com.example.invalid/v1internal:retrieveUserQuotaSummary', {
+      fetcher: async () => { called = true; },
+    }), error => error.code === 'blocked_endpoint',
+  );
+  assert.equal(called, false);
 });
 
 test('quota HTTP layer classifies offline and timeout failures without real network access', async () => {

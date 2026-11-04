@@ -18,6 +18,7 @@ import { canonicalModelId } from '../model-meta.js';
 import { parseQoder, parseQoderCn } from './qoder.js';
 import { findQoderDataDirs } from '../qoder-roots.js';
 import { parse as parseDsh, roots as dshRoots } from './dsh.js';
+import { parse as parseStepCode, roots as stepCodeRoots } from './stepcode.js';
 
 // Multi-source registry. Tiers: core (always on), stable (on), beta (on with
 // an explicit compatibility caveat), explicit-opt-in (configured by user).
@@ -42,6 +43,7 @@ export const sourceRegistry = [
   { id: 'qoder', tier: 'beta', parse: parseQoder, roots: () => findQoderDataDirs('qoder') },
   { id: 'qoder-cn', tier: 'beta', parse: parseQoderCn, roots: () => findQoderDataDirs('qoder-cn') },
   { id: 'dsh', tier: 'beta', parse: parseDsh, roots: dshRoots },
+  { id: 'stepcode', tier: 'beta', parse: parseStepCode, roots: stepCodeRoots, newLocalOnly: true },
   { id: 'cursor', tier: 'explicit-opt-in', parse: parseCursor, roots: cursorRoots },
 ];
 

@@ -33,6 +33,7 @@ const sourceIds = [
   'pi-coding-agent',
   'zcode',
   'workbuddy',
+  'stepcode',
   'cursor',
 ];
 

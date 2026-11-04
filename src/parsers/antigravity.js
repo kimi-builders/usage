@@ -5,7 +5,8 @@ import { aggregateToBuckets, extractSessions } from './index.js';
 import { antigravityConversationDirs, configuredExtraRoots } from '../extra-roots.js';
 import {
   listDbCascades,
-  readDbSessionEvents,
+  hasTokenUsage,
+  readDbStepRows,
   readDbUsageRecords,
   readDbWorkspaceUri,
 } from './antigravity-db.js';
@@ -26,11 +27,9 @@ import {
  * RPC is out of scope for a local collector); App 2.0 / CLI cascades, which
  * are what current installs produce, are all `.db`-backed.
  *
- * Token mapping: gen_metadata usage fields are already exclusive counts —
- * inputTokens / outputTokens / cacheReadTokens → cacheReadInputTokens /
- * thinkingOutputTokens → reasoningOutputTokens; no cache-write field exists.
- * Usage rows dedup by responseId across cascades (the same response can be
- * recorded under both the App and the CLI store).
+ * Generator and step usage are merged by provider identity, not added.
+ * Output includes thinking in the wire format; the decoder splits it once.
+ * Cache-write TTL is unknown and stays in the unspecialized write counter.
  */
 
 // Normalize legacy responseModel slugs to canonical names. Only used when a
@@ -60,6 +59,19 @@ const DISPLAY_NAME_MAP = {
   'gemini 3.1 pro': 'gemini-3.1-pro',
 };
 
+// Known provider-published IDs only; an unfamiliar ID stays unknown rather
+// than inheriting a model from another call or acquiring an invented price.
+const MODEL_ID_NAMES = {
+  246: 'gemini-2.5-pro', 312: 'gemini-2.5-flash', 313: 'gemini-2.5-flash-thinking',
+  329: 'gemini-2.5-flash-thinking', 330: 'gemini-2.5-flash-lite',
+  281: 'claude-4-sonnet', 282: 'claude-4-sonnet', 290: 'claude-4-opus', 291: 'claude-4-opus',
+  333: 'claude-4.5-sonnet', 334: 'claude-4.5-sonnet', 340: 'claude-4.5-haiku', 341: 'claude-4.5-haiku',
+  342: 'gpt-oss-120b-medium', 1071: 'gemini-3.6-flash-high', 1072: 'gemini-3.6-flash-medium',
+  1073: 'gemini-3.6-flash-low', 1298: 'gemini-3.7-flash-high', 1299: 'gemini-3.7-flash-medium',
+  1300: 'gemini-3.7-flash-low', 1318: 'gemini-3.8-flash-high', 1319: 'gemini-3.8-flash-medium',
+  1320: 'gemini-3.8-flash-low',
+};
+
 function slugFromDisplayName(name) {
   const base = name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
   return DISPLAY_NAME_MAP[base] || base.replace(/\s+/g, '-');
@@ -67,7 +79,9 @@ function slugFromDisplayName(name) {
 
 function modelFromRecord(record) {
   if (record.displayName) return slugFromDisplayName(record.displayName);
-  if (record.responseModel) return MODEL_NORMALIZE_MAP[record.responseModel] || record.responseModel;
+  if (record.responseModel) return MODEL_NORMALIZE_MAP[record.responseModel]
+    || (/\s/.test(record.responseModel) ? slugFromDisplayName(record.responseModel) : record.responseModel);
+  if (record.modelId && MODEL_ID_NAMES[record.modelId]) return MODEL_ID_NAMES[record.modelId];
   return 'unknown';
 }
 
@@ -91,6 +105,19 @@ function projectFromUri(uri) {
 function tokenCount(value) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function usageKeys(record, cascadeId) {
+  return [record.responseId && `response:${record.responseId}`,
+    record.providerMessageId && `provider:${record.providerMessageId}`,
+    record.messageId && `message:${cascadeId}:${record.messageId}`].filter(Boolean);
+}
+
+function richerRecord(a, b) {
+  const score = r => r.inputTokens + r.totalOutputTokens + r.cacheReadTokens + r.cacheCreationTokens;
+  const [rich, poor] = score(b) > score(a) ? [b, a] : [a, b];
+  return { ...rich, timestamp: rich.timestamp || poor.timestamp, modelId: rich.modelId || poor.modelId,
+    displayName: rich.displayName || poor.displayName, responseModel: rich.responseModel || poor.responseModel };
 }
 
 // Resolved lazily (not at import time) so importing the registry never
@@ -117,50 +144,79 @@ export async function parse({ sessionSalt, sourceOptions } = {}) {
 
   const entries = [];
   const sessionEvents = [];
-  const seenResponseIds = new Set();
+  const groups = new Set();
+  const byIdentity = new Map();
+  const warnings = new Set();
+  const merge = (record, cascadeId, project) => {
+    if (!hasTokenUsage(record)) return;
+    const keys = usageKeys(record, cascadeId);
+    const hits = [...new Set(keys.map(key => byIdentity.get(key)).filter(Boolean))];
+    const target = hits.shift() || { record: { ...record, project }, keys: new Set() };
+    groups.add(target);
+    for (const other of hits) {
+      target.record = richerRecord(target.record, other.record);
+      for (const key of other.keys) { target.keys.add(key); byIdentity.set(key, target); }
+      groups.delete(other);
+    }
+    target.record = richerRecord(target.record, { ...record, project });
+    for (const key of keys) { target.keys.add(key); byIdentity.set(key, target); }
+  };
 
   for (const dir of dirs) {
     for (const cascadeId of listDbCascades(dir)) {
+      const steps = readDbStepRows(dir, cascadeId);
       const records = readDbUsageRecords(dir, cascadeId);
       const project = projectFromUri(readDbWorkspaceUri(dir, cascadeId)) || 'unknown';
-
       for (const record of records) {
-        if (record.responseId && seenResponseIds.has(record.responseId)) continue;
-        if (record.responseId) seenResponseIds.add(record.responseId);
-        // Invalid/missing timestamp → skip the record entirely; never stamp
-        // "now" (a stateless parser would re-key it on every sync).
-        if (!record.timestamp || isNaN(record.timestamp.getTime())) continue;
-        const reasoningEffort = reasoningEffortFromRecord(record);
-        entries.push({
+        // Exact index join only. A nearby step may belong to a different day.
+        const timestamp = record.timestamp || steps.timestamps.get(record.lastStepIndex ?? record.idx) || null;
+        merge({ ...record, timestamp }, cascadeId, project);
+        for (const retry of record.retryUsages) {
+          if (hasTokenUsage(retry) && !usageKeys(retry, cascadeId).length && hasTokenUsage(record)) {
+            warnings.add('antigravity: retry usage without identity omitted to avoid double counting. / 缺少身份的重试用量已跳过。');
+          } else merge({ ...retry, timestamp, displayName: record.displayName, responseModel: record.responseModel }, cascadeId, project);
+        }
+      }
+      for (const row of steps.usages) {
+        for (const usage of [row.usage, ...row.retryUsages].filter(hasTokenUsage)) {
+          if (!usageKeys(usage, cascadeId).length && (records.length || usage !== row.usage && hasTokenUsage(row.usage))) {
+            warnings.add('antigravity: overlapping step usage without identity omitted to avoid double counting. / 缺少身份的重叠用量已跳过。');
+            continue;
+          }
+          merge({ ...usage, modelId: usage.modelId || row.modelId, timestamp: row.timestamp,
+            displayName: /\s/.test(row.modelName) ? row.modelName : '', responseModel: row.modelName }, cascadeId, project);
+        }
+      }
+
+      for (const event of steps.events) {
+        sessionEvents.push({ sessionId: cascadeId, source: 'antigravity', project,
+          timestamp: event.timestamp, role: event.role });
+      }
+    }
+  }
+  for (const { record } of groups) {
+    if (!record.timestamp || !Number.isFinite(+record.timestamp)) {
+      warnings.add('antigravity: usage without an exact timestamp omitted; scan is partial. / 缺少准确时间的用量未计入，扫描不完整。');
+      continue;
+    }
+    const reasoningEffort = reasoningEffortFromRecord(record);
+    entries.push({
           source: 'antigravity',
           model: modelFromRecord(record),
           ...(reasoningEffort ? { reasoningEffort } : {}),
-          project,
+          project: record.project,
           timestamp: record.timestamp,
           inputTokens: tokenCount(record.inputTokens),
-          cacheWriteInputTokens: 0,
+          cacheWriteInputTokens: tokenCount(record.cacheCreationTokens),
           cacheReadInputTokens: tokenCount(record.cacheReadTokens),
           outputTokens: tokenCount(record.outputTokens),
           reasoningOutputTokens: tokenCount(record.thinkingOutputTokens),
-        });
-      }
-
-      // Session timing comes from the steps table, independent of whether the
-      // cascade has any token usage rows.
-      for (const event of readDbSessionEvents(dir, cascadeId)) {
-        sessionEvents.push({
-          sessionId: cascadeId,
-          source: 'antigravity',
-          project,
-          timestamp: event.timestamp,
-          role: event.role,
-        });
-      }
-    }
+    });
   }
 
   return {
     buckets: aggregateToBuckets(entries),
     sessions: extractSessions(sessionEvents, sessionSalt),
+    ...(warnings.size ? { skipped: true, warnings: [...warnings] } : {}),
   };
 }

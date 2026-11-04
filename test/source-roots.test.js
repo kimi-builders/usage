@@ -23,6 +23,7 @@ process.env.KBU_USAGE_WORKBUDDY_DIRS = join(root, 'workbuddy-absent');
 process.env.KBU_USAGE_GROK_SESSIONS = join(root, 'grok-absent');
 process.env.KBU_USAGE_TRAE_CLI_SESSIONS = join(root, 'trae-absent');
 process.env.KBU_USAGE_MCODE_DB = join(root, 'mcode-absent.sqlite');
+process.env.KBU_USAGE_STEPCODE_SESSIONS = join(root, 'stepcode-absent');
 for (const key of ['QODER_PROJECTS', 'QODER_DB', 'QODER_CN_PROJECTS', 'QODER_CN_DB', 'DSH_SESSIONS']) process.env['KBU_USAGE_' + key] = join(root, key + '-absent');
 process.env.KBU_USAGE_CURSOR_CSV = join(root, 'cursor-absent.csv');
 
@@ -48,6 +49,7 @@ const EXPECTED = [
   { id: 'qoder', tier: 'beta' },
   { id: 'qoder-cn', tier: 'beta' },
   { id: 'dsh', tier: 'beta' },
+  { id: 'stepcode', tier: 'beta' },
   { id: 'cursor', tier: 'explicit-opt-in' },
 ];
 

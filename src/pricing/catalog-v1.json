@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "matcherVersion": 1,
-  "revision": 7,
-  "catalogVersion": "2026-10-08",
-  "publishedAt": "2026-10-08T00:00:00.000Z",
+  "revision": 10,
+  "catalogVersion": "2026-10-29",
+  "publishedAt": "2026-10-29T00:00:00.000Z",
   "currency": "USD",
   "basis": "standard-api",
   "entries": [
@@ -1152,19 +1152,19 @@
       "effectiveFrom": "2026-10-08T00:00:00.000Z",
       "effectiveTo": null,
       "input": "0.113",
-      "cacheWrite": "0.14125",
+      "cacheWrite": "0.177",
       "cacheWrite5m": null,
       "cacheWrite1h": null,
-      "cacheRead": null,
+      "cacheRead": "0.014",
       "output": "0.382",
       "reasoning": null,
-      "sourceUrl": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+      "sourceUrl": "https://www.alibabacloud.com/help/en/model-studio/qwen3-8-flash",
       "verifiedAt": "2026-10-08",
       "version": "2026-10-08",
       "basis": "standard-api",
       "note": {
-        "zh": "按 Alibaba Cloud Model Studio Global 部署公开标准价估算；缓存读取价格需在控制台核实，暂不计价；地区专属价与促销不在此条目内。",
-        "en": "Estimated at public standard rates for Alibaba Cloud Model Studio Global deployment. Cache-read rates require console verification and remain unpriced; regional rates and promotions are excluded."
+        "zh": "按 Alibaba Cloud Model Studio Global 部署公开标准价估算，缓存写入采用显式缓存创建价，缓存读取采用公开命中价；地区专属价与促销不在此条目内。",
+        "en": "Estimated at public standard rates for Alibaba Cloud Model Studio Global deployment, using explicit cache creation and published cache-hit rates. Regional rates and promotions are excluded."
       }
     },
     {
@@ -3339,7 +3339,7 @@
       "contextTier": "",
       "processingTier": "standard",
       "effectiveFrom": "2026-08-19T00:00:00.000Z",
-      "effectiveTo": null,
+      "effectiveTo": "2026-10-29T00:00:00.000Z",
       "input": "1.5",
       "cacheWrite": null,
       "cacheWrite5m": null,
@@ -3471,10 +3471,202 @@
       "verifiedAt": "2026-08-19",
       "version": "2026-08-19",
       "basis": "standard-api"
+    },
+    {
+      "pattern": "kimi-k3.1-pro",
+      "match": "exact",
+      "source": null,
+      "contextTier": "",
+      "processingTier": "standard",
+      "effectiveFrom": "2026-10-23T16:00:00.000Z",
+      "effectiveTo": null,
+      "input": "2",
+      "cacheWrite": "2",
+      "cacheWrite5m": "2",
+      "cacheWrite1h": null,
+      "cacheRead": "0.2",
+      "output": "10",
+      "reasoning": null,
+      "sourceUrl": "https://platform.kimi.ai/",
+      "verifiedAt": "2026-10-29",
+      "version": "2026-10-29",
+      "basis": "standard-api",
+      "note": {
+        "zh": "生效边界按官方发布日期的北京时间起算，并非精确上线时刻。按官方标准 API 的默认 5 分钟缓存写入价格估算；1 小时缓存写入价格尚未核实。未区分缓存时长时采用默认价格并标记假设。",
+        "en": "The effective boundary assumes the official release date in Beijing time, not an exact launch time. Standard API estimates use the default 5-minute cache-write rate; the 1-hour rate has not been verified. Unclassified writes use the default rate and are marked as assumed."
+      }
+    },
+    {
+      "pattern": "kimi-k3.1-pro-highspeed",
+      "match": "exact",
+      "source": null,
+      "contextTier": "",
+      "processingTier": "standard",
+      "effectiveFrom": "2026-10-23T16:00:00.000Z",
+      "effectiveTo": null,
+      "input": "4",
+      "cacheWrite": "4",
+      "cacheWrite5m": "4",
+      "cacheWrite1h": null,
+      "cacheRead": "0.2",
+      "output": "20",
+      "reasoning": null,
+      "sourceUrl": "https://platform.kimi.ai/",
+      "verifiedAt": "2026-10-29",
+      "version": "2026-10-29",
+      "basis": "standard-api",
+      "note": {
+        "zh": "生效边界按官方发布日期的北京时间起算，并非精确上线时刻。按官方标准 API 的默认 5 分钟缓存写入价格估算；1 小时缓存写入价格尚未核实。未区分缓存时长时采用默认价格并标记假设。",
+        "en": "The effective boundary assumes the official release date in Beijing time, not an exact launch time. Standard API estimates use the default 5-minute cache-write rate; the 1-hour rate has not been verified. Unclassified writes use the default rate and are marked as assumed."
+      }
+    },
+    {
+      "pattern": "gpt-6.1-terra",
+      "match": "exact",
+      "source": null,
+      "contextTier": "short",
+      "processingTier": "standard",
+      "effectiveFrom": "2026-10-26T00:00:00.000Z",
+      "effectiveTo": null,
+      "input": "1",
+      "cacheWrite": "1.25",
+      "cacheWrite5m": null,
+      "cacheWrite1h": null,
+      "cacheRead": "0.05",
+      "output": "5",
+      "reasoning": null,
+      "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-6.1-terra",
+      "verifiedAt": "2026-10-29",
+      "version": "2026-10-29",
+      "basis": "standard-api",
+      "note": {
+        "zh": "标准 API 缓存写入按官方 30 分钟价格估算；12 小时写入价格不在当前数据维度内。未记录上下文长度时按短上下文估算。",
+        "en": "Standard API cache writes use the official 30-minute rate; 12-hour writes are not represented by the current data schema. Missing context length is estimated at the short-context rate."
+      }
+    },
+    {
+      "pattern": "gpt-6.1-terra",
+      "match": "exact",
+      "source": null,
+      "contextTier": "long",
+      "processingTier": "standard",
+      "effectiveFrom": "2026-10-26T00:00:00.000Z",
+      "effectiveTo": null,
+      "input": "2",
+      "cacheWrite": "2.5",
+      "cacheWrite5m": null,
+      "cacheWrite1h": null,
+      "cacheRead": "0.1",
+      "output": "7.5",
+      "reasoning": null,
+      "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-6.1-terra",
+      "verifiedAt": "2026-10-29",
+      "version": "2026-10-29",
+      "basis": "standard-api",
+      "note": {
+        "zh": "标准 API 缓存写入按官方 30 分钟价格估算；12 小时写入价格不在当前数据维度内。未记录上下文长度时按短上下文估算。",
+        "en": "Standard API cache writes use the official 30-minute rate; 12-hour writes are not represented by the current data schema. Missing context length is estimated at the short-context rate."
+      }
+    },
+    {
+      "pattern": "gemini-4-argon",
+      "match": "exact",
+      "source": null,
+      "contextTier": "",
+      "processingTier": "standard",
+      "effectiveFrom": "2026-10-13T00:00:00.000Z",
+      "effectiveTo": "2026-12-01T00:00:00.000Z",
+      "input": "2",
+      "cacheWrite": null,
+      "cacheWrite5m": null,
+      "cacheWrite1h": null,
+      "cacheRead": "0.1",
+      "output": "10",
+      "reasoning": null,
+      "sourceUrl": "https://ai.google.dev/gemini-api/docs/pricing",
+      "verifiedAt": "2026-10-29",
+      "version": "2026-10-29",
+      "basis": "standard-api",
+      "note": {
+        "zh": "官方首发价至 2026 年 11 月 30 日；切换按 UTC 日期边界估算，官方未说明具体时区。仅含 Token，搜索等额外费用不计入。",
+        "en": "Official introductory pricing runs through November 30, 2026; the switch uses a UTC date boundary because the provider does not specify a timezone. Token prices exclude search and other charges."
+      }
+    },
+    {
+      "pattern": "gemini-4-argon",
+      "match": "exact",
+      "source": null,
+      "contextTier": "",
+      "processingTier": "standard",
+      "effectiveFrom": "2026-12-01T00:00:00.000Z",
+      "effectiveTo": null,
+      "input": "4",
+      "cacheWrite": null,
+      "cacheWrite5m": null,
+      "cacheWrite1h": null,
+      "cacheRead": "0.2",
+      "output": "20",
+      "reasoning": null,
+      "sourceUrl": "https://ai.google.dev/gemini-api/docs/pricing",
+      "verifiedAt": "2026-10-29",
+      "version": "2026-12-01",
+      "basis": "standard-api",
+      "note": {
+        "zh": "官方首发价至 2026 年 11 月 30 日；切换按 UTC 日期边界估算，官方未说明具体时区。仅含 Token，搜索等额外费用不计入。",
+        "en": "Official introductory pricing runs through November 30, 2026; the switch uses a UTC date boundary because the provider does not specify a timezone. Token prices exclude search and other charges."
+      }
+    },
+    {
+      "pattern": "gemini-3.6-flash",
+      "match": "prefix",
+      "source": null,
+      "contextTier": "",
+      "processingTier": "standard",
+      "effectiveFrom": "2026-10-29T00:00:00.000Z",
+      "effectiveTo": "2027-01-01T00:00:00.000Z",
+      "input": "0.75",
+      "cacheWrite": null,
+      "cacheWrite5m": null,
+      "cacheWrite1h": null,
+      "cacheRead": "0.075",
+      "output": "3.75",
+      "reasoning": null,
+      "sourceUrl": "https://ai.google.dev/gemini-api/docs/pricing",
+      "verifiedAt": "2026-10-29",
+      "version": "2026-10-29",
+      "basis": "standard-api",
+      "note": {
+        "zh": "按 2026 年 10 月 29 日核实的官方首发价计算，切换日期按 UTC 边界估算；不含缓存存储和搜索等额外费用。",
+        "en": "Official promotional rates verified on October 29, 2026; date boundaries use UTC. Cache storage, search, and other non-token charges are excluded."
+      }
+    },
+    {
+      "pattern": "gemini-3.6-flash",
+      "match": "prefix",
+      "source": null,
+      "contextTier": "",
+      "processingTier": "standard",
+      "effectiveFrom": "2027-01-01T00:00:00.000Z",
+      "effectiveTo": null,
+      "input": "1.5",
+      "cacheWrite": null,
+      "cacheWrite5m": null,
+      "cacheWrite1h": null,
+      "cacheRead": "0.15",
+      "output": "7.5",
+      "reasoning": null,
+      "sourceUrl": "https://ai.google.dev/gemini-api/docs/pricing",
+      "verifiedAt": "2026-10-29",
+      "version": "2027-01-01",
+      "basis": "standard-api",
+      "note": {
+        "zh": "按 2026 年 10 月 29 日核实的官方首发价计算，切换日期按 UTC 边界估算；不含缓存存储和搜索等额外费用。",
+        "en": "Official promotional rates verified on October 29, 2026; date boundaries use UTC. Cache storage, search, and other non-token charges are excluded."
+      }
     }
   ],
   "integrity": {
     "algorithm": "sha256",
-    "digest": "ecf9647ec7bc992ba98b5b3926614e0330c1edb6d3dfe4a298a60db9f2b4e09a"
+    "digest": "1afaea28762e774467c1ebf99c271f2442bba37349a9c902559b9e69bbc4e6ab"
   }
 }

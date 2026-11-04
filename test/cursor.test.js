@@ -49,3 +49,20 @@ test('Cursor skips a renamed export header instead of uploading an empty snapsho
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test('empty and unrecognized header-only Cursor exports preserve sync checkpoints', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'kbu-cursor-empty-'));
+  const csvPath = join(home, 'usage.csv');
+  try {
+    for (const csv of ['', ' \r\n', 'Date,Model,Input Tokens,Output']) {
+      writeFileSync(csvPath, csv);
+      const result = await parse({ sourceOptions: { cursor: { csvPath } } });
+      assert.equal(result.skipped, true);
+      assert.ok(result.warnings.length);
+    }
+    writeFileSync(csvPath, 'Date,Model,Input (w/o Cache Write),Output Tokens\n');
+    const empty = await parse({ sourceOptions: { cursor: { csvPath } } });
+    assert.equal(empty.skipped, undefined); // A valid explicit empty export is evidence.
+    assert.deepEqual(empty.buckets, []);
+  } finally { rmSync(home, { recursive: true, force: true }); }
+});

@@ -80,6 +80,25 @@ test('WorkBuddy cycle end is inclusive China time; malformed and expired dates s
   for (const raw of ['2026-02-30 23:59:59', '2026-09-30 23:59:59', '2026-10-31', 0, '2026-10-31 24:00:00']) assert.equal(reset(raw), null);
 });
 
+test('WorkBuddy paid cycles take precedence; free grants are only an optional fallback', async () => {
+  for (const paid of ['2026-11-15 23:59:59', '2026-09-01 23:59:59', 'bad-date', 'error']) {
+    const calls = [];
+    const result = await fetchWorkBuddyLimits({ ...options, fetcher: async url => {
+      calls.push(String(url));
+      if (String(url).endsWith('-summary')) return response(payload(item()));
+      const isPaid = String(url).endsWith('-paid-packages');
+      if (isPaid && paid === 'error') return response({}, 500);
+      return response({ code: 0, data: { Accounts: [{ CapacityUnit: 'credits',
+        CycleEndTime: isPaid ? paid : '2026-10-31 23:59:59' }] } });
+    } });
+    const hasPaid = paid === '2026-11-15 23:59:59';
+    assert.equal(result.windows[0].resetsAt, hasPaid ? '2026-11-15T16:00:00.000Z'
+      : paid === 'error' || paid === 'bad-date' ? null : '2026-10-31T16:00:00.000Z');
+    assert.equal(result.creditBalance.resetsAt, result.windows[0].resetsAt);
+    assert.equal(calls.length, hasPaid || paid === 'error' || paid === 'bad-date' ? 2 : 3);
+  }
+});
+
 test('WorkBuddy requires an explicit cookie/UA tuple and never sends it outside fixed hosts', async () => {
   for (const value of [null, 'a=b', '{}', '{"cookie":"private"}', JSON.stringify({ cookie: 'private\r\nX: y', userAgent: 'fixture' })]) {
     assert.throws(() => parseWorkBuddyCredential(value), error => error.code === 'not_configured' && !error.message.includes('private'));
@@ -94,7 +113,7 @@ test('WorkBuddy requires an explicit cookie/UA tuple and never sends it outside 
     assert.ok(JSON.parse(request.body).PackageCodes.length > 0);
     return response({}, 401);
   } });
-  assert.equal(calls.length, 3); assert.equal(result.status, 'ok'); assert.equal(result.windows[0].resetsAt, null);
+  assert.equal(calls.length, 2); assert.equal(result.status, 'ok'); assert.equal(result.windows[0].resetsAt, null);
   assert.match(result.accountId, /^[a-f0-9]{32}$/); assert.doesNotMatch(JSON.stringify(result), /fixture=private/);
 });
 

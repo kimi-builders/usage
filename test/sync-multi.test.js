@@ -30,6 +30,7 @@ process.env.KBU_USAGE_WORKBUDDY_DIRS = join(root, 'workbuddy-absent');
 process.env.KBU_USAGE_GROK_SESSIONS = join(root, 'grok-absent');
 process.env.KBU_USAGE_TRAE_CLI_SESSIONS = join(root, 'trae-absent');
 process.env.KBU_USAGE_MCODE_DB = join(root, 'mcode-absent.sqlite');
+process.env.KBU_USAGE_STEPCODE_SESSIONS = join(root, 'stepcode-absent');
 for (const key of ['QODER_PROJECTS', 'QODER_DB', 'QODER_CN_PROJECTS', 'QODER_CN_DB', 'DSH_SESSIONS']) process.env['KBU_USAGE_' + key] = join(root, key + '-absent');
 process.env.KBU_USAGE_CONFIG_DIR = join(root, 'config');
 process.env.KBU_USAGE_STATE_DIR = stateDir;
@@ -393,6 +394,58 @@ test('OpenCode SQLite failures retain checkpoints and still upload the readable 
     assert.equal(readStateFile().buckets[healthyKey], completedState.buckets[healthyKey]);
   } finally {
     process.env.KBU_USAGE_OPENCODE_DIR = previous;
+    writeFileSync(join(stateDir, 'state.json'), oldState);
+    saveConfig(syncConfig);
+  }
+});
+
+test('Antigravity untimed usage keeps sync checkpoints and repairs without invented date buckets', async t => {
+  let DatabaseSync;
+  try { ({ DatabaseSync } = await import('node:sqlite')); } catch { return t.skip('node:sqlite unavailable'); }
+  const previous = process.env.KBU_USAGE_ANTIGRAVITY_DIR;
+  const oldState = readFileSync(join(stateDir, 'state.json'));
+  const directory = join(root, 'antigravity-partial');
+  mkdirSync(directory, { recursive: true });
+  process.env.KBU_USAGE_ANTIGRAVITY_DIR = directory;
+  const path = join(directory, 'session.db');
+  const varint = number => {
+    let value = BigInt(number); const result = [];
+    do { let byte = Number(value & 127n); value >>= 7n; if (value) byte |= 128; result.push(byte); } while (value);
+    return Buffer.from(result);
+  };
+  const vint = (field, value) => Buffer.concat([varint(field << 3), varint(value)]);
+  const bytes = (field, value) => Buffer.concat([varint(field << 3 | 2), varint(value.length), value]);
+  const str = (field, value) => bytes(field, Buffer.from(value));
+  const record = (id, input, seconds) => bytes(1, Buffer.concat([
+    bytes(4, Buffer.concat([vint(2, input), vint(3, 5), str(11, id)])),
+    ...(seconds ? [bytes(9, bytes(4, vint(1, seconds)))] : []), str(19, 'gemini-3-flash'),
+  ]));
+  const db = new DatabaseSync(path);
+  db.exec('CREATE TABLE gen_metadata (idx INTEGER, data BLOB); CREATE TABLE steps (idx INTEGER, metadata BLOB); CREATE TABLE trajectory_metadata_blob (data BLOB)');
+  db.prepare('INSERT INTO gen_metadata VALUES (?, ?)').run(0, record('a', 100, 1790000000));
+  db.prepare('INSERT INTO gen_metadata VALUES (?, ?)').run(1, record('b', 200, 1790003600));
+  db.close();
+  saveConfig({ ...syncConfig, sourcePolicies: { antigravity: 'private' } });
+  try {
+    const first = await runSync({ quiet: true });
+    assert.equal(first.sources.find(s => s.source === 'antigravity').status, 'ok');
+    const before = readStateFile();
+    const keys = Object.keys(before.buckets).filter(key => key.startsWith('antigravity|'));
+    assert.equal(keys.length, 2);
+    const damaged = new DatabaseSync(path);
+    damaged.prepare('UPDATE gen_metadata SET data = ? WHERE idx = 1').run(record('b', 200));
+    damaged.close();
+    const partial = await runSync({ quiet: true });
+    assert.equal(partial.sources.find(s => s.source === 'antigravity').status, 'partial');
+    for (const key of keys) assert.equal(readStateFile().buckets[key], before.buckets[key]);
+    const repair = new DatabaseSync(path);
+    repair.prepare('UPDATE gen_metadata SET data = ? WHERE idx = 1').run(record('b', 250, 1790003600));
+    repair.close();
+    const repaired = await runSync({ quiet: true });
+    assert.equal(repaired.sources.find(s => s.source === 'antigravity').status, 'ok');
+    assert.ok(keys.some(key => readStateFile().buckets[key] !== before.buckets[key]));
+  } finally {
+    process.env.KBU_USAGE_ANTIGRAVITY_DIR = previous;
     writeFileSync(join(stateDir, 'state.json'), oldState);
     saveConfig(syncConfig);
   }

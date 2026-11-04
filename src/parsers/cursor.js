@@ -41,7 +41,10 @@ function count(value) {
 
 function parseUsageCsvResult(text) {
   const parsedRows = rows(text);
-  if (parsedRows.length < 2) return { entries: [] };
+  if (!text.trim()) return {
+    entries: [], skipped: true,
+    warnings: ['cursor: empty CSV export; run skipped to protect incremental sync state. Export usage again. / CSV 导出为空，已保留旧数据，请重新导出。'],
+  };
   const header = parsedRows[0].map((value) => value.trim());
   const column = (name) => header.indexOf(name);
   const dateIndex = column('Date');

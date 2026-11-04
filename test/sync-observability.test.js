@@ -34,6 +34,9 @@ test('partial sync retains last full success, private diagnostics, and sanitized
     assert.match(readFileSync(join(root, 'sync.log'), 'utf8'), /private-path-warning/);
     await runManagedSync({ configDir: root, sync: async () => ({ rejected: 1 }) });
     assert.equal(loadSyncStatus({ configDir: root }).state, 'partial');
+    await runManagedSync({ configDir: root, sync: async () => ({ protectedBuckets: 2 }) });
+    assert.equal(loadSyncStatus({ configDir: root }).state, 'partial');
+    assert.equal(loadSyncStatus({ configDir: root }).lastSuccessAt, previous);
     await runManagedSync({ configDir: root, sync: async () => ({}) });
     assert.equal(loadSyncStatus({ configDir: root }).state, 'idle');
   } finally { rmSync(root, { recursive: true, force: true }); }

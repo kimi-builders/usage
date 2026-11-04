@@ -27,6 +27,7 @@ import { createElement } from 'react';
 const TOOL_ICONS = {
   xiaomimimo: { svg: mimoMono, tone: 'model', label: 'MiMo' },
   stepfun: { svg: stepfunMono, tone: 'model', label: 'StepFun' },
+  stepcode: { svg: stepfunMono, tone: 'model', label: 'StepCode' },
   'kimi-code': { svg: kimiMono, tone: 'kimi', label: 'Kimi Code' },
   'claude-code': { src: claudeCodeIcon, tone: 'claude', label: 'Claude Code' },
   codex: { src: codexIcon, tone: 'codex', label: 'Codex' },

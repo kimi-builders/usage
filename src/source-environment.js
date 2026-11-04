@@ -18,6 +18,7 @@ export const SOURCE_PATH_ENVIRONMENT = Object.freeze(Object.fromEntries(Object.e
   'qoder-cn': ['QODERCN_CONFIG_DIR', 'QODER_CN_HOME', 'KBU_USAGE_QODER_CN_PROJECTS', 'KBU_USAGE_QODER_CN_DB'],
   'roo-code': ['KBU_USAGE_ROO_DIRS'],
   'trae-cli': ['KBU_USAGE_TRAE_CLI_SESSIONS'],
+  stepcode: ['STEP_CODING_AGENT_DIR', 'STEP_CODING_AGENT_SESSION_DIR', 'STEPCODE_CONFIG_DIR', 'KBU_USAGE_STEPCODE_SESSIONS'],
   workbuddy: ['KBU_USAGE_WORKBUDDY_DIRS'],
   zcode: ['KBU_USAGE_ZCODE_DB'],
 }).map(([source, keys]) => [source, Object.freeze(keys)])));

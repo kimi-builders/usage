@@ -4,6 +4,14 @@
   "lastReviewedAt": "2026-09-12",
   "providers": [
     {
+      "id": "stepfun",
+      "upstreamShape": "StepCode personal Step Plan usage schema 1",
+      "input": { "schema_version": 1, "scope": "personal_account", "plan": { "family": "coding", "name": "Pro" }, "quota": { "state": "known", "windows": [{ "id": "five_hour", "limited": true, "used_percent": 25, "resets_at_ms": null }, { "id": "weekly", "limited": true, "used_percent": 10, "resets_at_ms": null }], "credit_buckets": [] } },
+      "invalidInput": { "schema_version": 2 },
+      "invalidBehavior": "throws",
+      "expected": { "status": "ok", "windowIds": ["five_hour", "weekly"], "remainingPercents": [75, 90] }
+    },
+    {
       "id": "workbuddy",
       "upstreamShape": "Website resource summary, credits only",
       "input": { "code": 0, "data": { "SubscriptionPackageName": "Pro", "Packages": [{ "CapacityUnit": "credits", "CycleTotalCapacity": "100", "CycleRemainCapacity": "70", "CycleFrozenCapacity": "5" }] } },

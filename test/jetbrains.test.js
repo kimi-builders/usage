@@ -102,3 +102,43 @@ test('same-installation log can supply quota with no XML and does not borrow ano
   assert.ok(Math.abs(result.windows[0].usedPercent - 34.6) < 1e-9);
   assert.equal(result.source, 'PyCharm 2026.2');
 });
+
+const jbaiLog = `2026-10-25 12:00:00,000 INFO - QuotaManager2Impl - New quota state is: Available(quota=JbaiQuota(license=SECRET_LICENSE, current=346000, maximum=6489986.397, quotaID=JbaiQuotaId(value=SECRET_ID), until=${until}, tariffQuota=Details(current=346000, maximum=1000000, available=654000), topUpQuota=Details(current=0, maximum=5489986.397, available=5489986.397)))\n`;
+const refillLog = `2026-10-25 12:00:01,000 INFO - QuotaManager2Impl - New quota refill state is: Known(refill=JbaiQuotaRefill(tariff=JbaiQuotaTariff(amount=1000000, period=monthly), next=${until}, last=2026-10-01T00:00:00Z))\n`;
+
+test('JbaiQuota/refill format reads monthly counters without retaining license or quota IDs', () => {
+  const result = parseJetBrainsLog(jbaiLog + refillLog);
+  assert.equal(result.quota.tariffQuota.current, 346000);
+  assert.equal(result.quota.tariffQuota.maximum, 1000000);
+  assert.equal(result.refill.next, until);
+  assert.doesNotMatch(JSON.stringify(result), /SECRET|topUp/);
+  assert.equal(parseJetBrainsLog(log + jbaiLog.replace('maximum=1000000', 'maximum=1e999')), null);
+  assert.equal(parseJetBrainsLog(refillLog + jbaiLog).refill, null);
+});
+
+test('Junie quota_update accepts numeric/string amounts and rejects invalid latest records', () => {
+  const value = { until: Date.parse(until), license: 'SECRET_LICENSE', tariffQuota: {
+    current: { amount: '25' }, maximum: { amount: 100 }, available: { amount: '75' },
+  } };
+  const line = payload => `2026-10-25 12:00:00,000 INFO - AiaActivationTransmitter - Received message from junie: quota_update:${JSON.stringify(payload)}\n`;
+  const result = parseJetBrainsLog(line(value));
+  assert.deepEqual(result.quota.tariffQuota, { current: 25, maximum: 100 });
+  assert.doesNotMatch(JSON.stringify(result), /SECRET/);
+  const disabled = '2026-10-25 12:00:02,000 INFO - QuotaManager2Impl - New quota state is: Error(exception=com.intellij.ml.llm.core.AIAssistantForbiddenException: disabled)\n';
+  assert.equal(parseJetBrainsLog(line(value) + disabled).quota.tariffQuota.current, 25);
+  for (const bad of [{ ...value, until: 0 }, { ...value, tariffQuota: {} }, { ...value, until: 'oops' }]) {
+    assert.equal(parseJetBrainsLog(log + line(bad)), null);
+  }
+  assert.equal(parseJetBrainsLog(line(value) + disabled.replace('AIAssistantForbiddenException', 'OtherException')), null);
+});
+
+test('updated JetBrains log shapes flow through same-installation provider lookup', async () => {
+  const home = join(root, 'jbai');
+  const options = { home, platform: 'linux', environment: {} };
+  const base = join(home, '.config', 'JetBrains', 'PyCharm2026.3');
+  mkdirSync(base, { recursive: true });
+  write(jetBrainsLogPath(base, options), jbaiLog + refillLog);
+  const result = assertProviderContract('jetbrains-ai', await fetchJetBrainsLimits({ settings: {}, ...options }));
+  assert.ok(Math.abs(result.windows[0].usedPercent - 34.6) < 1e-9);
+  assert.equal(result.windows[0].resetsAt, '2026-11-01T00:00:00.000Z');
+});

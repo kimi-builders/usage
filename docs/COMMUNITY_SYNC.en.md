@@ -86,6 +86,15 @@ and device credential, so a reconnect cannot silently inherit another
 device's “already uploaded” state. The dashboard shows the same scope and asks
 for a second confirmation.
 
+After a parser correction, a locally recalculated bucket can be smaller than
+the old community record. Community rollback protection may reject that update;
+the dashboard and CLI report protected buckets, and local and community totals
+may differ. Because the service returns only a count, the affected batch remains
+pending and will be retried; already accepted sessions are not re-uploaded.
+`--full` only replays data: it does not bypass this protection or delete community
+data. Verify the discrepancy before taking any action; historical corrections
+need a separate safe reconciliation mechanism.
+
 `init` also attempts to download the public pricing catalog; use
 `--skip-pricing-update` to skip that download. It contains no local usage.
 

@@ -19,6 +19,7 @@ import { parseWorkBuddyUsage } from '../src/limits/providers/workbuddy.js';
 import { parseGlmQuota } from '../src/limits/providers/glm.js';
 import { parseMiniMaxQuota } from '../src/limits/providers/minimax.js';
 import { parseAlibabaCodingQuota } from '../src/limits/providers/alibaba-coding.js';
+import { parseStepPlanQuota } from '../src/limits/providers/stepfun.js';
 import { clearLimitCache, loadSubscriptionLimits } from '../src/limits/service.js';
 
 const NOW = new Date('2026-08-12T12:00:00.000Z');
@@ -27,6 +28,7 @@ const fixtureText = readFileSync(fixtureUrl, 'utf8');
 const fixture = JSON.parse(fixtureText);
 
 const PARSERS = {
+  stepfun: input => parseStepPlanQuota(input, { now: NOW }),
   workbuddy: input => parseWorkBuddyUsage(input, { now: NOW }),
   glm: input => parseGlmQuota(input, { now: NOW }),
   minimax: input => parseMiniMaxQuota(input, { now: NOW }),

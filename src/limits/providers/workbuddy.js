@@ -49,17 +49,25 @@ export function parseWorkBuddyUsage(payload, { now = new Date(), resetsAt = null
   };
 }
 
-export function workBuddyReset(payload, now = new Date()) {
-  if (payload?.code !== 0 || !Array.isArray(payload?.data?.Accounts) || payload.data.Accounts.length > 100) return null;
-  return payload.data.Accounts.filter(item => item?.CapacityUnit === 'credits').map(item => {
+function workBuddyCycles(payload, now) {
+  if (payload?.code !== 0 || !Array.isArray(payload?.data?.Accounts) || payload.data.Accounts.length > 100) {
+    return { reset: null, complete: false };
+  }
+  let complete = true;
+  const dates = payload.data.Accounts.filter(item => item?.CapacityUnit === 'credits').map(item => {
     const raw = item.CycleEndTime;
-    if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) return null;
+    if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) { complete = false; return null; }
     const local = raw.replace(' ', 'T');
     const date = new Date(`${local}+08:00`);
     // Validate calendar/time fields, then move from inclusive end to reset instant.
-    if (!Number.isFinite(+date) || new Date(+date + 8 * 3600_000).toISOString().slice(0, 19) !== local) return null;
+    if (!Number.isFinite(+date) || new Date(+date + 8 * 3600_000).toISOString().slice(0, 19) !== local) { complete = false; return null; }
     return +date + 1_000 > +now ? new Date(+date + 1_000).toISOString() : null;
-  }).filter(Boolean).sort()[0] || null;
+  }).filter(Boolean).sort();
+  return { reset: dates[0] || null, complete };
+}
+
+export function workBuddyReset(payload, now = new Date()) {
+  return workBuddyCycles(payload, now).reset;
 }
 
 export async function fetchWorkBuddyLimits({ settings, environment = process.env, fetcher = fetch, now = new Date() } = {}) {
@@ -75,14 +83,19 @@ export async function fetchWorkBuddyLimits({ settings, environment = process.env
     };
     const result = parseWorkBuddyUsage(await post('get-user-resource-summary'), { now });
     if (!result.creditBalance) return result;
-    const dates = await Promise.all([['paid', PAID], ['free', FREE]].map(async ([kind, codes]) => {
+    let resetsAt = null;
+    for (const [kind, codes] of [['paid', PAID], ['free', FREE]]) {
       try {
-        return workBuddyReset(await post(`get-user-resource-${kind}-packages`, {
+        const response = await post(`get-user-resource-${kind}-packages`, {
           PageNumber: 1, PageSize: 100, PackageCodes: codes.map(code => `TCACA_code_${code}`), Status: [0, 3],
-        }), now);
-      } catch { return null; } // Optional cycle evidence must not hide a valid balance.
-    }));
-    const resetsAt = dates.filter(Boolean).sort()[0] || null;
+        });
+        const cycles = workBuddyCycles(response, now);
+        if (!cycles.complete) break;
+        resetsAt = cycles.reset;
+      } catch { break; } // Unknown paid cycle is not proof that a free expiry is the reset.
+      // A trial grant's expiry is not the paid subscription's refill date.
+      if (resetsAt) break;
+    }
     result.creditBalance.resetsAt = resetsAt;
     for (const window of result.windows) window.resetsAt = resetsAt;
     return result;

@@ -3,6 +3,13 @@ import test from 'node:test';
 import {
   applySourcePolicies, effectiveSourcePolicies, newInstallSourcePolicies, sourceIdsFor,
 } from '../src/source-policy.js';
+import { sourceRegistry } from '../src/parsers/index.js';
+
+test('new StepCode source never silently joins legacy community sync', () => {
+  const policy = effectiveSourcePolicies({ apiKey: 'kbu_fixture', sessionSalt: 'x'.repeat(32) }, sourceRegistry);
+  assert.equal(policy.stepcode, 'local');
+  assert.equal(policy.codex, 'private');
+});
 
 const registry = [
   { id: 'kimi-code', tier: 'core' },

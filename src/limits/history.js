@@ -60,7 +60,11 @@ function sanitizeProvider(provider) {
   const id = String(provider?.id || '').slice(0, 100);
   // Fresh snapshots carry status; normalized history intentionally does not.
   if (!id || (provider?.status != null && provider.status !== 'ok')) return null;
-  const windows = (provider.windows || []).map(sanitizeWindow).filter(Boolean);
+  // Multiple same-type Step Plan Credit buckets have no stable provider ID.
+  // Their display position may change, so they cannot form a history series.
+  const windows = (provider.windows || [])
+    .filter(window => provider.id !== 'stepfun' || !/^credit-(subscription|topup)-\d+$/.test(window?.id || ''))
+    .map(sanitizeWindow).filter(Boolean);
   if (!windows.length) return null;
   const observedAt = iso(provider?.observedAt);
   const scopedAccountId = provider.id === 'kimi-code' && /^kimi_[a-f0-9]{32}$/.test(provider.historyAccountId || '')

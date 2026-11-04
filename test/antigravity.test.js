@@ -147,7 +147,7 @@ test('sqlite cascade: token mapping, display-name model, workspace project, step
   });
   const result = await parse({ sessionSalt: SALT });
   assert.deepEqual(sumTokens(result), {
-    input: 5528, cacheWrite: 0, cacheRead: 2000, output: 192, reasoning: 142, requests: 1,
+    input: 5528, cacheWrite: 0, cacheRead: 2000, output: 50, reasoning: 142, requests: 1,
   });
   assert.equal(result.buckets[0].model, 'gemini-3.5-flash');
   assert.equal(result.buckets[0].reasoningEffort, 'high');
@@ -239,9 +239,107 @@ test('records lacking direct timestamp resolve timestamp from steps timing', asy
   });
   const result = await parse({ sessionSalt: SALT });
   assert.deepEqual(sumTokens(result), {
-    input: 1200, cacheWrite: 0, cacheRead: 500, output: 80, reasoning: 30, requests: 1,
+    input: 1200, cacheWrite: 0, cacheRead: 500, output: 50, reasoning: 30, requests: 1,
   });
   assert.equal(result.buckets.length, 1);
   assert.equal(result.buckets[0].model, 'gemini-3.7-flash');
   assert.equal(result.sessions.length, 1);
+});
+
+function modelUsage({ input = 100, total = 50, thinking = 20, visible, write = 30, read = 40, response, message, provider } = {}) {
+  return Buffer.concat([vfield(2, input), vfield(3, total), vfield(4, write), vfield(5, read), vfield(9, thinking),
+    ...(visible == null ? [] : [vfield(10, visible)]),
+    ...(response ? [sfield(11, response)] : []), ...(message ? [sfield(7, message)] : []),
+    ...(provider ? [sfield(12, provider)] : [])]);
+}
+function liveStep(usage, { seconds = 1785578520, retries = [], model = 'gemini-3.7-flash', modelId = 0 } = {}) {
+  return Buffer.concat([buildStepBlob({ source: 2, seconds }),
+    lfield(24, Buffer.concat([...(model ? [sfield(12, model)] : []), ...(modelId ? [vfield(1, modelId)] : [])])),
+    lfield(9, usage), ...retries.map(retry => lfield(28, lfield(2, retry)))]);
+}
+
+test('new step-only stores preserve exclusive output, cache writes and model attribution', async t => {
+  if (!DatabaseSync) return t.skip('node:sqlite unavailable');
+  const dir = useDir('live-step');
+  buildCascade(dir, 'live', { stepBlobs: [liveStep(modelUsage({ visible: 30, response: 'step-only' }))] });
+  const result = await parse({ sessionSalt: SALT });
+  assert.deepEqual(sumTokens(result), { input: 100, cacheWrite: 30, cacheRead: 40, output: 30, reasoning: 20, requests: 1 });
+  assert.equal(result.buckets[0].model, 'gemini-3.7-flash');
+  assert.equal(result.skipped, undefined);
+  assert.doesNotMatch(JSON.stringify(result), /step-only/);
+});
+
+test('step model names and verified model IDs resolve without borrowing another call model', async t => {
+  if (!DatabaseSync) return t.skip('node:sqlite unavailable');
+  const dir = useDir('step-models');
+  buildCascade(dir, 'live', { stepBlobs: [
+    liveStep(modelUsage({ response: 'display' }), { model: 'Gemini 3.7 Flash (High)' }),
+    liveStep(modelUsage({ response: 'known' }), { model: null, modelId: 1299 }),
+    liveStep(modelUsage({ response: 'unknown' }), { model: null, modelId: 999999 }),
+  ] });
+  const result = await parse({ sessionSalt: SALT });
+  assert.deepEqual(new Set(result.buckets.map(bucket => bucket.model)), new Set(['gemini-3.7-flash', 'gemini-3.7-flash-medium', 'unknown']));
+  assert.equal(result.buckets.find(bucket => bucket.model === 'gemini-3.7-flash').reasoningEffort, 'high');
+});
+
+test('generator, step and retry mirrors merge transitively; distinct retries count once across copies', async t => {
+  if (!DatabaseSync) return t.skip('node:sqlite unavailable');
+  const dir = useDir('step-identity');
+  const first = modelUsage({ response: 'shared-response' });
+  const bridge = modelUsage({ response: 'shared-response', message: 'shared-message', provider: 'provider-response', input: 120 });
+  const retry = modelUsage({ response: 'distinct-retry', input: 10, total: 5, thinking: 2, write: 0, read: 0 });
+  const usageBlobs = [lfield(1, Buffer.concat([lfield(4, first), lfield(9, lfield(4, vfield(1, 1785578520))), sfield(21, 'Gemini 3.7 Flash')]))];
+  const stepBlobs = [liveStep(modelUsage({ message: 'shared-message', input: 90 })), liveStep(bridge, { retries: [bridge, retry] })];
+  buildCascade(dir, 'a', { usageBlobs, stepBlobs });
+  buildCascade(dir, 'b', { usageBlobs, stepBlobs: [liveStep(bridge, { retries: [retry] })] });
+  const result = await parse({ sessionSalt: SALT });
+  assert.deepEqual(sumTokens(result), { input: 130, cacheWrite: 30, cacheRead: 40, output: 33, reasoning: 22, requests: 2 });
+});
+
+test('unidentified overlap and missing exact clock are partial, never assigned to a nearby day', async t => {
+  if (!DatabaseSync) return t.skip('node:sqlite unavailable');
+  const dir = useDir('partial-step');
+  buildCascade(dir, 'live', { usageBlobs: [buildUsageBlob({ input: 5, output: 2, lastStepIndex: 99 })],
+    stepBlobs: [liveStep(modelUsage())] });
+  const result = await parse({ sessionSalt: SALT });
+  assert.equal(result.skipped, true);
+  assert.equal(result.buckets.length, 0);
+  assert.ok(result.warnings.some(warning => warning.includes('exact timestamp')));
+  assert.ok(result.warnings.some(warning => warning.includes('overlapping')));
+  const { collectAll } = await import('../src/local/snapshot.js');
+  const collected = await collectAll({ sessionSalt: SALT, sourceEntries: [{ id: 'antigravity', roots, parse }] });
+  assert.equal(collected.results[0].status, 'partial');
+});
+
+test('missing generator clock can be recovered by matching identity, not directory order', async t => {
+  if (!DatabaseSync) return t.skip('node:sqlite unavailable');
+  const dir = useDir('identity-clock');
+  buildCascade(dir, 'live', { usageBlobs: [buildUsageBlob({ input: 100, output: 50, responseId: 'clock', lastStepIndex: 99 })],
+    stepBlobs: [liveStep(modelUsage({ response: 'clock', input: 80, write: 0, read: 0 }))] });
+  const result = await parse({ sessionSalt: SALT });
+  assert.equal(sumTokens(result).input, 100);
+  assert.equal(result.skipped, undefined);
+});
+
+test('corrupt protobuf and impossible output counters never become successful exact scans', async t => {
+  if (!DatabaseSync) return t.skip('node:sqlite unavailable');
+  for (const [name, blob] of [['truncated', Buffer.from([0x4a, 0x7f, 1])],
+    ['overflowing-split', liveStep(modelUsage({ total: 5, thinking: 20 }))]]) {
+    const dir = useDir(name);
+    buildCascade(dir, 'bad', { stepBlobs: [blob] });
+    await assert.rejects(parse({ sessionSalt: SALT }), /Antigravity/);
+  }
+});
+
+test('unrelated 64-bit protobuf identifiers are ignored but unsafe token counters fail closed', async t => {
+  if (!DatabaseSync) return t.skip('node:sqlite unavailable');
+  const unrelated = useDir('large-unrelated-varint');
+  const usage = Buffer.concat([modelUsage({ response: 'safe' }), vfield(99, 1n << 63n)]);
+  const step = Buffer.concat([liveStep(usage), vfield(100, 1n << 63n)]);
+  buildCascade(unrelated, 'live', { stepBlobs: [step] });
+  assert.equal(sumTokens(await parse({ sessionSalt: SALT })).input, 100);
+
+  const invalid = useDir('large-selected-counter');
+  buildCascade(invalid, 'bad', { stepBlobs: [liveStep(Buffer.concat([vfield(2, 1n << 63n), vfield(3, 5)]))] });
+  await assert.rejects(parse({ sessionSalt: SALT }), /exceeds safe range/);
 });

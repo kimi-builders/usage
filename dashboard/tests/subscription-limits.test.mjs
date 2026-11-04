@@ -171,6 +171,9 @@ test('quota copy localizes provider fields and normalizes legacy seven-day label
   }, true), 'GPT-5.3-Codex-Spark');
   assert.equal(utils.quotaWindowLabel('antigravity', { id: 'gemini-5h', label: 'Gemini 模型 · 5 小时' }, false), 'Gemini models · 5 hours');
   assert.equal(utils.quotaWindowLabel('qoder', { id: 'credits', label: '个人 + 共享 Credits' }, false), 'Personal + shared credits');
+  assert.equal(utils.quotaWindowLabel('cursor', { id: 'unified-weekly' }, true), '共享每周额度');
+  assert.equal(utils.quotaWindowLabel('cursor', { id: 'unified-weekly' }, false), 'Shared weekly allowance');
+  assert.equal(utils.quotaWindowLabel('antigravity', { id: 'argon-weekly', label: 'Gemini 4 Argon · 每周' }, false), 'Gemini 4 Argon · Weekly');
   assert.equal(utils.quotaWindowDetail('antigravity', { detail: 'Antigravity 返回的 每周额度池' }, false), 'Antigravity weekly quota pool');
   assert.equal(utils.quotaSourceDisplay('Kimi Web 登录令牌', false), 'Kimi Web token');
   assert.equal(utils.quotaProviderNotice('额度来自 Kimi 账户接口，按请求/订阅窗口展示。', false), 'Quotas come from the Kimi account API and are shown by request or subscription cycle.');

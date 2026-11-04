@@ -38,10 +38,13 @@ function readVarint(buf, pos) {
   while (pos < buf.length) {
     const byte = buf[pos++];
     result |= BigInt(byte & 0x7f) << shift;
-    if ((byte & 0x80) === 0) break;
+    if ((byte & 0x80) === 0) {
+      return [Number(result), pos];
+    }
     shift += 7n;
+    if (shift > 63n) break;
   }
-  return [Number(result), pos];
+  throw new Error('Antigravity protobuf contains an incomplete integer');
 }
 
 /**
@@ -57,22 +60,26 @@ function decodeMessage(buf) {
     [tag, pos] = readVarint(buf, pos);
     const fieldNum = tag >> 3;
     const wireType = tag & 0x7;
+    if (fieldNum <= 0) throw new Error('Antigravity protobuf has an invalid field');
     let value;
     if (wireType === 0) {
       [value, pos] = readVarint(buf, pos);
     } else if (wireType === 2) {
       let len;
       [len, pos] = readVarint(buf, pos);
+      if (len > buf.length - pos) throw new Error('Antigravity protobuf has an incomplete field');
       value = buf.subarray(pos, pos + len);
       pos += len;
     } else if (wireType === 5) {
+      if (pos + 4 > buf.length) throw new Error('Antigravity protobuf has an incomplete field');
       value = buf.subarray(pos, pos + 4);
       pos += 4;
     } else if (wireType === 1) {
+      if (pos + 8 > buf.length) throw new Error('Antigravity protobuf has an incomplete field');
       value = buf.subarray(pos, pos + 8);
       pos += 8;
     } else {
-      break; // group/unknown — stop
+      throw new Error('Antigravity protobuf has an unsupported field');
     }
     if (!fields.has(fieldNum)) fields.set(fieldNum, []);
     fields.get(fieldNum).push({ wireType, value });
@@ -83,6 +90,9 @@ function decodeMessage(buf) {
 function firstVarint(fields, num) {
   const arr = fields.get(num);
   const entry = arr && arr.find((x) => x.wireType === 0);
+  // Unrelated protobuf fields can be 64-bit IDs/flags and are never used by
+  // this collector. Only selected counters, indices and clocks must be safe.
+  if (entry && !Number.isSafeInteger(entry.value)) throw new Error('Antigravity protobuf integer exceeds safe range');
   return entry ? entry.value : undefined;
 }
 
@@ -104,6 +114,38 @@ function firstMessage(fields, num) {
 
 // ── GeneratorMetadata parsing ─────────────────────────────────────────
 
+// ModelUsage is shared by generator rows, step metadata (9) and retries
+// (generator 17.2 / step 28.2). Field 3 INCLUDES reasoning (field 9).
+function parseUsageMessage(usage) {
+  const thinking = firstVarint(usage, 9) || 0;
+  const visible = firstVarint(usage, 10);
+  const total = firstVarint(usage, 3) ?? thinking + (visible || 0);
+  if (thinking > total || visible != null && (visible > total || thinking + visible > total)) {
+    throw new Error('Antigravity output token split is inconsistent');
+  }
+  const outputTokens = visible ?? total - thinking;
+  return {
+    modelId: firstVarint(usage, 1) || 0,
+    inputTokens: firstVarint(usage, 2) || 0,
+    totalOutputTokens: total, outputTokens, thinkingOutputTokens: total - outputTokens,
+    cacheCreationTokens: firstVarint(usage, 4) || 0,
+    cacheReadTokens: firstVarint(usage, 5) || 0,
+    messageId: firstString(usage, 7) || '', responseId: firstString(usage, 11) || '',
+    providerMessageId: firstString(usage, 12) || '',
+  };
+}
+
+export function hasTokenUsage(usage) {
+  return Boolean(usage && (usage.inputTokens || usage.totalOutputTokens || usage.cacheCreationTokens || usage.cacheReadTokens));
+}
+
+function retryUsages(fields, number) {
+  return (fields.get(number) || []).filter(entry => entry.wireType === 2).flatMap(entry => {
+    const usage = firstMessage(decodeMessage(entry.value), 2);
+    return usage ? [parseUsageMessage(usage)] : [];
+  });
+}
+
 /**
  * Parse one gen_metadata blob into a normalized usage record, or null if it
  * carries no token usage (error/planning placeholders have none).
@@ -116,16 +158,9 @@ export function parseGenMetadataBlob(buf) {
   const usage = firstMessage(chatModel, 4);
   if (!usage) return null;
 
-  const inputTokens = firstVarint(usage, 2) || 0;
-  const outputTokens = firstVarint(usage, 3) || 0;
-  const cacheReadTokens = firstVarint(usage, 5) || 0;
-  const thinkingOutputTokens = firstVarint(usage, 9) || 0;
-  const responseId = firstString(usage, 11) || '';
-
-  // Skip rows with no real usage (errors, planning-only steps).
-  if (!inputTokens && !outputTokens && !cacheReadTokens && !thinkingOutputTokens) {
-    return null;
-  }
+  const parsed = parseUsageMessage(usage);
+  const retries = retryUsages(chatModel, 17);
+  if (!hasTokenUsage(parsed) && !retries.some(hasTokenUsage)) return null;
 
   const chatStartMetadata = firstMessage(chatModel, 9);
   const createdAt = chatStartMetadata ? firstMessage(chatStartMetadata, 4) : undefined;
@@ -145,11 +180,8 @@ export function parseGenMetadataBlob(buf) {
   }
 
   return {
-    inputTokens,
-    outputTokens,
-    cacheReadTokens,
-    thinkingOutputTokens,
-    responseId,
+    ...parsed,
+    retryUsages: retries,
     timestamp,
     lastStepIndex,
     displayName: firstString(chatModel, 21) || '',
@@ -208,56 +240,12 @@ export function listDbCascades(conversationsDir) {
  */
 export function readDbUsageRecords(conversationsDir, cascadeId) {
   const rows = queryCascadeDb(conversationsDir, cascadeId, 'SELECT idx, hex(data) AS h FROM gen_metadata ORDER BY idx');
-  if (!rows.length) return [];
-
-  let stepMap = null;
-  let sortedStepIndices = null;
-  const getStepTimestamp = (stepIdx) => {
-    if (stepMap === null) {
-      stepMap = new Map();
-      sortedStepIndices = [];
-      try {
-        const stepRows = queryCascadeDb(
-          conversationsDir,
-          cascadeId,
-          'SELECT idx, hex(metadata) AS h FROM steps WHERE metadata IS NOT NULL ORDER BY idx',
-        );
-        for (const s of stepRows) {
-          if (!s.h) continue;
-          const parsed = parseStepMetadata(Buffer.from(s.h, 'hex'));
-          if (parsed?.timestamp) {
-            stepMap.set(s.idx, parsed.timestamp);
-            sortedStepIndices.push(s.idx);
-          }
-        }
-      } catch {
-        // Step query fallback error is non-fatal
-      }
-    }
-    if (stepMap.has(stepIdx)) return stepMap.get(stepIdx);
-    let best = null;
-    for (const idx of sortedStepIndices) {
-      if (idx <= stepIdx) best = stepMap.get(idx);
-      else break;
-    }
-    return best || (sortedStepIndices && sortedStepIndices.length > 0 ? stepMap.get(sortedStepIndices[0]) : null);
-  };
-
   const records = [];
   for (const row of rows) {
     if (!row.h) continue;
-    let record;
-    try {
-      record = parseGenMetadataBlob(Buffer.from(row.h, 'hex'));
-    } catch {
-      continue; // one malformed blob must not kill the rest
-    }
-    if (!record) continue;
-    if (!record.timestamp) {
-      const stepIdx = record.lastStepIndex ?? row.idx;
-      record.timestamp = getStepTimestamp(stepIdx);
-    }
-    if (record.timestamp) records.push(record);
+    // A corrupt usage row must not masquerade as a complete scan.
+    const record = parseGenMetadataBlob(Buffer.from(row.h, 'hex'));
+    if (record) records.push({ ...record, idx: row.idx });
   }
   return records;
 }
@@ -313,21 +301,40 @@ export function parseStepMetadata(buf) {
 
 /** Read session timing events (user/assistant turns) for a cascade. */
 export function readDbSessionEvents(conversationsDir, cascadeId) {
+  return readDbStepRows(conversationsDir, cascadeId).events;
+}
+
+export function readDbStepRows(conversationsDir, cascadeId) {
   const rows = queryCascadeDb(
       conversationsDir,
       cascadeId,
-      'SELECT hex(metadata) AS h FROM steps WHERE metadata IS NOT NULL ORDER BY idx',
+      'SELECT idx, hex(metadata) AS h FROM steps WHERE metadata IS NOT NULL ORDER BY idx',
     );
   const events = [];
+  const usages = [];
+  const timestamps = new Map();
   for (const row of rows) {
     if (!row.h) continue;
-    let event;
-    try {
-      event = parseStepMetadata(Buffer.from(row.h, 'hex'));
-    } catch {
-      continue;
-    }
+    const blob = Buffer.from(row.h, 'hex');
+    const meta = decodeMessage(blob);
+    const event = parseStepMetadata(blob);
     if (event) events.push(event);
+    const seconds = [1, 8].map(field => {
+      const created = firstMessage(meta, field);
+      return created && firstVarint(created, 1);
+    }).find(Boolean);
+    const date = seconds ? new Date(seconds * 1000) : null;
+    const timestamp = date && Number.isFinite(+date) ? date : null;
+    if (timestamp) timestamps.set(row.idx, timestamp);
+    const usage = firstMessage(meta, 9);
+    const model = firstMessage(meta, 24);
+    const modelName = model && (firstString(model, 12) || firstString(model, 8)) || '';
+    const main = usage ? parseUsageMessage(usage) : null;
+    const retries = retryUsages(meta, 28);
+    if (hasTokenUsage(main) || retries.some(hasTokenUsage)) {
+      usages.push({ usage: main, retryUsages: retries, timestamp, modelName,
+        modelId: model && firstVarint(model, 1) || 0, idx: row.idx });
+    }
   }
-  return events;
+  return { events, usages, timestamps };
 }

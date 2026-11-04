@@ -300,7 +300,11 @@ export async function runSync({ quiet = false, surface = 'cli', full = false, on
     if (!response.ok) throw new Error(getLocale() === 'zh'
       ? '服务端拒绝了同步批次。'
       : 'The server rejected the synchronization batch.');
-    for (const { key, hash } of bucketBatch) state.buckets[key] = hash;
+    const protectedCount = Math.max(0, Number(response.protected?.buckets) || 0);
+    // The server only reports a count, not the affected keys. Do not record
+    // the whole batch as delivered when any bucket was protected; accepted
+    // upserts are idempotent, and a later run must surface the discrepancy.
+    if (protectedCount === 0) for (const { key, hash } of bucketBatch) state.buckets[key] = hash;
     for (const { key, hash } of sessionBatch) state.sessions[key] = hash;
     saveState(state);
     compressedBytes += encodeIngestBody(payload).length;
@@ -311,7 +315,7 @@ export async function runSync({ quiet = false, surface = 'cli', full = false, on
       : `Completed ${batchIndex + 1}/${batchCount} batches${eta == null ? '' : ` · about ${Math.ceil(eta / 1000)}s remaining`}`);
     bucketTotal += Number(response.ingested?.buckets ?? bucketBatch.length);
     sessionTotal += Number(response.ingested?.sessions ?? sessionBatch.length);
-    protectedBucketTotal += Number(response.protected?.buckets ?? 0);
+    protectedBucketTotal += protectedCount;
   }
   if (!quiet) {
     console.log(getLocale() === 'zh'

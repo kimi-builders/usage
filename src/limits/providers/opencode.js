@@ -191,39 +191,46 @@ async function fetchUsageWithApiKey(key, { source, notice, fetcher }) {
 
 /**
  * The credential table is the authoritative Go store: 2.x keeps an
- * integration-specific row there. Only that row's `value` column is selected
+ * active integration-specific row there. Only that row's `value` is selected
  * through the shared read-only SQLite helper — the query never writes, and
- * nothing but the parsed key leaves this function. A table without the
- * expected schema simply has no login; other read failures stay concrete so
- * the caller can prefer a healthy auth.json login over reporting them.
+ * nothing but the parsed token leaves this function. Only the absence of a
+ * credential table permits legacy discovery; logout, expiry, schema drift or
+ * read errors must never resurrect another account from an old auth.json.
  */
-function readCredentialTable(root) {
+function readCredentialTable(root, now) {
   const dbPath = join(root, 'opencode.db');
-  if (!existsSync(dbPath)) return { status: 'missing' };
+  if (!existsSync(dbPath)) return null;
   try {
-    const rows = queryDbJson(dbPath, `SELECT value FROM credential
-      WHERE integration_id = 'opencode-go'
-      ORDER BY coalesce(active, 1) DESC, time_updated DESC
-      LIMIT 1`);
+    if (!queryDbJson(dbPath, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'credential'").length) return null;
+    const rows = queryDbJson(dbPath, `SELECT integration_id, value FROM credential
+      WHERE active = 1 AND integration_id IN ('opencode-go', 'opencode')
+      ORDER BY CASE integration_id WHEN 'opencode-go' THEN 0 ELSE 1 END
+      LIMIT 2`);
+    if (!rows.length) return { status: 'missing' };
+    if (rows.length > 1 && rows[0].integration_id === rows[1].integration_id) return { status: 'error' };
     const raw = rows[0]?.value;
-    if (typeof raw !== 'string' || !raw.trim()) return { status: 'missing' };
-    let key = '';
-    try {
-      const parsed = JSON.parse(raw);
-      key = typeof parsed?.key === 'string' ? parsed.key.trim() : '';
-    } catch {
-      key = '';
+    if (typeof raw !== 'string' || !raw.trim()) return { status: 'error' };
+    const parsed = JSON.parse(raw);
+    // A generic OpenCode API key does not prove a Go login. OAuth is shared.
+    if (rows[0].integration_id === 'opencode' && parsed?.type !== 'oauth') return { status: 'missing' };
+    let key;
+    if (parsed?.type === 'key') key = parsed.key;
+    else if (parsed?.type === 'oauth') {
+      if (!Number.isSafeInteger(parsed.expires) || parsed.expires <= now) return { status: 'error' };
+      key = parsed.access;
     }
-    return key ? { status: 'ok', key } : { status: 'missing' };
-  } catch (error) {
-    if (/no such table|no such column/i.test(error?.message || '')) return { status: 'missing' };
-    return { status: 'error' };
-  }
+    return validGoToken(key) ? { status: 'ok', key } : { status: 'error' };
+  } catch { return { status: 'error' }; }
+}
+
+function validGoToken(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 32768 && !/[\s\x00-\x1f\x7f]/.test(value);
 }
 
 /**
  * Fallback for 1.x data directories, which keep the same key as plain JSON in
- * auth.json (`{"opencode": {"type": "api", "key": "sk-…"}}`). Only that one
+ * auth.json (`{"opencode-go": {"type": "api", "key": "sk-…"}}` or its old
+ * `opencode` spelling). Only that one
  * entry is read; sibling provider credentials in the file are never inspected,
  * and the key is returned without ever being logged or cached.
  */
@@ -231,34 +238,33 @@ function readAuthFile(root) {
   let parsed = null;
   try {
     parsed = JSON.parse(readFileSync(join(root, 'auth.json'), 'utf8'));
-  } catch {
-    return { status: 'missing' };
+  } catch (error) {
+    // A corrupt/unreadable legacy file is not evidence that it contains no
+    // login. Do not silently switch to another data root in that case.
+    return { status: error?.code === 'ENOENT' ? 'missing' : 'error' };
   }
-  const key = parsed?.opencode?.key;
+  const entry = parsed?.['opencode-go'] ?? parsed?.opencode;
+  if (entry?.type != null && entry.type !== 'api') return { status: 'missing' };
+  const key = entry?.key;
   const trimmed = typeof key === 'string' ? key.trim() : '';
-  return trimmed ? { status: 'ok', key: trimmed } : { status: 'missing' };
+  return validGoToken(trimmed) ? { status: 'ok', key: trimmed } : { status: 'missing' };
 }
 
 /**
  * The local OpenCode Go login, or why there is none. The credential table
- * wins; auth.json covers stores that never migrated. A concrete table read
- * failure is preserved only when the fallback has no key either, so an
- * unreadable database cannot hide a perfectly good login. The returned key is
+ * wins; auth.json covers stores that never migrated. A modern store is an
+ * account-selection boundary, including an explicit logout. The returned key is
  * used for exactly one Authorization header — never persisted, logged, or
  * included in any result.
  */
-export function readLocalGoKey(environment = process.env, home = homedir(), platform = process.platform) {
-  let found = { status: 'missing' };
+export function readLocalGoKey(environment = process.env, home = homedir(), platform = process.platform, now = Date.now()) {
   for (const root of openCodeDataRoots(environment, home, platform)) {
-    const table = readCredentialTable(root);
-    if (table.status === 'ok') return table;
+    const table = readCredentialTable(root, now);
+    if (table) return table;
     const authFile = readAuthFile(root);
-    if (authFile.status === 'ok') return authFile;
-    // Keep the first concrete read failure; a missing store just means the
-    // next configured root may hold the login.
-    if (table.status === 'error' && found.status !== 'error') found = table;
+    if (authFile.status !== 'missing') return authFile;
   }
-  return found;
+  return { status: 'missing' };
 }
 
 export async function fetchOpenCodeGoLimits({ settings, environment = process.env, fetcher = fetch } = {}) {
@@ -267,7 +273,7 @@ export async function fetchOpenCodeGoLimits({ settings, environment = process.en
     const discovered = readLocalGoKey(environment);
     if (discovered.status !== 'ok') {
       throw Object.assign(new Error(discovered.status === 'error'
-        ? '无法读取本机 OpenCode 登录存储，请检查本机登录或添加手动账户。'
+        ? '本机 OpenCode 登录不可用、已过期或存在冲突；请重新登录，或添加手动账户。 / Local OpenCode login is unavailable, expired or ambiguous; sign in again or add a manual account.'
         : '未找到本机 OpenCode Go 登录，请先登录 OpenCode 或添加手动账户。'), {
         code: discovered.status === 'error' ? 'provider_error' : 'not_configured',
       });

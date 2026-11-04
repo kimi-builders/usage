@@ -4,6 +4,8 @@ import { canonicalModelId } from '../src/model-meta.js';
 
 test('Kimi aliases keep their raw identity while gaining a canonical model ID', () => {
   assert.equal(canonicalModelId({ source: 'kimi-code', model: 'kimi-code/k3' }), 'kimi-k3');
+  assert.equal(canonicalModelId({ source: 'kimi-code', model: 'kimi-code/k3.1-pro' }), 'kimi-k3.1-pro');
+  assert.equal(canonicalModelId({ source: 'kimi-code', model: 'k3.1-pro-highspeed' }), 'kimi-k3.1-pro-highspeed');
   assert.equal(canonicalModelId({ source: 'kimi-code', model: 'kimi-code/k3-256k' }), 'kimi-k3-256k');
   assert.equal(canonicalModelId({ source: 'kimi-code', model: 'kimi-code/k3-256' }), 'kimi-k3-256k');
   assert.equal(

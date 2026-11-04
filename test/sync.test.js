@@ -28,6 +28,7 @@ process.env.KBU_USAGE_WORKBUDDY_DIRS = join(root, 'workbuddy-absent');
 process.env.KBU_USAGE_GROK_SESSIONS = join(root, 'grok-absent');
 process.env.KBU_USAGE_TRAE_CLI_SESSIONS = join(root, 'trae-absent');
 process.env.KBU_USAGE_MCODE_DB = join(root, 'mcode-absent.sqlite');
+process.env.KBU_USAGE_STEPCODE_SESSIONS = join(root, 'stepcode-absent');
 for (const key of ['QODER_PROJECTS', 'QODER_DB', 'QODER_CN_PROJECTS', 'QODER_CN_DB', 'DSH_SESSIONS']) process.env['KBU_USAGE_' + key] = join(root, key + '-absent');
 
 const wireDir = join(currentRoot, 'sessions', 'wd_private-project_abcd', 'session_1', 'agents', 'main');
@@ -44,6 +45,7 @@ writeFileSync(join(wireDir, 'wire.jsonl'), `${[
 ].map(JSON.stringify).join('\n')}\n`, 'utf8');
 
 const received = [];
+let protectBuckets = false;
 const server = createServer((request, response) => {
   if (request.url === '/api/usage/settings') {
     response.setHeader('Content-Type', 'application/json');
@@ -59,9 +61,10 @@ const server = createServer((request, response) => {
       response.end(JSON.stringify({
         ok: true,
         ingested: {
-          buckets: received.at(-1).buckets.length,
+          buckets: protectBuckets ? 0 : received.at(-1).buckets.length,
           sessions: received.at(-1).sessions.length,
         },
+        protected: { buckets: protectBuckets ? received.at(-1).buckets.length : 0 },
       }));
     });
     return;
@@ -74,7 +77,7 @@ const address = server.address();
 
 const { loadConfig, saveConfig } = await import('../src/config.js');
 const { runSync } = await import('../src/sync.js');
-const { loadState } = await import('../src/state.js');
+const { clearState, loadState } = await import('../src/state.js');
 saveConfig({
   apiUrl: `http://127.0.0.1:${address.port}`,
   apiKey: `kbu_${'a'.repeat(43)}`,
@@ -84,6 +87,26 @@ saveConfig({
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
   rmSync(root, { recursive: true, force: true });
+});
+
+test('community-protected buckets remain pending until acknowledged, without reuploading successful sessions', async () => {
+  protectBuckets = true;
+  try {
+    const first = await runSync({ quiet: true, full: true });
+    assert.equal(first.protectedBuckets, 1);
+    assert.deepEqual(Object.keys(loadState().buckets), []);
+    assert.equal(Object.keys(loadState().sessions).length, 1);
+    const second = await runSync({ quiet: true });
+    assert.equal(second.protectedBuckets, 1);
+    assert.equal(received.at(-1).buckets.length, 1);
+    assert.equal(received.at(-1).sessions.length, 0);
+    protectBuckets = false;
+    const acknowledged = await runSync({ quiet: true });
+    assert.equal(acknowledged.protectedBuckets, 0);
+    assert.equal(Object.keys(loadState().buckets).length, 1);
+    const unchanged = await runSync({ quiet: true });
+    assert.equal(unchanged.buckets, 0);
+  } finally { protectBuckets = false; clearState(); received.length = 0; }
 });
 
 test('repeat sync sends no duplicate batch and hidden projects never enter payloads', async () => {

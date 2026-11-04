@@ -2,7 +2,7 @@
 
 > [English](./SOURCE_COMPATIBILITY.en.md)
 
-> 最后核对：2026-09-11 · Collector `0.6.1` 发布候选（尚未发布）
+> 本轮增量核对：2026-11-03 · 基于 `0.6.2` 的未发布工作区；其他来源沿用已有验证证据。
 
 这份矩阵描述“当前解析器有多少兼容性证据”，不是 Agent 官方支持声明。所有来源都只读
 本机日志；一个来源失败不会阻塞其他来源。`doctor --json` 可生成不含路径、项目名、模型名、
@@ -31,7 +31,7 @@
 | Codex | Stable | 是 | 当前/归档会话、流式超大 JSONL、多目录复制去重、推理强度、上下文/处理档位、sub-agent | 无 usage 的事件不会猜测 Token |
 | OpenCode | Stable | 是 | SQLite、旧版 JSON、Token 映射与异常记录 | SQLite schema 漂移会按来源失败隔离 |
 | Gemini CLI | Stable | 是 | JSONL、旧 JSON、嵌套 sub-agent、损坏记录 | 只读取已有 usage metadata，不从正文推算 |
-| Antigravity | Stable | 是 | App/独立 IDE/CLI 离线数据库、模型与 Token 映射 | 数据库被锁或格式改变时可能部分读取 |
+| Antigravity | Stable | 是 | App/独立 IDE/CLI 离线数据库；generator/steps/retry 身份去重、互斥输出与 reasoning、缓存写入 | 无准确时间或无法证明不重复的记录报告不完整；损坏数据库/记录保护旧同步状态 |
 | GitHub Copilot CLI | Stable | 是 | 会话发现、互斥 cache/input 分类 | 部分版本只保留会话而没有可用 Token |
 | Roo Code | Stable | 是 | VS Code task history、cache 字段、时间事件 | 仅覆盖本机仍保留的任务数据 |
 | Pi Coding Agent | Beta | 是 | JSONL 会话、新旧 reasoning 字段、自定义 sessionDir、空/损坏记录 | 版本矩阵与跨目录复制去重证据仍在扩充 |
@@ -42,6 +42,7 @@
 | MiniMax Code | Beta | 是 | SQLite schema 白名单、Token ledger、cache/reasoning 独立字段 | 只读 Token 与 workspace 元数据，不读取消息 payload；Node 20 可能需要 `sqlite3` |
 | Qoder / Qoder CN | Beta | 是 | 独立目录；IDE Token、CLI/App 会话；跨文件消息去重、冲突副本与扫描预算 | 积分不转 Token；路由档位不定价；单个 JSONL 64 MiB、总读取 256 MiB；实机与跨平台样本仍有限 |
 | DeepSeek Harness（DSH） | Beta | 是 | V0–V3、多帧 Zstd、父子继承去重；损坏/残行 partial 与 checkpoint 保护 | 压缩输入上限 64 MiB，解压上限 128 MiB；压缩日志需 Node ≥22.15 或 `zstd`；未来格式明确报错 |
+| StepCode | Beta | 是 | 官方 JSONL 会话、互斥 Token、压缩用量、本机样本与副本去重；官方自定义会话目录及后台目录配置 | 分叉及暂不支持的增量压缩记录标为部分读取；子会话、跨平台及历史版本仍需更多样本；新来源默认仅本机 |
 | Cursor | 看板验证 CSV 或 CLI 显式启用 | 否 | 官方 Usage CSV 的引用、Token 分类与引号字段 | 只支持用户主动导出的 CSV，不读取编辑器对话或私有数据库 |
 
 ## 平台与 Node.js

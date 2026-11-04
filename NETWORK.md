@@ -8,6 +8,9 @@ When explicitly enabled, WorkBuddy posts only to `https://www.workbuddy.cn/billi
 and the same host's `get-user-resource-paid-packages` / `get-user-resource-free-packages` endpoints.
 The manually supplied Cookie and matching User-Agent travel only to that host. The optional cycle
 lookups share a bounded deadline and cannot erase a successfully read Credits balance.
+The paid package cycle takes precedence; free-grant expiry is only a fallback
+after a successful lookup establishes no future paid cycle. If the paid lookup
+fails, the reset remains unknown rather than guessing from a free grant.
 
 Claude OAuth usage requests may include `?cedar_ember=1` for reset vouchers and promotional cloud
 Credits. These remain separate from subscription quota and personal spending. Manual credentials
@@ -121,7 +124,12 @@ points; only a fresh provider refresh can append a sanitized observation.
   enrichment for the official plan name. Failure of either optional enrichment
   never hides quota facts already obtained;
 - Cursor: `https://cursor.com/api/usage-summary` and the optional
-  `https://cursor.com/api/auth/me` identity endpoint;
+  `https://cursor.com/api/auth/me` identity endpoint. The bounded optional
+  `https://cursor.com/api/dashboard/get-sand-usage-status` read checks for a
+  shared weekly pool, including X Subscription on Enterprise accounts; unified
+  personal plans additionally read `https://cursor.com/api/dashboard/v2/usage-status?scope=user`
+  for additional monthly spend. All use the same account Cookie. Failed or expired evidence does not replace valid summary
+  data. Local Cursor Token scanning remains CSV-only and never calls these APIs;
 - GitHub Copilot: GitHub's device authorization endpoints
   `https://github.com/login/device/code` and `https://github.com/login/oauth/access_token`,
   account identity at `https://api.github.com/user`, then quota facts at
@@ -131,7 +139,11 @@ points; only a fresh provider refresh can append a sanitized observation.
   accounts request `https://opencode.ai/zen/go/v1/usage`; web-session accounts use
   their own Cookie with `https://opencode.ai/workspace/{id}/go`. A web-session
   Cookie and its `wrk_…` Workspace ID must belong to the same account and are never
-  shared across accounts;
+  shared across accounts. Explicit local-login mode reads only an active Go key
+  or an unexpired active OpenCode OAuth login. A modern credential table's
+  logout, ambiguity, expiry or read failure never falls back to stale auth files
+  or another data root. Legacy auth files are used only before migration; no
+  refresh-token redemption or write to OpenCode's store is performed;
 - Qoder: `https://qoder.com/api/v2/me/usages/big_model_credits`, or the
   equivalent `qoder.com.cn` endpoint when the user selects the China site;
 - Warp: `https://app.warp.dev/graphql/v2?op=GetRequestLimitInfo`;
@@ -141,6 +153,8 @@ points; only a fresh provider refresh can append a sanitized observation.
   `GetCommandModelConfigs`. Self-signed TLS is accepted only on this fixed
   loopback boundary; the dashboard never starts or stops the process. If no
   usable local service exists, an explicitly configured OAuth source may use
+  `https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`
+  for current grouped quota, with the stable-host fallback:
   `https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`,
   `v1internal:fetchAvailableModels`, and, when needed, `v1internal:retrieveUserQuota`;
   expired OAuth credentials may refresh through `https://oauth2.googleapis.com/token`;
@@ -166,6 +180,12 @@ points; only a fresh provider refresh can append a sanitized observation.
   `https://bailian-cs.console.aliyun.com/data/api.json` (China) or
   `https://bailian-singapore-cs.alibabacloud.com/data/api.json` (international).
   No browser-cookie extraction, arbitrary endpoint overrides, purchases, or Token Plan requests;
+- StepFun: when enabled, the current StepCode personal Plan OAuth credential is sent only to
+  `https://api.stepfun.com/step_plan/v1/usage` or `https://api.stepfun.ai/step_plan/v1/usage`
+  according to its login profile. `STEPCODE_AUTH_PATH` selects one exclusive file; otherwise the current
+  `auth.json` lives beside the agent directory. An existing current file with no Step login, an invalid
+  credential or an expired login never borrows a legacy account. Only a missing current file allows
+  compatible legacy discovery. API keys are not used, redirects are rejected, and no refresh credential is sent;
 - JetBrains AI: no network; the latest local IDE quota file is read.
 
 The three regional Coding Plan integrations keep Keychain credentials and declared prices

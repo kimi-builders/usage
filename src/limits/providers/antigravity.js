@@ -5,7 +5,7 @@ import { asDate, asPercent, requestJson } from '../http.js';
 import { fetchAntigravityLocalQuota } from './antigravity-local.js';
 
 const LOAD_CODE_ASSIST_URL = 'https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist';
-const SUMMARY_URL = 'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary';
+const SUMMARY_URL = 'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary';
 const MODELS_URL = 'https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels';
 const QUOTA_URL = 'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -54,9 +54,12 @@ function summaryWindows(payload) {
   const windowRank = ['5h', 'weekly'];
   return groups.flatMap((group) => {
     const groupFamily = family('', group?.displayName || group?.description || '');
+    const title = text(group?.displayName);
+    const groupLabel = groupFamily === 'gemini' && /\d/.test(title || '') ? title : labelForFamily(groupFamily);
     return Array.isArray(group?.buckets) ? group.buckets.map((bucket) => {
-      const remaining = Number(bucket?.remainingFraction ?? bucket?.remaining?.remainingFraction);
-      if (!Number.isFinite(remaining)) return null;
+      const rawRemaining = bucket?.remainingFraction ?? bucket?.remaining?.remainingFraction;
+      const remaining = Number(rawRemaining);
+      if (bucket?.disabled || rawRemaining == null || rawRemaining === '' || !Number.isFinite(remaining)) return null;
       const id = text(bucket?.bucketId) || `${groupFamily}-${text(bucket?.window) || 'quota'}`;
       const window = text(bucket?.window) || (/5\s*hour|5h/i.test(`${id} ${bucket?.displayName || ''}`) ? '5h'
         : /week/i.test(`${id} ${bucket?.displayName || ''}`) ? 'weekly' : 'quota');
@@ -64,7 +67,7 @@ function summaryWindows(payload) {
       const percent = asPercent(Math.max(0, Math.min(1, remaining)) * 100);
       return {
         id,
-        label: `${labelForFamily(groupFamily)} · ${windowLabel}`,
+        label: `${groupLabel} · ${windowLabel}`,
         remainingPercent: percent,
         usedPercent: 100 - percent,
         resetsAt: asDate(bucket?.resetTime ?? bucket?.remaining?.resetTime),

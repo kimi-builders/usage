@@ -27,6 +27,16 @@ test('sync outcome distinguishes success, no-change, partial, and rejected recor
   const rejected = buildSyncOutcome({ rejected: 3 }, false);
   assert.equal(rejected.tone, 'warning');
   assert.match(rejected.text, /3 invalid records/);
+  for (const zh of [true, false]) {
+    const protectedResult = buildSyncOutcome({ protectedBuckets: 2 }, zh);
+    assert.equal(protectedResult.tone, 'warning');
+    assert.match(protectedResult.text, zh ? /2 个用量桶受社区旧数据保护/ : /2 buckets were protected/);
+    assert.match(protectedResult.text, zh ? /完整同步也不会解除/ : /full sync does not override/);
+    assert.doesNotMatch(protectedResult.text, /没有新增或变化|No new or changed/);
+    const combined = buildSyncOutcome({ protectedBuckets: 2, sources: [{ source: 'codex', status: 'partial' }] }, zh);
+    assert.equal(combined.tone, 'warning');
+    assert.match(combined.text, zh ? /受社区旧数据保护/ : /were protected/);
+  }
 });
 
 test('sync duration remains readable from seconds into minutes', () => {

@@ -4,6 +4,12 @@
 
 ### 可选的 WorkBuddy 与 Claude 权益查询
 
+OpenCode Go 显式选择「本机登录」时，只读取当前激活的 Go Key 或未过期的 OpenCode OAuth。
+现代凭据表已登出、有歧义、过期或读取失败时，不回退到旧认证文件或另一目录的账号。
+旧 `auth.json` 仅用于尚未迁移的存储；不刷新令牌，也不回写 OpenCode 的登录文件。
+
+WorkBuddy 的重置时间优先采用有效的付费套餐周期；仅在成功查询并确认没有未来付费周期时回退到赠送额度到期时间。付费套餐查询失败时，重置时间保持未知。
+
 主动启用后，WorkBuddy 只请求 `https://www.workbuddy.cn/billing/meter/get-user-resource-summary`
 及同域的 `get-user-resource-paid-packages` / `get-user-resource-free-packages`。手动提供的 Cookie
 与同一请求中的 User-Agent 仅发送到该域名。可选周期查询有共享超时预算，失败不隐藏已取得的 Credits 余额。
@@ -95,7 +101,11 @@ CSP 和 no-store 响应。Token 分析始终离线。只有用户点击相应控
   并以可选的
   `https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscription`
   补充官方订阅名称；任一可选补充接口失败都不会遮蔽已取得的额度；
-- Cursor：`https://cursor.com/api/usage-summary`，以及可选的
+- Cursor：通过同一账户 Cookie 有限时地查询
+  `https://cursor.com/api/dashboard/get-sand-usage-status`（共享每周额度，包括企业版 X Subscription）；
+  统一个人套餐还查询 `https://cursor.com/api/dashboard/v2/usage-status?scope=user`（月度额外支出）。
+  可选请求失败或证据过期不会覆盖有效的旧接口数据；本机 Token 扫描仍仅导入 CSV，不调用这些 API。
+  基础查询为 `https://cursor.com/api/usage-summary`，以及可选的
   `https://cursor.com/api/auth/me` 身份端点；
 - GitHub Copilot：GitHub 设备授权端点 `https://github.com/login/device/code` 和
   `https://github.com/login/oauth/access_token`，账户身份端点 `https://api.github.com/user`，
@@ -112,7 +122,8 @@ CSP 和 no-store 响应。Token 分析始终离线。只有用户点击相应控
   并仅向固定的 `127.0.0.1` 路径发送 `RetrieveUserQuotaSummary`、`GetUserStatus` 或
   `GetCommandModelConfigs` POST。本机自签名 TLS 只在这个固定回环边界内接受；看板不会启动
   或终止用户进程。没有可用本机服务时，用户明确配置的 OAuth 来源才可能访问
-  `https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`、
+  `https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` 读取当前分组额度，
+  基础信息与回退查询仍使用 `https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`、
   `v1internal:fetchAvailableModels`，必要时还会调用 `v1internal:retrieveUserQuota`；过期 OAuth
   凭据可能通过 `https://oauth2.googleapis.com/token` 刷新；
 - DeepSeek：使用用户明确配置的 API Key 请求 `https://api.deepseek.com/user/balance`，只读取
@@ -135,6 +146,12 @@ CSP 和 no-store 响应。Token 分析始终离线。只有用户点击相应控
   `https://bailian-singapore-cs.alibabacloud.com/data/api.json`（国际）发送只读的
   `queryCodingPlanInstanceInfoV2` POST。不自动提取浏览器 Cookie、不接受任意端点替换，
   不购买套餐，也不请求新版 Token Plan 接口；
+- StepFun：仅在启用后，按 StepCode 当前个人 Plan 登录地区向
+  `https://api.stepfun.com/step_plan/v1/usage` 或 `https://api.stepfun.ai/step_plan/v1/usage`
+  发送本机 OAuth 访问凭据。`STEPCODE_AUTH_PATH` 显式指定时只读取该文件；否则当前
+  `auth.json` 位于 agent 目录的同级配置目录。当前文件存在但已退出 Step 登录、凭据无效或
+  已过期时，不会借用旧账号；只有当前文件不存在时才允许兼容读取旧存储。
+  不使用普通 API Key、不跟随重定向，也不发送刷新凭据；
 - JetBrains AI：不联网，只读取最新的本地 IDE 额度文件。
 
 这三个地区型 Coding Plan 的钥匙串凭据、用户填写的价格按地区独立保存；不跨地区重试。

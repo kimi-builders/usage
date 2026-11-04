@@ -3,6 +3,12 @@ import { regionalCredentialKey } from './providers/coding-plan-common.js';
 
 export const LIMIT_PROVIDER_CATALOG = [
   {
+    id: 'stepfun', label: 'StepFun', group: 'more', popular: true,
+    description: 'Step Plan 5 小时、每周或订阅 Credit 额度', quotaSupport: 'automatic', quotaCoverage: 'best-effort',
+    defaultAuthMode: 'local', authModes: ['local'], dashboardUrl: 'https://platform.stepfun.com/plan-usage',
+    localHint: '只读复用 StepCode 的个人 Step Plan 登录；API Key 或按量付费登录不能查询订阅额度。接口不可用时不会影响本机用量。',
+  },
+  {
     id: 'codex', label: 'Codex', group: 'recommended', popular: true,
     description: 'ChatGPT Codex 订阅窗口与重置额度', quotaSupport: 'automatic',
     defaultAuthMode: 'local', authModes: ['local'], dashboardUrl: 'https://chatgpt.com/codex/settings/usage',
@@ -156,7 +162,7 @@ export const LIMIT_ENTITLEMENT_TYPES = ['unknown', 'paid', 'free', 'promotion', 
 export const DEFAULT_LIMIT_PROVIDER_ORDER = [
   'kimi-code', 'codex', 'claude-code', 'cursor', 'copilot', 'antigravity',
   'kiro', 'deepseek', 'opencode', 'qoder', 'warp', 'jetbrains-ai', 'trae',
-  'glm', 'minimax', 'alibaba-coding', 'workbuddy',
+  'glm', 'minimax', 'alibaba-coding', 'workbuddy', 'stepfun',
 ];
 
 const DEFAULT_SETTINGS = Object.freeze({

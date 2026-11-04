@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { loadCodexCredentials, loadCodexCredentialsRereading, loadCursorCredentials, kimiCredentialPaths, loadKimiCredentials } from '../src/limits/credentials.js';
 import { fetchCodexLimits } from '../src/limits/providers/codex.js';
-import { fetchOpenCodeGoLimits, openCodeDataRoots } from '../src/limits/providers/opencode.js';
+import { fetchOpenCodeGoLimits, openCodeDataRoots, readLocalGoKey } from '../src/limits/providers/opencode.js';
 import { clearLimitCache, loadSubscriptionLimits } from '../src/limits/service.js';
 import { recordLimitSnapshot } from '../src/limits/history.js';
 import { buildSubscriptionInsights } from '../dashboard/src/subscription-insights.js';
@@ -369,7 +369,7 @@ test('OpenCode Go prefers the Go-specific credential row over the 1.x auth.json 
   assert.equal(authorization, 'Bearer sk-table-key');
 });
 
-test('OpenCode Go folds in the 1.x auth.json login when the credential table has no Go row', async (t) => {
+test('OpenCode Go never revives legacy auth when a modern credential table has no active Go login', async (t) => {
   if (!DatabaseSync) return t.skip('node:sqlite unavailable');
   const root = tempDirectory(t, 'usage-opencode-auth-');
   credentialFixture(root, [{ integrationId: 'anthropic', value: { type: 'oauth', access: 'must-not-be-read' } }]);
@@ -377,38 +377,72 @@ test('OpenCode Go folds in the 1.x auth.json login when the credential table has
     anthropic: { type: 'oauth', access: 'must-not-be-read' },
     opencode: { type: 'api', key: '  sk-auth-file-key  ' },
   }));
-  let authorization;
-  const result = await fetchOpenCodeGoLimits({
+  let calls = 0;
+  await assert.rejects(fetchOpenCodeGoLimits({
     settings: localLoginSettings,
     environment: { KBU_USAGE_OPENCODE_DIR: root },
-    fetcher: async (_url, init) => {
-      authorization = init.headers.Authorization;
-      return jsonResponse(USAGE_PAYLOAD);
-    },
-  });
-  assert.equal(result.status, 'ok');
-  assert.equal(authorization, 'Bearer sk-auth-file-key');
-  // Sibling provider credentials are never inspected or echoed.
-  assert.equal(JSON.stringify(result).includes('must-not-be-read'), false);
+    fetcher: async () => { calls++; return jsonResponse(USAGE_PAYLOAD); },
+  }), { code: 'not_configured' });
+  assert.equal(calls, 0);
 });
 
-test('OpenCode Go falls back to auth.json when the credential store cannot be read', async (t) => {
+test('OpenCode Go cannot borrow legacy auth when the credential store is unreadable', async (t) => {
   const root = tempDirectory(t, 'usage-opencode-corrupt-');
   writeFileSync(join(root, 'opencode.db'), 'not a sqlite database');
   writeFileSync(join(root, 'auth.json'), JSON.stringify({
     opencode: { type: 'api', key: 'sk-auth-file-key' },
   }));
-  let authorization;
-  const result = await fetchOpenCodeGoLimits({
+  let calls = 0;
+  await assert.rejects(fetchOpenCodeGoLimits({
     settings: localLoginSettings,
     environment: { KBU_USAGE_OPENCODE_DIR: root },
-    fetcher: async (_url, init) => {
-      authorization = init.headers.Authorization;
-      return jsonResponse(USAGE_PAYLOAD);
-    },
-  });
-  assert.equal(result.status, 'ok');
-  assert.equal(authorization, 'Bearer sk-auth-file-key');
+    fetcher: async () => { calls++; return jsonResponse(USAGE_PAYLOAD); },
+  }), { code: 'provider_error' });
+  assert.equal(calls, 0);
+});
+
+test('OpenCode active-account selection rejects ambiguity/expiry and accepts current OAuth without renewal', async t => {
+  if (!DatabaseSync) return t.skip('node:sqlite unavailable');
+  const now = Date.parse('2026-10-29T00:00:00Z');
+  const active = { integrationId: 'opencode-go', value: { type: 'key', key: 'active-key' } };
+  const oauth = { integrationId: 'opencode', value: { type: 'oauth', access: 'active-oauth', expires: now + 60000 } };
+  for (const [rows, expected] of [
+    [[active, { ...active, active: 0, value: { type: 'key', key: 'disabled-newer-key' } }], { status: 'ok', key: 'active-key' }],
+    [[active, active], { status: 'error' }],
+    [[{ ...active, active: 0 }], { status: 'missing' }],
+    [[oauth], { status: 'ok', key: 'active-oauth' }],
+    [[oauth, active], { status: 'ok', key: 'active-key' }],
+    [[{ ...oauth, value: { ...oauth.value, expires: now } }], { status: 'error' }],
+    [[{ ...oauth, value: { ...oauth.value, expires: String(now + 60000) } }], { status: 'error' }],
+    [[{ ...active, value: { type: 'key', key: 'unsafe\nheader' } }], { status: 'error' }],
+    [[{ ...active, integrationId: 'opencode' }], { status: 'missing' }],
+  ]) {
+    const root = tempDirectory(t, 'usage-opencode-active-');
+    const other = tempDirectory(t, 'usage-opencode-old-root-');
+    credentialFixture(root, rows);
+    for (const dir of [root, other]) writeFileSync(join(dir, 'auth.json'), JSON.stringify({ opencode: { type: 'api', key: 'stale' } }));
+    assert.deepEqual(readLocalGoKey({ KBU_USAGE_OPENCODE_DIR: [root, other].join(delimiter) }, root, process.platform, now), expected);
+  }
+});
+
+test('OpenCode legacy Go key remains usable when no credential table exists', t => {
+  const root = tempDirectory(t, 'usage-opencode-legacy-go-');
+  writeFileSync(join(root, 'auth.json'), JSON.stringify({ 'opencode-go': { type: 'api', key: 'legacy-go-key' },
+    opencode: { type: 'api', key: 'older-key' } }));
+  assert.deepEqual(readLocalGoKey({ KBU_USAGE_OPENCODE_DIR: root }), { status: 'ok', key: 'legacy-go-key' });
+  if (DatabaseSync) {
+    const db = new DatabaseSync(join(root, 'opencode.db'));
+    db.exec('CREATE TABLE session (id TEXT)'); db.close();
+    assert.deepEqual(readLocalGoKey({ KBU_USAGE_OPENCODE_DIR: root }), { status: 'ok', key: 'legacy-go-key' });
+  }
+});
+
+test('OpenCode never switches roots after a corrupt legacy login file', t => {
+  const first = tempDirectory(t, 'usage-opencode-legacy-corrupt-');
+  const second = tempDirectory(t, 'usage-opencode-legacy-second-');
+  writeFileSync(join(first, 'auth.json'), '{broken');
+  writeFileSync(join(second, 'auth.json'), JSON.stringify({ opencode: { type: 'api', key: 'other-account' } }));
+  assert.deepEqual(readLocalGoKey({ KBU_USAGE_OPENCODE_DIR: [first, second].join(delimiter) }), { status: 'error' });
 });
 
 test('OpenCode Go reports a missing local login without reaching the network', async (t) => {
@@ -553,22 +587,36 @@ test('OpenCode detection, quota service and history use the selected local login
   assert.deepEqual([...new Set(localPoints.map(p => p.usedPercent))].sort(), [60, 70]);
 });
 
-test('OpenCode Go skips a failing data root when a later root holds the login', async (t) => {
+test('OpenCode Go does not switch accounts through a later root when the selected store is unreadable', async (t) => {
   const first = tempDirectory(t, 'usage-opencode-root-a-');
   const second = tempDirectory(t, 'usage-opencode-root-b-');
   writeFileSync(join(first, 'opencode.db'), 'not a sqlite database');
   writeFileSync(join(second, 'auth.json'), JSON.stringify({
     opencode: { type: 'api', key: 'sk-second-root-key' },
   }));
-  let authorization;
-  const result = await fetchOpenCodeGoLimits({
+  let calls = 0;
+  await assert.rejects(fetchOpenCodeGoLimits({
     settings: localLoginSettings,
     environment: { KBU_USAGE_OPENCODE_DIR: [first, second].join(delimiter) },
-    fetcher: async (_url, init) => {
-      authorization = init.headers.Authorization;
+    fetcher: async () => { calls++; return jsonResponse(USAGE_PAYLOAD); },
+  }), { code: 'provider_error' });
+  assert.equal(calls, 0);
+});
+
+test('OpenCode current CLI OAuth queries Go with its access token and never exposes or renews it', async t => {
+  if (!DatabaseSync) return t.skip('node:sqlite unavailable');
+  const root = tempDirectory(t, 'usage-opencode-oauth-');
+  credentialFixture(root, [{ integrationId: 'opencode', value: { type: 'oauth', access: 'test-oauth-access',
+    refresh: 'test-refresh-never-used', expires: Date.now() + 60000 } }]);
+  let calls = 0;
+  const result = await fetchOpenCodeGoLimits({ settings: localLoginSettings,
+    environment: { KBU_USAGE_OPENCODE_DIR: root }, fetcher: async (url, init) => {
+      calls++;
+      assert.equal(String(url), 'https://opencode.ai/zen/go/v1/usage');
+      assert.equal(init.headers.Authorization, 'Bearer test-oauth-access');
       return jsonResponse(USAGE_PAYLOAD);
-    },
-  });
+    } });
+  assert.equal(calls, 1);
   assert.equal(result.status, 'ok');
-  assert.equal(authorization, 'Bearer sk-second-root-key');
+  assert.doesNotMatch(JSON.stringify(result), /test-oauth|test-refresh/);
 });

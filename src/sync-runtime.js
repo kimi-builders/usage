@@ -111,7 +111,7 @@ export async function runManagedSync({
     const completedAt = new Date().toISOString();
     const summary = publicSyncResult(result);
     const issues = summary.sources.filter((source) => ['partial', 'failed'].includes(source.status));
-    const partial = issues.length > 0 || summary.rejected > 0;
+    const partial = issues.length > 0 || summary.rejected > 0 || summary.protectedBuckets > 0;
     const next = {
       state: partial ? 'partial' : 'idle', trigger, lastAttemptAt: startedAt, lastCompletedAt: completedAt,
       lastSuccessAt: partial ? prior.lastSuccessAt || null : completedAt,

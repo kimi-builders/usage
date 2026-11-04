@@ -70,7 +70,7 @@ only the opencode-go integration key from OpenCode's own credential table
 through the shared read-only SQLite helper, falling back to the 1.x auth.json
 `opencode.key` entry when the table holds no Go row or cannot be read, and
 reporting a concrete store failure only when the fallback has no key either —
-is adapted from upstream commits
+was initially adapted from upstream commits
 166f735084a0ed55b60a1db5e8345ce38d9f6651 (2026-09-22) and
 e21bd2d6fa6058bd6f319d193e06f6dc9c7b2d50 (2026-09-26), and re-expressed in
 this repository's limits provider: local discovery is an explicit connection
@@ -85,6 +85,13 @@ honors its XDG_DATA_HOME resolution instead. Upstream commit
 6530c6d5f7f44c710cc324db989472dbe7a8f3cd (2026-09-27), which builds the data
 root test expectations with node:path's join and the platform delimiter so
 they hold on Windows, is reflected in the corresponding tests here.
+
+The later active CLI login handling is informed by CodexBar commit
+77914457d3bfe4124122174dfdd307c2699ed5b6. It supersedes the above fallback:
+an existing credential table is authoritative, and missing, ambiguous, expired
+or unreadable current credentials cannot fall back to an old account. Only a
+missing table permits the legacy file; valid active OpenCode OAuth can be used
+for the explicit local Go mode. Tokens are never refreshed or written back.
 
 The Kimi Code quota path's support for the current CLI 2.x generation —
 probing the official OAuth credential across `$KIMI_SHARE_DIR`, then
@@ -136,6 +143,17 @@ The Windows OpenCode LOCALAPPDATA discovery is adapted from vibe-usage commit
 acb315c2d50694d71e6fb9cc1567db898a7a3332 (2026-10-08), using a shared resolver
 for scanning and explicit local Go login, with cross-store message deduplication.
 
+The late-October compatibility pass adapts Antigravity step-metadata usage,
+retry identities, the inclusive output/reasoning wire contract and cache-write
+field from vibe-usage commit 194333575d9321d4e29bbfcb1204469cc6260b19.
+This implementation keeps exact index/identity clocks, does not carry a prior
+model name onto an unknown call, rejects malformed protobuf instead of silently
+discarding it, and marks unprovable overlap or missing clocks incomplete.
+Cursor empty/export-header failure protection is informed by upstream commit
+68b346207d54c32d857743b53ed86fb8beb92870. Its authenticated online events
+fallback and account metadata persistence are NOT imported: our Cursor Token
+collector remains an explicitly configured, offline CSV importer.
+
 
 CodexBar provider integrations
 ------------------------------
@@ -173,6 +191,16 @@ performance implementation. WorkBuddy uses an explicit Cookie/User-Agent tuple
 instead of upstream browser import. Claude metadata verifies the exact account
 and organization without importing cookies. Codex performance stays local-only,
 requires complete owned durable usage, and never enters community uploads.
+
+The late-October provider pass adapts WorkBuddy paid-cycle precedence
+(7141477080ff9bc096066af4f2a51c0782bd071e), Antigravity's daily-host OAuth
+summary (1c14f5abd44b7387212950778076ac9d021389b6) and versioned Gemini group
+labels (7f077ba0604931132af4ea374e100e3a4419839c), Cursor unified personal
+weekly pools and additional monthly spend (0538e94b464db0c12776e4bf6e7b11c66e44d275
+and 36a37fe66), and JetBrains JbaiQuota/refill and Junie quota_update log shapes
+(bab8d5dd2bc488ab2fbfff7bfe76d0a3d484cae0). Optional requests retain the selected
+account boundary and bounded deadlines. No browser decryption, app management,
+CLI sign-in recovery, new quota provider, or upstream pricing table is imported.
 
 The later GLM / Z.ai, MiniMax Coding / Token Plan, and Alibaba Coding Plan
 integrations adapt endpoint/request shapes and sanitized quota fixtures from
@@ -255,6 +283,16 @@ distributed in this package.
 
 DIRECT PRODUCT AND ENGINEERING REFERENCES
 =========================================
+
+Step-Code
+---------
+
+Project: Step-Code by StepFun
+Source:  https://github.com/stepfun-ai/Step-Code
+
+The official StepCode session-format and account-usage documentation and its
+personal Plan usage protocol were consulted for interoperability. The reader
+and quota adapter in this repository are independent implementations.
 
 Kimi multi-account quota references
 ----------------------------------

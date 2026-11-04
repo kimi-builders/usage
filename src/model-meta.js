@@ -1,6 +1,10 @@
 const KIMI_MODEL_ALIASES = new Map([
   ['k3', 'kimi-k3'],
   ['kimi-k3', 'kimi-k3'],
+  ['k3.1-pro', 'kimi-k3.1-pro'],
+  ['kimi-k3.1-pro', 'kimi-k3.1-pro'],
+  ['k3.1-pro-highspeed', 'kimi-k3.1-pro-highspeed'],
+  ['kimi-k3.1-pro-highspeed', 'kimi-k3.1-pro-highspeed'],
   ['k3-256', 'kimi-k3-256k'],
   ['k3-256k', 'kimi-k3-256k'],
   ['kimi-k3-256k', 'kimi-k3-256k'],

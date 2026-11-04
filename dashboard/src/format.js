@@ -9,6 +9,7 @@ export const SOURCE_LABELS = {
   'copilot-cli': 'Copilot CLI',
   'roo-code': 'Roo Code',
   'pi-coding-agent': 'Pi',
+  stepcode: 'StepCode',
   zcode: 'ZCode',
   workbuddy: 'WorkBuddy',
   grok: 'Grok CLI',

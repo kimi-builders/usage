@@ -22,7 +22,8 @@ function matchCandidate(catalog, name, bucket, at) {
     .filter((price) => {
       const patternMatches = price.match === 'exact'
         ? name === price.pattern
-        : name.startsWith(price.pattern);
+        : name.startsWith(price.pattern)
+          && !(price.pattern === 'kimi-k3' && name.startsWith('kimi-k3.'));
       return patternMatches
         && Date.parse(price.effectiveFrom) <= at
         && (!price.effectiveTo || at < Date.parse(price.effectiveTo))
@@ -102,7 +103,7 @@ export function estimateLocalBucketCost(bucket) {
     [bucket.inputTokens, price.input],
     [unclassifiedCacheWrite, price.cacheWrite ?? price.input],
     [cacheWrite5m, price.cacheWrite5m ?? price.cacheWrite ?? price.input],
-    [cacheWrite1h, price.cacheWrite1h ?? price.cacheWrite ?? price.input],
+    [cacheWrite1h, price.cacheWrite1h ?? (price.cacheWrite5m !== null ? null : price.cacheWrite ?? price.input)],
     [bucket.cacheReadInputTokens, price.cacheRead],
     [bucket.outputTokens, price.output],
     [bucket.reasoningOutputTokens, price.reasoning ?? price.output],
@@ -130,7 +131,7 @@ export function estimateLocalBucketCost(bucket) {
     assumedTokens += totalTokens;
   }
   if (unclassifiedCacheWrite > 0 && price.cacheWrite5m !== null
-    && price.cacheWrite1h !== null && price.cacheWrite5m !== price.cacheWrite1h) {
+    && price.cacheWrite5m !== price.cacheWrite1h) {
     priceAssumptions.push('cache-write-ttl');
     assumedTokens += unclassifiedCacheWrite;
   }

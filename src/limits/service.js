@@ -29,12 +29,14 @@ import { fetchWorkBuddyLimits, parseWorkBuddyCredential } from './providers/work
 import { fetchGlmLimits } from './providers/glm.js';
 import { fetchMiniMaxLimits } from './providers/minimax.js';
 import { fetchAlibabaCodingLimits } from './providers/alibaba-coding.js';
+import { fetchStepFunLimits, loadStepPlanCredentials } from './providers/stepfun.js';
 import { REGIONAL_PLAN_IDS, regionalCredentialKey } from './providers/coding-plan-common.js';
 import { loadLimitHistory, recordLimitSnapshot } from './history.js';
 import { assertProviderContract } from './contract.js';
 import { safeLocalPathDisplay } from '../safe-display.js';
 
 const FETCHERS = {
+  stepfun: fetchStepFunLimits,
   workbuddy: fetchWorkBuddyLimits,
   glm: fetchGlmLimits,
   minimax: fetchMiniMaxLimits,
@@ -108,7 +110,7 @@ function providerError(provider, error) {
     id: provider.id,
     label: provider.label,
     status: 'error',
-    ...([...REGIONAL_PLAN_IDS, 'workbuddy'].includes(provider.id) && /^[a-f0-9]{32}$/.test(error?.accountId || '')
+    ...([...REGIONAL_PLAN_IDS, 'workbuddy', 'stepfun'].includes(provider.id) && /^[a-f0-9]{32}$/.test(error?.accountId || '')
       || provider.id === 'opencode' && /^local_[a-f0-9]{32}$/.test(error?.accountId || '')
       ? { accountId: error.accountId } : {}),
     error: {
@@ -171,6 +173,12 @@ function detected(state, label, detail = '') {
 
 function detectLocalProvider(providerId, providerSettings, environment, options = {}) {
   try {
+    if (providerId === 'stepfun') {
+      const value = loadStepPlanCredentials(environment);
+      return value.found && value.fresh ? detected('detected', '已检测到 Step Plan 登录')
+        : value.found ? detected('expired', 'Step Plan 登录已过期', '请在 StepCode 重新登录')
+          : detected('needs_login', '请先登录 Step Plan', '在 StepCode 中选择个人 Step Plan 登录');
+    }
     if (providerId === 'opencode' && providerSettings.authMode === 'local'
         && !providerSettings.accounts?.length && !providerSettings.workspaceId) {
       const value = readLocalGoKey(environment);
@@ -588,7 +596,7 @@ async function fetchEnabled(settings, options = {}) {
       });
       return {
         ...assertProviderContract(provider.id, result),
-        ...([...REGIONAL_PLAN_IDS, 'workbuddy'].includes(provider.id) && /^[a-f0-9]{32}$/.test(result.accountId || '')
+        ...([...REGIONAL_PLAN_IDS, 'workbuddy', 'stepfun'].includes(provider.id) && /^[a-f0-9]{32}$/.test(result.accountId || '')
           || provider.id === 'opencode' && /^local_[a-f0-9]{32}$/.test(result.accountId || '')
           ? { accountId: result.accountId } : {}),
         label: provider.label,
