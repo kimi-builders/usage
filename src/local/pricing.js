@@ -1,3 +1,4 @@
+import { canonicalModelId, modelLeaf } from '../model-meta.js';
 import {
   EMBEDDED_PRICE_CATALOG,
   getActivePriceCatalog,
@@ -23,7 +24,8 @@ function matchCandidate(catalog, name, bucket, at) {
       const patternMatches = price.match === 'exact'
         ? name === price.pattern
         : name.startsWith(price.pattern)
-          && !(price.pattern === 'kimi-k3' && name.startsWith('kimi-k3.'));
+          && !(['kimi-k3', 'minimax-m3', 'claude-fable-5'].includes(price.pattern) && name.startsWith(price.pattern + '.'))
+          && !(price.pattern === 'claude-fable-5' && /^claude-fable-5-\d{1,2}(?:-|$)/.test(name));
       return patternMatches
         && Date.parse(price.effectiveFrom) <= at
         && (!price.effectiveTo || at < Date.parse(price.effectiveTo))
@@ -49,24 +51,14 @@ function matchCandidate(catalog, name, bucket, at) {
 }
 
 export function matchLocalPrice(bucket) {
-  const model = String(bucket.modelCanonical || bucket.model || '').trim();
+  const model = modelLeaf(canonicalModelId(bucket) || bucket.model);
   const at = Date.parse(bucket.bucketStart);
   if (!model || !Number.isFinite(at)) return null;
-  const slash = model.lastIndexOf('/');
-  const names = slash > 0 && slash < model.length - 1
-    ? [model, model.slice(slash + 1)]
-    : [model];
-  const candidates = [...new Set(names.flatMap((name) => {
-    const normalized = name.toLowerCase().replace(/[\s_]+/g, '-');
-    const claudeVersionAlias = normalized.startsWith('claude-')
-      ? normalized.replace(/-(\d+)\.(\d+)(?=-|$)/g, '-$1-$2')
-      : normalized;
-    // Resolve the decimal version before prefix matching: Opus 5.5 must not
-    // match the older Opus 5 row before we try its canonical 5-5 spelling.
-    return claudeVersionAlias !== normalized
-      ? [claudeVersionAlias, name, normalized]
-      : [name, normalized];
-  }))];
+  const normalized = model.toLowerCase().replace(/[\s_]+/g, '-');
+  // Resolve decimal Claude versions before trying a less specific family prefix.
+  const claudeAlias = normalized.startsWith('claude-')
+    ? normalized.replace(/-(\d+)\.(\d+)(?=-|$)/g, '-$1-$2') : normalized;
+  const candidates = new Set([claudeAlias, normalized]);
   const catalog = numericCatalogEntries(getActivePriceCatalog().catalog);
   for (const candidate of candidates) {
     const match = matchCandidate(catalog, candidate, bucket, at);

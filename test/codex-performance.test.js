@@ -59,6 +59,29 @@ test('Codex multi-request turn sums complete totals and rejects reused response 
   assert.equal(run([ledger(), done(), ledger({ turn_id: 'other' }), done({ turn_id: 'other' })]).length, 0);
 });
 
+test('resumed turn samples use the request segment, not the first session header', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'kbu-performance-resumed-'));
+  const previous = process.env.KBU_USAGE_CODEX_HOME;
+  process.env.KBU_USAGE_CODEX_HOME = root;
+  try {
+    mkdirSync(join(root, 'sessions'));
+    for (const [n, project] of [[0, 'red'], [20, 'blue']]) {
+      const turn = 'turn-' + n;
+      const rows = [
+        { type: 'session_meta', timestamp: stamp(n), payload: { id: 'thread', cwd: '/only-basename/' + project, cli_version: 'v' + n } },
+        { ...ledger({ response_id: 'r' + n, turn_id: turn }), timestamp: stamp(n + 1) },
+        { ...done({ turn_id: turn, started_at: epoch / 1000 + n }), timestamp: stamp(n + 10) },
+      ];
+      writeFileSync(join(root, 'sessions', n + '.jsonl'), rows.map(JSON.stringify).join('\n'));
+    }
+    const { turnPerformance } = await parse({ sessionSalt: 's'.repeat(32), includePerformance: true });
+    assert.deepEqual(turnPerformance.map(s => [s.project, s.agentVersion]), [['red', 'v0'], ['blue', 'v20']]);
+  } finally {
+    if (previous === undefined) delete process.env.KBU_USAGE_CODEX_HOME; else process.env.KBU_USAGE_CODEX_HOME = previous;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('real Codex parser deduplicates physical copies; snapshot timings never enter collector sync results', async () => {
   const root = mkdtempSync(join(tmpdir(), 'kbu-performance-'));
   const old = process.env.KBU_USAGE_CODEX_HOME;

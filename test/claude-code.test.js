@@ -133,6 +133,35 @@ test('uuid dedup across files keeps the payload with the highest usage sum', asy
   assert.deepEqual(sumTokens(result), { input: 106, cacheWrite: 0, cacheRead: 0, output: 11, requests: 2 });
 });
 
+test('assistant content blocks and streamed revisions count once per API call, not per line UUID', async () => {
+  const dir = useDir('streamed-blocks');
+  const row = (line, id, requestId, output) => {
+    const r = assistant('2026-11-22T12:00:00Z', usage({ input_tokens: 10, cache_read_input_tokens: 90, output_tokens: output }), { uuid: line });
+    return { ...r, requestId, message: { ...r.message, id } };
+  };
+  writeSession(dir, 'demo', 'first', [
+    row('1', 'reply', 'request', 1), row('2', 'reply', 'request', 8),
+    row('3', 'reply', 'retry', 3), row('4', 'other', 'request', 4),
+  ]);
+  writeSession(dir, 'demo', 'copied', [row('5', 'reply', 'request', 8), row('6', 'reply', 'request', 2)]);
+  const result = await parse({ sessionSalt: SALT });
+  assert.deepEqual(sumTokens(result), { input: 30, cacheWrite: 0, cacheRead: 270, output: 15, requests: 3 });
+  assert.equal(JSON.stringify(result).includes('"callKey"'), false);
+});
+
+test('line revisions enrich missing call identifiers across files without billing retries twice', async () => {
+  const dir = useDir('enriched-ids');
+  const row = (uuid, id, requestId, output) => {
+    const r = assistant('2026-11-22T12:00:00Z', usage({ input_tokens: 100, output_tokens: output }), { uuid });
+    return { ...r, requestId, message: { ...r.message, id } };
+  };
+  writeSession(dir, 'demo', 'a', [row('same-line', 'reply', undefined, 8), row('no-id', undefined, undefined, 2)]);
+  writeSession(dir, 'demo', 'b', [row('same-line', 'reply', 'req', 1), row('block', 'reply', 'req', 7),
+    row('retry', 'reply', 'retry-id', 3), row('no-id', 'other', 'other-id', 9)]);
+  assert.deepEqual(sumTokens(await parse({ sessionSalt: SALT })),
+    { input: 300, cacheWrite: 0, cacheRead: 0, output: 20, requests: 3 });
+});
+
 test('physical copies of one session id keep the largest file only', async () => {
   const small = [
     assistant('2026-08-01T10:02:00.000Z', usage({ input_tokens: 1, output_tokens: 1 }), { uuid: 's1' }),

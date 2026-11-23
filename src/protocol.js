@@ -65,7 +65,7 @@ function optionalText(value, field, maxLength) {
   text(value, field, maxLength);
 }
 
-function validateBucket(value) {
+function validateBucket(value, { local = false } = {}) {
   const item = record(value, 'bucket');
   source(item.source, 'bucket.source');
   text(item.model, 'bucket.model', 160);
@@ -77,7 +77,10 @@ function validateBucket(value) {
     && !new Set(['short', 'long']).has(text(item.contextTier, 'bucket.contextTier', 16))) {
     throw new Error('bucket.contextTier is unsupported');
   }
-  if (item.processingTier !== undefined
+  if (item.processingTier === 'ultrafast' && !local) {
+    throw new Error('ultrafast is available locally; community protocol v2 does not support this tier');
+  }
+  if (item.processingTier !== undefined && item.processingTier !== 'ultrafast'
     && !new Set(['standard', 'batch', 'flex', 'priority']).has(
       text(item.processingTier, 'bucket.processingTier', 16),
     )) {
@@ -212,6 +215,10 @@ function validationError(validate, value) {
 
 export function validateUploadBucket(value) {
   return validationError(validateBucket, value);
+}
+
+export function validateLocalBucket(value) {
+  return validationError(bucket => validateBucket(bucket, { local: true }), value);
 }
 
 export function validateUploadSession(value) {

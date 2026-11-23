@@ -110,9 +110,9 @@ The project is in public Beta; maturity varies by source as shown below.
 
 | Agent | Status | Local source |
 | --- | --- | --- |
-| Kimi Code | Core | `~/.kimi-code` and legacy `~/.kimi` |
-| Claude Code | Stable | `$CLAUDE_CONFIG_DIR` and project logs under `~/.claude*` |
-| Codex | Stable | Current and archived sessions under `$CODEX_HOME` or `~/.codex` |
+| Kimi Code | Core | Local sessions from the CLI, Kimi Work desktop, and legacy `~/.kimi`. Work stays local unless explicitly included with `sources set kimi-code private --include-desktop`. Run the same command without the flag to return to CLI-only sync. |
+| Claude Code | Stable | Project logs under `$CLAUDE_CONFIG_DIR` and `~/.claude*`; multiple content blocks from one API request count once |
+| Codex | Stable | Current and archived sessions under `$CODEX_HOME` or `~/.codex`, including `.jsonl.zst` history (requires Node with Zstd support or the system `zstd`) |
 | OpenCode | Stable | SQLite database with legacy JSON fallback |
 | Gemini CLI | Stable | JSONL/JSON sessions under `~/.gemini/tmp` |
 | Antigravity | Stable | Offline SQLite stores from App 2.0 / standalone IDE / `agy` CLI |

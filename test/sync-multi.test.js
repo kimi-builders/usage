@@ -451,6 +451,73 @@ test('Antigravity untimed usage keeps sync checkpoints and repairs without inven
   }
 });
 
+test('real sync to localhost never inherits a desktop grant; CLI copies do not create a new remote session', async () => {
+  const home = join(root, 'desktop-consent');
+  const cli = join(home, 'cli');
+  const env = { ...process.env, HOME: home, USERPROFILE: home, APPDATA: home, XDG_CONFIG_HOME: home,
+    KIMI_CODE_HOME: cli, KBU_USAGE_KIMI_CODE_DIR: '', KBU_USAGE_STATE_DIR: join(home, 'state'),
+    KBU_USAGE_CONFIG_DIR: join(home, 'config') };
+  const { currentKimiHomes } = await import('../src/parsers/kimi-code.js');
+  const [,desktop] = currentKimiHomes({ home, environment: env });
+  const put = (directory, n) => {
+    const agent = join(directory, 'sessions', 'wd_shared_abcd', 'session_work', 'agents', 'main');
+    mkdirSync(agent, { recursive: true });
+    writeFileSync(join(agent, 'wire.jsonl'), JSON.stringify({ type: 'usage.record', model: 'kimi-k3', time: 1790000000000,
+      usage: { inputOther: n } }));
+  };
+  const config = { ...syncConfig, sourcePolicies: { 'kimi-code': 'private' } };
+  const run = async (flags = {}) => {
+    await promisify(execFile)(process.execPath, ['--input-type=module', '-e',
+      "import {saveConfig} from './src/config.js'; import {runSync} from './src/sync.js'; saveConfig(JSON.parse(process.argv[1])); await runSync({quiet:true});",
+      JSON.stringify({ ...config, ...flags })], { env });
+    return received.at(-1);
+  };
+  put(desktop, 99);
+  const heartbeat = await run();
+  assert.deepEqual([heartbeat.buckets, heartbeat.sessions], [[], []]);
+  const grant = { sourceOptions: { 'kimi-code': { syncDesktop: true } } };
+  const accepted = await run(grant);
+  assert.equal(accepted.buckets[0].inputTokens, 99);
+  assert.equal(accepted.sessions.length, 1);
+  put(cli, 99);
+  const unchanged = await run(grant);
+  assert.deepEqual([unchanged.buckets, unchanged.sessions], [[], []]);
+  put(desktop, 12345);
+  assert.deepEqual((await run()).buckets, []); // revoked; only the unchanged CLI copy is visible
+});
+
+test('Ultrafast is priced in the local snapshot but never uploaded to v2 as Standard', async () => {
+  const previous = process.env.KBU_USAGE_CODEX_HOME;
+  const oldState = readFileSync(join(stateDir, 'state.json'));
+  const directory = join(root, 'ultrafast-sync');
+  const config = { ...syncConfig, sourcePolicies: { codex: 'private' } };
+  const timestamp = '2026-11-22T10:00:00Z';
+  mkdirSync(join(directory, 'sessions'), { recursive: true });
+  const rows = [{ type: 'session_meta', timestamp, payload: { id: 'thread' } },
+    ...['ultrafast', 'standard'].map(service_tier => ({ type: 'event_msg', timestamp,
+      payload: { type: 'token_count', info: { model: 'gpt-6.2-sol', service_tier, last_token_usage: { input_tokens: 10000 } } } }))];
+  writeFileSync(join(directory, 'sessions', 'thread.jsonl'), rows.map(JSON.stringify).join('\n'));
+  process.env.KBU_USAGE_CODEX_HOME = directory;
+  saveConfig(config);
+  try {
+    const { collectLocalSnapshot } = await import('../src/local/snapshot.js');
+    const { sourceRegistry } = await import('../src/parsers/index.js');
+    const { estimateLocalBucketCost } = await import('../src/local/pricing.js');
+    const snapshot = await collectLocalSnapshot({ config, sourceEntries: sourceRegistry.filter(s => s.id === 'codex') });
+    assert.deepEqual(snapshot.diagnostics.rejected, []);
+    assert.deepEqual(snapshot.data.buckets.map(b => [b.processingTier, estimateLocalBucketCost(b).costMicros]),
+      [['ultrafast', 60000], ['standard', 20000]]);
+    const { rejected } = await runSync({ quiet: true });
+    assert.equal(rejected, 1);
+    assert.deepEqual(received.at(-1).buckets.map(b => [b.processingTier, b.inputTokens]), [['standard', 10000]]);
+    assert.equal(Object.keys(readStateFile().buckets).some(k => k.includes('ultrafast')), false);
+  } finally {
+    process.env.KBU_USAGE_CODEX_HOME = previous;
+    writeFileSync(join(stateDir, 'state.json'), oldState);
+    saveConfig(syncConfig);
+  }
+});
+
 test('invalid Codex durable records preserve prior checkpoints while healthy requests still sync', async () => {
   const previous = process.env.KBU_USAGE_CODEX_HOME;
   const oldState = readFileSync(join(stateDir, 'state.json'));

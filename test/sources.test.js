@@ -44,6 +44,16 @@ test('source listing labels compatibility-beta parsers without disabling them', 
   }
 });
 
+test('Kimi desktop sync requires a specific CLI grant and can be revoked independently', () => {
+  const saved = () => JSON.parse(readFileSync(join(configDir, 'config.json'), 'utf8'));
+  runSources(['set', 'kimi-code', 'private', '--include-desktop']);
+  assert.equal(saved().sourceOptions['kimi-code'].syncDesktop, true);
+  runSources(['set', 'kimi-code', 'private']);
+  assert.notEqual(saved().sourceOptions['kimi-code']?.syncDesktop, true);
+  assert.equal(saved().sourcePolicies['kimi-code'], 'private');
+  assert.throws(() => runSources(['set', 'kimi-code', 'local', '--include-desktop']));
+});
+
 test('extra roots are added and removed without changing source policy', () => {
   const directory = join(root, 'extra-codex');
   mkdirSync(directory, { recursive: true });

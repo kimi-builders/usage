@@ -82,6 +82,11 @@ Session ID 使用 HMAC-SHA-256 和安装级随机 salt 转换。不同安装无�
 
 ## `sync` 上传什么
 
+授权同步 Kimi CLI 不会自动包含 Kimi Work 桌面端。要一并同步，须显式运行
+`sources set kimi-code private --include-desktop`；重新运行 `sources set kimi-code private`
+即可停止后续桌面端上传，CLI 同步不受影响。社区协议 v2 暂不支持 Ultrafast 档位，
+该档位的用量桶保留在本机，同步时会提示跳过，不会按标准价上传。
+
 完整传输契约见 [`docs/LOCAL_SNAPSHOT_V1.md`](docs/LOCAL_SNAPSHOT_V1.md)。主要字段是
 来源、Agent 记录的模型事实、UTC 30 分钟时间、互斥 Token 计数、请求数、测量质量、盐化
 session hash、会话时间/消息计数，以及用于诊断的客户端和 Agent 版本。

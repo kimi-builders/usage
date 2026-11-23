@@ -180,7 +180,7 @@ async function finalizeCandidateSession(
 }
 
 async function scanProjectCandidate(candidate, sessionSalt) {
-  const usageEntries = { entriesByUuid: new Map(), anonymousEntries: [] };
+  const usageEntries = newUsageIndex();
   const sessionAccumulator = createSessionAccumulator();
   let lastModel = null;
   let sessionProject = candidate.fallbackProject;
@@ -205,8 +205,12 @@ async function scanProjectCandidate(candidate, sessionSalt) {
     const outputTokens = tokenCount(usage.output_tokens);
     const usageScore = inputTokens + cacheWriteInputTokens + cacheReadInputTokens + outputTokens;
     if (usageScore === 0) return;
-    mergeUsageEntry(usageEntries, {
-      uuid: typeof record.uuid === 'string' && record.uuid ? record.uuid : null,
+    // Claude writes several content blocks and streaming snapshots for one
+    // API call. Their line UUIDs differ but the provider call identity does not.
+    const id = typeof record.message.id === 'string' ? record.message.id.trim() : '';
+    const request = typeof record.requestId === 'string' ? record.requestId.trim() : '';
+    collectUsageEntry(usageEntries, {
+      uuid: typeof record.uuid === 'string' ? record.uuid : '', id, request,
       usageScore,
       source: 'claude-code',
       model: rawModel && rawModel !== '<synthetic>' ? rawModel : lastModel || 'unknown',
@@ -225,8 +229,7 @@ async function scanProjectCandidate(candidate, sessionSalt) {
       requestCount: 1,
     });
   });
-  for (const entry of usageEntries.anonymousEntries) entry.project = sessionProject;
-  for (const entry of usageEntries.entriesByUuid.values()) entry.project = sessionProject;
+  for (const entry of indexedEntries(usageEntries)) entry.project = sessionProject;
   const session = await finalizeCandidateSession(
     candidate,
     sessionAccumulator,
@@ -268,29 +271,40 @@ async function scanBestCandidate(candidates, scanner, ctx, sessionSalt) {
   return null;
 }
 
-function mergeUsageEntries(target, source) {
-  for (const entry of source.anonymousEntries) mergeUsageEntry(target, entry);
-  for (const entry of source.entriesByUuid.values()) mergeUsageEntry(target, entry);
+function newUsageIndex() {
+  return { lines: new Map(), calls: new Map(), anonymous: [] };
 }
 
-function* iterateUsageEntries(context) {
-  for (const entry of context.anonymousEntries) yield entry;
-  for (const entry of context.entriesByUuid.values()) yield entry;
+function* indexedEntries(index) {
+  for (const rows of index.lines.values()) yield* rows;
+  yield* index.calls.values();
+  yield* index.anonymous;
 }
 
-function mergeUsageEntry(ctx, entry) {
-  if (!entry.uuid) {
-    ctx.anonymousEntries.push(entry);
+function mergeCall(index, entry) {
+  if (!entry.id && !entry.request) { index.anonymous.push(entry); return; }
+  const key = JSON.stringify([entry.id, entry.request]);
+  const previous = index.calls.get(key);
+  if (!previous || entry.usageScore > previous.usageScore) index.calls.set(key, entry);
+}
+
+function collectUsageEntry(index, entry) {
+  if (!entry.uuid) { mergeCall(index, entry); return; }
+  let rows = index.lines.get(entry.uuid);
+  if (!rows) { index.lines.set(entry.uuid, [entry]); return; }
+  // A copied/streamed line can gain IDs without gaining tokens. Keep both
+  // the strongest counters and the most complete compatible identity.
+  for (const [i, old] of rows.entries()) {
+    if (old.id && entry.id && old.id !== entry.id || old.request && entry.request && old.request !== entry.request) continue;
+    rows[i] = { ...(entry.usageScore > old.usageScore ? entry : old), id: old.id || entry.id, request: old.request || entry.request };
     return;
   }
-  const current = ctx.entriesByUuid.get(entry.uuid);
-  if (!current || entry.usageScore > current.usageScore) ctx.entriesByUuid.set(entry.uuid, entry);
+  rows.push(entry); // conflicting explicit IDs are not evidence of the same call
 }
 
 export async function parse({ sessionSalt } = {}) {
   const ctx = {
-    entriesByUuid: new Map(),
-    anonymousEntries: [],
+    ...newUsageIndex(),
     sessions: [],
     warnings: [],
     incomplete: false,
@@ -310,7 +324,7 @@ export async function parse({ sessionSalt } = {}) {
     if (!parsed) continue;
     projectSessionIds.add(sessionId);
     if (parsed.session) ctx.sessions.push(parsed.session);
-    mergeUsageEntries(ctx, parsed.usageEntries);
+    for (const entry of indexedEntries(parsed.usageEntries)) collectUsageEntry(ctx, entry);
   }
 
   const transcriptGroups = collectCandidates(scanRoots, 'transcripts', ctx);
@@ -325,11 +339,11 @@ export async function parse({ sessionSalt } = {}) {
     if (parsed?.session) ctx.sessions.push(parsed.session);
   }
 
-  const entries = Array.from(iterateUsageEntries(ctx), (
-    { uuid: _uuid, usageScore: _usageScore, ...entry }
-  ) => entry);
+  for (const rows of ctx.lines.values()) for (const entry of rows) mergeCall(ctx, entry);
+  ctx.lines.clear();
   return {
-    buckets: aggregateToBuckets(entries),
+    // Aggregation projects only the public bucket fields, never raw IDs.
+    buckets: aggregateToBuckets(indexedEntries(ctx)),
     sessions: ctx.sessions,
     ...(ctx.incomplete ? { skipped: true } : {}),
     ...(ctx.warnings.length > 0 ? { warnings: ctx.warnings } : {}),

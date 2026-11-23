@@ -26,6 +26,8 @@ export function codexTurnPerformance(records, sessionId, executionId, metadata =
     if (record.type === 'turn_context') {
       contextModel = id(p.model); contextEffort = id(p.effort);
       contextTurn = id(p.turn_id);
+    } else if (record.type === 'event_msg' && p.type === 'thread_settings_applied') {
+      contextModel = id(p.thread_settings?.model) || contextModel;
     }
     const turnId = id(p.turn_id);
     if (!turnId) {
@@ -50,7 +52,7 @@ export function codexTurnPerformance(records, sessionId, executionId, metadata =
       turn.completion = completion;
     }
     if (record.type !== 'token_usage_record') continue;
-    if (p.thread_id !== sessionId || p.session_id != null && p.session_id !== executionId) continue;
+    if (p.thread_id !== sessionId || p.session_id != null && p.session_id !== (record.segmentContext?.execution || executionId)) continue;
     const turn = turnFor(turnId);
     const usage = counters(p.usage, true);
     const thread = counters(p.thread_token_usage, true);
@@ -60,7 +62,10 @@ export function codexTurnPerformance(records, sessionId, executionId, metadata =
     if (!responseId || !usage || !thread || !Number.isFinite(at)
       || thread.output_tokens < usage.output_tokens || thread.input_tokens < usage.input_tokens
       || p.turn_token_usage != null && !turnTotal) { turn.invalid = true; continue; }
-    const row = { at, usage, turnTotal, model: id(p.model) || contextModel, reasoningEffort: contextEffort };
+    const { project, agentVersion } = record.segmentMetadata || metadata;
+    const context = record.segmentContext || { model: contextModel, effort: contextEffort };
+    const row = { at, usage, turnTotal, project, agentVersion, model: id(p.model) || id(context.model),
+      reasoningEffort: context.effort };
     const previous = responses.get(responseId);
     if (previous) {
       // A duplicate ledger is harmless; conflicting ownership/counters are not.
@@ -86,7 +91,7 @@ export function codexTurnPerformance(records, sessionId, executionId, metadata =
       || turn.rows.some(row => row.at > completion.ended || row.at < (completion.started ?? completion.ended - completion.durationMs))) continue;
     const unique = field => { const values = new Set(turn.rows.map(row => row[field])); return values.size === 1 ? [...values][0] : null; };
     const model = unique('model') || 'unknown';
-    samples.push({ source: 'codex', project: metadata.project || '', agentVersion: metadata.agentVersion || '',
+    samples.push({ source: 'codex', project: unique('project') || '', agentVersion: unique('agentVersion') || '',
       model, modelCanonical: canonicalModelId({ source: 'codex', model }), reasoningEffort: unique('reasoningEffort') || '',
       completedAt: new Date(completion.ended).toISOString(), durationMs: completion.durationMs,
       firstTokenMs: completion.firstTokenMs, outputTokens });

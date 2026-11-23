@@ -71,6 +71,7 @@ ${c.bold(t('cli.category.diagnostics'))}
   npx @kimi.builders/usage doctor [--json]
   npx @kimi.builders/usage sources list
   npx @kimi.builders/usage sources set <agent> off|local|private
+  npx @kimi.builders/usage sources set kimi-code private --include-desktop
   npx @kimi.builders/usage sources enable cursor --csv PATH
   npx @kimi.builders/usage sources disable cursor
   npx @kimi.builders/usage sources add-root <agent> ${isZh ? '/绝对/目录' : '/absolute/directory'}

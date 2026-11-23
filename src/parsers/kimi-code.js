@@ -1,6 +1,6 @@
 import { jsonlRecords } from './jsonl-records.js';
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { readdirSync, readFileSync, realpathSync, existsSync } from 'node:fs';
+import { join, basename, dirname, posix, win32 } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { aggregateToBuckets, extractSessions } from './index.js';
@@ -44,11 +44,18 @@ import { aggregateToBuckets, extractSessions } from './index.js';
 // the data root the same way the CLI itself does: $KIMI_CODE_HOME, then
 // ~/.kimi-code. Ignoring KIMI_CODE_HOME means users with a custom home get
 // zero usage parsed.
-const KIMI_CODE_DIR = process.env.KBU_USAGE_KIMI_CODE_DIR?.trim()
-  || process.env.KIMI_CODE_HOME?.trim()
-  || join(homedir(), '.kimi-code');
-const KIMI_CODE_SESSIONS_DIR = join(KIMI_CODE_DIR, 'sessions');
-const KIMI_CODE_SESSION_INDEX = join(KIMI_CODE_DIR, 'session_index.jsonl');
+export function currentKimiHomes({ environment = process.env, home = homedir(), platform = process.platform,
+  purpose = 'scan', sourceOptions } = {}) {
+  const p = platform === 'win32' ? win32 : posix;
+  if (environment.KBU_USAGE_KIMI_CODE_DIR?.trim()) return [environment.KBU_USAGE_KIMI_CODE_DIR.trim()];
+  const cli = environment.KIMI_CODE_HOME?.trim() || p.join(home, '.kimi-code');
+  // A pre-existing private policy covered the CLI, never the Work desktop store.
+  if (purpose === 'sync' && sourceOptions?.['kimi-code']?.syncDesktop !== true) return [cli];
+  const config = platform === 'darwin' ? p.join(home, 'Library', 'Application Support')
+    : platform === 'win32' ? environment.APPDATA || p.join(home, 'AppData', 'Roaming')
+    : environment.XDG_CONFIG_HOME || p.join(home, '.config');
+  return [cli, p.join(config, 'kimi-desktop', 'daimon-share', 'daimon', 'runtime', 'kimi-code', 'home')];
+}
 
 function projectNameFromPath(path) {
   if (typeof path !== 'string' || !path) return null;
@@ -60,13 +67,13 @@ function projectNameFromPath(path) {
  * ~/.kimi-code/session_index.jsonl. Falls back gracefully if the file is
  * missing or malformed — callers default to the wd_ bucket name.
  */
-function loadSessionIndex() {
+function loadSessionIndex(root) {
   const map = new Map();
-  if (!existsSync(KIMI_CODE_SESSION_INDEX)) return map;
+  const path = join(root, 'session_index.jsonl');
 
   let content;
   try {
-    content = readFileSync(KIMI_CODE_SESSION_INDEX, 'utf-8');
+    content = readFileSync(path, 'utf-8');
   } catch {
     return map;
   }
@@ -95,14 +102,15 @@ function usageTokens(value) {
 }
 
 // Collect every agents/<id>/wire.jsonl under sessions/wd_<...>/session_<...>/.
-function findKimiCodeWireFiles(baseDir) {
+function findKimiCodeWireFiles(baseDir, warn) {
   const results = [];
   if (!existsSync(baseDir)) return results;
 
   let workDirs;
   try {
     workDirs = readdirSync(baseDir, { withFileTypes: true });
-  } catch {
+  } catch (error) {
+    if (error.code !== 'ENOENT') warn('cannot list current session store');
     return results;
   }
 
@@ -114,7 +122,8 @@ function findKimiCodeWireFiles(baseDir) {
     let sessions;
     try {
       sessions = readdirSync(workDirPath, { withFileTypes: true });
-    } catch {
+    } catch (error) {
+      if (error.code !== 'ENOENT') warn('cannot list current sessions');
       continue;
     }
 
@@ -126,7 +135,8 @@ function findKimiCodeWireFiles(baseDir) {
       let agents;
       try {
         agents = readdirSync(agentsDir, { withFileTypes: true });
-      } catch {
+      } catch (error) {
+        if (error.code !== 'ENOENT') warn('cannot list session agents');
         continue;
       }
 
@@ -142,72 +152,105 @@ function findKimiCodeWireFiles(baseDir) {
   return results;
 }
 
-async function parseKimiCode(sessionSalt, warn) {
-  const wireFiles = findKimiCodeWireFiles(KIMI_CODE_SESSIONS_DIR);
-  if (wireFiles.length === 0) return null;
-
-  const sessionIndex = loadSessionIndex();
+async function parseKimiCode(sessionSalt, warn, options) {
+  const wires = new Map();
+  const owners = new Map();
+  const physical = new Set();
+  const homes = currentKimiHomes(options);
+  for (const root of homes) {
+    const index = loadSessionIndex(root);
+    for (const { wireFile, sessionDir, bucketProject } of findKimiCodeWireFiles(join(root, 'sessions'), warn)) {
+      let path;
+      try { path = realpathSync(wireFile); } catch { warn('cannot resolve session file'); continue; }
+      if (physical.has(path)) continue;
+      physical.add(path);
+      const session = basename(sessionDir);
+      if (!owners.has(session)) owners.set(session, {
+        // The CLI session namespace is the historical HMAC input. Map the
+        // desktop copy into that namespace even when there is no CLI file yet.
+        sessionDir: join(homes[0], 'sessions', basename(dirname(sessionDir)), session),
+        project: index.get(sessionDir) || bucketProject || 'unknown',
+      });
+      const agent = JSON.stringify([session, basename(dirname(wireFile))]);
+      if (!wires.has(agent)) wires.set(agent, { ...owners.get(session), files: [] });
+      wires.get(agent).files.push(wireFile);
+    }
+  }
   const entries = [];
   const sessionEvents = [];
 
-  for (const { wireFile, sessionDir, bucketProject } of wireFiles) {
-    const project = sessionIndex.get(sessionDir) || bucketProject || 'unknown';
+  for (const { files, sessionDir, project } of wires.values()) {
+    // Only compare records across physical copies of the same session/agent.
+    // Two identical calls inside one wire are still two requests.
+    const seen = files.length > 1 ? new Map() : null;
+    for (const wireFile of files) {
+      const occurrences = seen && new Map();
+      const copied = fields => {
+        if (!seen) return false;
+        const key = JSON.stringify(fields);
+        const count = (occurrences.get(key) || 0) + 1;
+        occurrences.set(key, count);
+        if ((seen.get(key) || 0) >= count) return true;
+        seen.set(key, count);
+        return false;
+      };
+      for await (const evt of jsonlRecords(wireFile, warn)) {
+        const type = evt.type;
+        // Top-level `time` is integer milliseconds since epoch. Validate it:
+        // JSON numbers can overflow to Infinity (e.g. 1e400 parses fine), and
+        // any out-of-range value yields an Invalid Date that later crashes
+        // aggregateToBuckets() (RangeError from toISOString) — one corrupt line
+        // would take down this tool's entire parse.
+        const time = typeof evt.time === 'number' && Number.isFinite(evt.time) ? evt.time : null;
+        const ts = time !== null ? new Date(time) : null;
+        const tsValid = ts !== null && !isNaN(ts.getTime());
 
-    for await (const evt of jsonlRecords(wireFile, warn)) {
-      const type = evt.type;
-      // Top-level `time` is integer milliseconds since epoch. Validate it:
-      // JSON numbers can overflow to Infinity (e.g. 1e400 parses fine), and
-      // any out-of-range value yields an Invalid Date that later crashes
-      // aggregateToBuckets() (RangeError from toISOString) — one corrupt line
-      // would take down this tool's entire parse.
-      const time = typeof evt.time === 'number' && Number.isFinite(evt.time) ? evt.time : null;
-      const ts = time !== null ? new Date(time) : null;
-      const tsValid = ts !== null && !isNaN(ts.getTime());
-
-      // Session timing: a user turn vs. anything the model emits. All agent
-      // wires under one sessionDir belong to the same logical user session;
-      // grouping by wireFile would create separate zero-user sessions for
-      // subagents instead of attributing their work to the parent turn.
-      if (type === 'turn.prompt' && evt.origin?.kind === 'user') {
-        if (tsValid) {
-          sessionEvents.push({ sessionId: sessionDir, source: 'kimi-code', project, timestamp: ts, role: 'user' });
+        // Session timing: a user turn vs. anything the model emits. All agent
+        // wires under one sessionDir belong to the same logical user session;
+        // grouping by wireFile would create separate zero-user sessions for
+        // subagents instead of attributing their work to the parent turn.
+        if (type === 'turn.prompt' && evt.origin?.kind === 'user') {
+          if (tsValid && !copied([type, time, evt.turnId])) {
+            sessionEvents.push({ sessionId: sessionDir, source: 'kimi-code', project, timestamp: ts, role: 'user' });
+          }
+          continue;
         }
-        continue;
+
+        if (type !== 'usage.record') continue;
+        // Every usage.record is a delta. `turn` is the normal successful-step
+        // scope; `session` is used for other real model calls (for example
+        // retry/compaction work), not for a cumulative summary. Count both.
+        // No valid timestamp → can't bucket accurately. Skip instead of stamping
+        // "now": this parser is stateless, so a "now" fallback would re-key the
+        // same record into a fresh 30-min bucket on every sync (duplicates).
+        if (!tsValid) continue;
+
+        const usage = evt.usage;
+        if (!usage) continue;
+
+        const inputTokens = usageTokens(usage.inputOther);
+        const cacheWriteInputTokens = usageTokens(usage.inputCacheCreation);
+        const outputTokens = usageTokens(usage.output);
+        const cacheReadInputTokens = usageTokens(usage.inputCacheRead);
+        if (!inputTokens && !cacheWriteInputTokens && !outputTokens && !cacheReadInputTokens) continue;
+        if (copied([type, time, evt.turnId, evt.usageScope, evt.model, inputTokens, cacheWriteInputTokens, outputTokens, cacheReadInputTokens])) continue;
+
+        entries.push({
+          source: 'kimi-code',
+          model: evt.model || 'unknown',
+          project,
+          timestamp: ts,
+          inputTokens,
+          cacheWriteInputTokens,
+          outputTokens,
+          cacheReadInputTokens,
+          reasoningOutputTokens: 0,
+        });
+
+        // Each usage.record marks an assistant step completing — use it as an
+        // assistant timing event so active-time math has both sides of a turn.
+        sessionEvents.push({ sessionId: sessionDir, source: 'kimi-code', project, timestamp: ts, role: 'assistant' });
       }
-
-      if (type !== 'usage.record') continue;
-      // Every usage.record is a delta. `turn` is the normal successful-step
-      // scope; `session` is used for other real model calls (for example
-      // retry/compaction work), not for a cumulative summary. Count both.
-      // No valid timestamp → can't bucket accurately. Skip instead of stamping
-      // "now": this parser is stateless, so a "now" fallback would re-key the
-      // same record into a fresh 30-min bucket on every sync (duplicates).
-      if (!tsValid) continue;
-
-      const usage = evt.usage;
-      if (!usage) continue;
-
-      const inputTokens = usageTokens(usage.inputOther);
-      const cacheWriteInputTokens = usageTokens(usage.inputCacheCreation);
-      const outputTokens = usageTokens(usage.output);
-      const cacheReadInputTokens = usageTokens(usage.inputCacheRead);
-      if (!inputTokens && !cacheWriteInputTokens && !outputTokens && !cacheReadInputTokens) continue;
-
-      entries.push({
-        source: 'kimi-code',
-        model: evt.model || 'unknown',
-        project,
-        timestamp: ts,
-        inputTokens,
-        cacheWriteInputTokens,
-        outputTokens,
-        cacheReadInputTokens,
-        reasoningOutputTokens: 0,
-      });
-
-      // Each usage.record marks an assistant step completing — use it as an
-      // assistant timing event so active-time math has both sides of a turn.
-      sessionEvents.push({ sessionId: sessionDir, source: 'kimi-code', project, timestamp: ts, role: 'assistant' });
     }
   }
 
@@ -387,17 +430,23 @@ async function parseLegacyKimi(sessionSalt, warn) {
 
 // Roots this source would scan: the current and legacy stores that actually
 // exist on disk. Used by the registry for skip detection and `inspect`.
-export function roots() {
-  return [KIMI_CODE_DIR, KIMI_DIR].filter((dir) => existsSync(dir));
+export function roots(options) {
+  const unique = new Map();
+  for (const dir of [...currentKimiHomes(options), KIMI_DIR]) {
+    if (!existsSync(dir)) continue;
+    const key = realpathSync(dir);
+    if (!unique.has(key)) unique.set(key, dir);
+  }
+  return [...unique.values()];
 }
 
-export async function parse({ sessionSalt } = {}) {
+export async function parse({ sessionSalt, ...options } = {}) {
   // Always parse both stores and merge (see the header comment): legacy usage
   // is never carried into ~/.kimi-code by `kimi migrate`, so a migrated user's
   // history exists only in ~/.kimi.
   const warnings = [];
   const warn = (message) => { if (warnings.length < 20) warnings.push(`kimi-code: ${message}`); };
-  const current = await parseKimiCode(sessionSalt, warn);
+  const current = await parseKimiCode(sessionSalt, warn, options);
   const legacy = await parseLegacyKimi(sessionSalt, warn);
   return {
     buckets: [...(current?.buckets ?? []), ...legacy.buckets],

@@ -2,7 +2,7 @@ import { homedir } from 'node:os';
 import { createSessionSalt, loadConfig } from '../config.js';
 import { enabledSources } from '../parsers/index.js';
 import { sourceIdsFor } from '../source-policy.js';
-import { validateUploadBucket, validateUploadSession } from '../protocol.js';
+import { validateLocalBucket, validateUploadSession } from '../protocol.js';
 import { summarizeBySource, summarizeUsage } from './metrics.js';
 import { configuredExtraRoots } from '../extra-roots.js';
 
@@ -33,6 +33,7 @@ export async function collectAll({
   sourceIds,
   sourceOptions = {},
   sourceEntries,
+  purpose = 'scan',
   includePerformance = false,
 } = {}) {
   const results = [];
@@ -42,7 +43,7 @@ export async function collectAll({
   for (const source of sources) {
     let roots = [];
     try {
-      roots = (await source.roots({ sourceOptions })) || [];
+      roots = (await source.roots({ sourceOptions, purpose })) || [];
       if (roots.length === 0) {
         const configuredRoots = configuredExtraRoots(sourceOptions, source.id);
         results.push({
@@ -58,7 +59,7 @@ export async function collectAll({
         });
         continue;
       }
-      const parsed = await source.parse({ sessionSalt, sourceOptions, includePerformance });
+      const parsed = await source.parse({ sessionSalt, sourceOptions, purpose, includePerformance });
       results.push({
         source: source.id,
         tier: source.tier,
@@ -93,7 +94,7 @@ function validateCollected(collected) {
   const sessions = [];
   const rejected = [];
   for (const bucket of collected.buckets) {
-    const error = validateUploadBucket(bucket);
+    const error = validateLocalBucket(bucket);
     if (error) rejected.push({ kind: 'bucket', source: bucket.source, error });
     else buckets.push(bucket);
   }

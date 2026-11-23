@@ -66,6 +66,9 @@ export function applySourcePolicies(config = {}, nextPolicies = {}, registry = s
     .sort();
   return {
     ...config,
+    ...(sourcePolicies['kimi-code'] !== 'private' && config.sourceOptions?.['kimi-code']?.syncDesktop ? {
+      sourceOptions: { ...config.sourceOptions, 'kimi-code': { ...config.sourceOptions['kimi-code'], syncDesktop: false } },
+    } : {}),
     sourcePolicyVersion: SOURCE_POLICY_VERSION,
     sourcePolicies,
     enabledSources,

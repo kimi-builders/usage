@@ -91,9 +91,9 @@ npx @kimi.builders/usage@latest inspect --dry-run
 
 | Agent | 状态 | 本机来源 |
 | --- | --- | --- |
-| Kimi Code | 核心 | `~/.kimi-code` 与旧版 `~/.kimi` |
-| Claude Code | 稳定 | `$CLAUDE_CONFIG_DIR`、`~/.claude*` 的项目日志 |
-| Codex | 稳定 | `$CODEX_HOME` 或 `~/.codex` 的当前与归档会话 |
+| Kimi Code | 核心 | Kimi CLI、Kimi Work 和旧版 `~/.kimi` 的本地会话。Work 默认仅本机；用 `sources set kimi-code private --include-desktop` 明确纳入同步，去掉该参数重新执行即恢复仅同步 CLI。 |
+| Claude Code | 稳定 | `$CLAUDE_CONFIG_DIR`、`~/.claude*` 的项目日志；同一 API 请求的多个内容块只计一次 |
+| Codex | 稳定 | `$CODEX_HOME` 或 `~/.codex` 的当前与归档会话；支持 `.jsonl.zst` 压缩历史（需要支持 Zstd 的 Node 或系统 `zstd`） |
 | OpenCode | 稳定 | SQLite 数据库，旧版 JSON 回退 |
 | Gemini CLI | 稳定 | `~/.gemini/tmp` 中的 JSONL/JSON 会话 |
 | Antigravity | 稳定 | App 2.0 / 独立 IDE / `agy` CLI 的离线 SQLite 会话库 |

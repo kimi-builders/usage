@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { canonicalModelId } from '../model-meta.js';
 import { detectAgentVersions } from '../agent-info.js';
 import { COLLECTOR_VERSION } from '../client-meta.js';
 import { loadConfig } from '../config.js';
@@ -66,7 +67,7 @@ export function createDashboardData(snapshot, {
       id: index,
       source: bucket.source,
       model: bucket.model,
-      modelCanonical: bucket.modelCanonical || null,
+      modelCanonical: canonicalModelId(bucket) || null,
       modelProvider: bucket.modelProvider || null,
       reasoningEffort: bucket.reasoningEffort || null,
       agentVersion: bucket.agentVersion || null,

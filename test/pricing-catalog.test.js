@@ -108,10 +108,10 @@ test('matcher contract covers aliases, context tiers, and processing tiers', () 
 
 test('embedded catalog carries the latest pricing revision and Codex correction', () => {
   resetPriceCatalog();
-  assert.equal(EMBEDDED_PRICE_CATALOG.revision, 10);
-  assert.equal(EMBEDDED_PRICE_CATALOG.catalogVersion, '2026-10-29');
-  assert.equal(EMBEDDED_PRICE_CATALOG.entries.length, 175);
-  assert.equal(EMBEDDED_PRICE_CATALOG.integrity.digest, '1afaea28762e774467c1ebf99c271f2442bba37349a9c902559b9e69bbc4e6ab');
+  assert.equal(EMBEDDED_PRICE_CATALOG.revision, 13);
+  assert.equal(EMBEDDED_PRICE_CATALOG.catalogVersion, '2026-11-23');
+  assert.equal(EMBEDDED_PRICE_CATALOG.entries.length, 204);
+  assert.equal(EMBEDDED_PRICE_CATALOG.integrity.digest, 'f389ad7bdd12b5c55f343f24a1ce1308838be03fdafd5938739c1371a7599cb7');
   const entry = EMBEDDED_PRICE_CATALOG.entries.find((item) => item.pattern === 'codex-auto-review');
   assert.equal(entry?.effectiveTo, null);
   assert.equal(entry?.version, '2026-08-20');

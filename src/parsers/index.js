@@ -74,7 +74,7 @@ export function aggregateToBuckets(entries) {
     const model = String(entry.model || 'unknown').slice(0, 160);
     const modelProvider = String(entry.modelProvider || '').trim().slice(0, 80);
     const modelCanonical = String(
-      entry.modelCanonical || canonicalModelId({ ...entry, model }),
+      canonicalModelId({ ...entry, model }),
     ).trim().slice(0, 160);
     const reasoningEffort = String(entry.reasoningEffort || '').trim().toLowerCase().slice(0, 32);
     const agentVersion = String(entry.agentVersion || '').trim().slice(0, 80);

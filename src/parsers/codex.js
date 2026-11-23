@@ -3,19 +3,23 @@ import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
+import { Readable } from 'node:stream';
+import { zstdFileChunks } from './codex-zstd.js';
+import { mergeContinuations } from './codex-continuations.js';
 import { aggregateToBuckets, extractSessions } from './index.js';
 import { configuredExtraRoots, discoverCodexHomes } from '../extra-roots.js';
 import { compactCodexUsage, reconcileCodexUsage } from './codex-usage.js';
+import { modelLeaf, openAiRequestContextTier } from '../model-meta.js';
 import { codexTurnPerformance, compactCodexCompletion } from './codex-performance.js';
 
 /**
  * Codex CLI parser (openai/codex).
  *
  * Rollout files live under <home>/sessions/ and <home>/archived_sessions/
- * (recursively, *.jsonl; home = KBU_USAGE_CODEX_HOME, else
+ * (recursively, *.jsonl and compressed *.jsonl.zst; home = KBU_USAGE_CODEX_HOME, else
  * $CODEX_HOME, else ~/.codex). The same session can exist in both trees
- * (live + archive overlap), so physical copies are deduped per session id
- * keeping the file with the most parseable records.
+ * (live + archive overlap). Copies of the same segment use its most complete
+ * file; distinct resumed segments of the same session are merged in order.
  *
  * Durable `token_usage_record` and UI token_count mirrors are reconciled
  * before aggregation. Explicit request identities are session-scoped; copied
@@ -102,7 +106,7 @@ function findRolloutFiles(home) {
     const walk = (dir) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const path = join(dir, entry.name);
-        if (entry.name.endsWith('.jsonl')) {
+        if (/\.jsonl(?:\.zst)?$/.test(entry.name)) {
           // Name check first: a directory named *.jsonl is still handed to
           // the stream reader, which fails loudly instead of silently skipping data.
           let stat;
@@ -137,7 +141,8 @@ function metadataOnly(record) {
   const payload = record.payload || {};
   if (record.type === 'turn_context') return {
     type: record.type, timestamp: record.timestamp,
-    payload: { model: payload.model, effort: payload.effort, turn_id: payload.turn_id },
+    payload: { model: payload.model, effort: payload.effort, turn_id: payload.turn_id,
+      ...(Object.hasOwn(payload, 'service_tier') ? { service_tier: payload.service_tier } : {}) },
   };
   return {
     type: record.type, timestamp: record.timestamp,
@@ -158,8 +163,11 @@ async function readRollout(file) {
   const records = [];
   let meta = null;
   let recordCount = 0;
-  if (file.size > 0) {
-    const input = createReadStream(file.path, {
+  let metaCount = 0;
+  const compressed = file.path.endsWith('.zst');
+  if (file.size > 0 || compressed) {
+    const input = compressed ? Readable.from(zstdFileChunks(file.path, file.size), { objectMode: false })
+      : createReadStream(file.path, {
       encoding: 'utf8',
       end: file.size - 1,
       highWaterMark: 256 * 1024,
@@ -172,6 +180,7 @@ async function readRollout(file) {
         try { raw = JSON.parse(line); } catch { continue; }
         recordCount += 1;
         if (raw?.type === 'session_meta') {
+          metaCount++;
           if (!meta) {
             meta = metadataOnly(raw);
             records.push(meta);
@@ -188,12 +197,17 @@ async function readRollout(file) {
         }
         if (parseTimestampMs(raw?.timestamp) !== null) {
           records.push({ timestamp: raw.timestamp, type: raw.type,
-            ...(raw.type === 'event_msg' ? { payload: { type: raw.payload?.type, turn_id: raw.payload?.turn_id } } : {}),
+            ...(raw.type === 'event_msg' ? { payload: { type: raw.payload?.type, turn_id: raw.payload?.turn_id,
+              ...(['task_started', 'turn_started'].includes(raw.payload?.type) ? { started_at: raw.payload.started_at } : {}),
+              ...(raw.payload?.type === 'thread_settings_applied' ? { thread_settings: {
+                model: raw.payload.thread_settings?.model,
+                ...(Object.hasOwn(raw.payload.thread_settings || {}, 'service_tier') ? { service_tier: raw.payload.thread_settings.service_tier } : {}),
+              } } : {}) } } : {}),
           });
         }
       }
     } catch (error) {
-      if (error?.code === 'ENOENT') return null;
+      if (!compressed && error?.code === 'ENOENT') return null;
       throw error;
     } finally {
       lines.close();
@@ -203,8 +217,9 @@ async function readRollout(file) {
   // Only the FIRST session_meta is canonical — later ones are copied parent
   // history. Without any meta, the session id falls back to the filename.
   const metaId = meta?.payload?.id;
-  const sessionId = (typeof metaId === 'string' && metaId) || basename(file.path).slice(0, -'.jsonl'.length);
-  return { file, records, recordCount, meta, sessionId };
+  const sessionId = (typeof metaId === 'string' && metaId) || basename(file.path).replace(/\.jsonl(?:\.zst)?$/, '');
+  const start = parseTimestampMs(meta?.timestamp) ?? parseTimestampMs(meta?.payload?.timestamp);
+  return { file, records, recordCount, meta, metaCount, sessionId, start };
 }
 
 function isTokenCount(record) {
@@ -229,6 +244,25 @@ function parentIdOf(payload) {
     || null;
 }
 
+// Linear prefix matching: forks can copy only the last turns; an active
+// subagent may still be appending an interior slice of its parent's history.
+function replayPrefix(child, parent, allowPartial) {
+  if (!child.length || !parent.length) return 0;
+  const table = new Uint32Array(child.length);
+  for (let i = 1, j = 0; i < child.length; i++) {
+    while (j && child[i] !== child[j]) j = table[j - 1];
+    if (child[i] === child[j]) j++;
+    table[i] = j;
+  }
+  let j = 0, longest = 0;
+  for (const value of parent) {
+    while (j && (j === child.length || value !== child[j])) j = table[j - 1];
+    if (value === child[j]) j++;
+    longest = Math.max(longest, j);
+  }
+  return allowPartial ? longest : j;
+}
+
 function projectFrom(payload) {
   const cwd = payload?.cwd;
   if (typeof cwd === 'string' && cwd) {
@@ -244,32 +278,59 @@ function projectFrom(payload) {
   return 'unknown';
 }
 
+function segmentMetadata(payload) {
+  return { project: projectFrom(payload),
+    agentVersion: typeof payload?.cli_version === 'string' ? payload.cli_version.trim() : '',
+    modelProvider: typeof payload?.model_provider === 'string' ? payload.model_provider.trim() : '' };
+}
+
 export async function parse({ sessionSalt, sourceOptions, includePerformance = false } = {}) {
   const homes = roots({ sourceOptions });
   if (homes.length === 0) return null;
 
-  // Physical copy dedup: same session id in several files (live + archive
-  // overlap) → keep the file with the most parseable records, parse losers
-  // not at all. Ties go to the lexicographically smallest path.
-  const winners = new Map();
+  // Most complete copy per session/segment; ties prefer the smallest path.
+  const groups = new Map();
+  const warnings = [];
+  let unreadableArchives = 0;
   for (const home of homes) {
     for (const file of findRolloutFiles(home)) {
-      const rollout = await readRollout(file);
+      let rollout;
+      try {
+        rollout = await readRollout(file);
+      } catch (error) {
+        if (!file.path.endsWith('.jsonl.zst')) throw error;
+        unreadableArchives++;
+        continue; // Discard this whole archive, keep readable siblings and the old checkpoint.
+      }
       if (!rollout) continue;
-      const current = winners.get(rollout.sessionId);
+      // A distinct first session_meta timestamp marks a resumed segment. A
+      // live/archive copy of the same segment retains its original header.
+      if (!groups.has(rollout.sessionId)) groups.set(rollout.sessionId, new Map());
+      const segments = groups.get(rollout.sessionId);
+      const current = segments.get(rollout.start);
       if (!current || rollout.recordCount > current.recordCount
         || (rollout.recordCount === current.recordCount && rollout.file.path < current.file.path)) {
-        winners.set(rollout.sessionId, rollout);
+        segments.set(rollout.start, rollout);
       }
     }
   }
-  const sessions = Array.from(winners.values());
-  const warnings = [];
+  const sessions = [];
+  for (const segments of groups.values()) {
+    const group = [...segments.values()];
+    const merged = mergeContinuations(group, segmentMetadata);
+    if (merged) sessions.push(merged);
+    else {
+      sessions.push(group.reduce((a, b) => a.recordCount >= b.recordCount ? a : b));
+      if (warnings.length < 20) warnings.push('codex: conflicting continuation order; only the most complete segment was used');
+    }
+  }
+  groups.clear();
+  if (unreadableArchives) warnings.push(`codex: ${unreadableArchives} compressed rollout(s) could not be read; check file integrity and use Node >=22.15 or install zstd`);
   const turnPerformance = [];
   for (const session of sessions) {
     if (includePerformance) turnPerformance.push(...codexTurnPerformance(
       session.records, session.sessionId, session.meta?.payload?.session_id || session.sessionId,
-      { project: projectFrom(session.meta?.payload), agentVersion: session.meta?.payload?.cli_version },
+      segmentMetadata(session.meta?.payload),
     ));
     const reconciled = reconcileCodexUsage(session.records, session.sessionId, session.meta?.payload?.session_id || session.sessionId);
     session.records = reconciled.records;
@@ -285,7 +346,8 @@ export async function parse({ sessionSalt, sourceOptions, includePerformance = f
       if (!isTokenCount(record)) continue;
       const info = record.payload?.info;
       sequence.push({
-        record,
+        owned: record.ownedRequest === true,
+        cumulative: tokenCount(info?.total_token_usage?.total_tokens) > 0,
         fingerprint: tokenFingerprint(info?.model ?? record.payload?.model, info),
         timestampMs: parseTimestampMs(record.timestamp),
       });
@@ -294,13 +356,13 @@ export async function parse({ sessionSalt, sourceOptions, includePerformance = f
   }
 
   const entries = [];
-  const sessionEvents = [];
+  const sessionResults = [];
 
   for (const session of sessions) {
+    const sessionEvents = [];
     const payload = session.meta?.payload;
-    const project = projectFrom(payload);
-    const agentVersion = typeof payload?.cli_version === 'string' ? payload.cli_version.trim() : '';
-    const modelProvider = typeof payload?.model_provider === 'string' ? payload.model_provider.trim() : '';
+    const firstMetadata = segmentMetadata(payload);
+    const sessionProjects = new Set();
 
     // Fork cutoff: the child replays parent history up to its own start.
     const startedAtMs = payload
@@ -311,43 +373,72 @@ export async function parse({ sessionSalt, sourceOptions, includePerformance = f
     // pre-fork fingerprint sequence. Parent missing from this scan → fail
     // open (count everything).
     let skipPrefix = 0;
+    let taskBoundary = -1;
     if (payload && isChildSession(payload)) {
+      const subagent = Boolean(payload.parent_thread_id || payload.thread_source === 'subagent' || payload.source === 'subagent' || payload.source?.subagent);
       const parentSequence = fingerprints.get(parentIdOf(payload));
       if (parentSequence) {
         const snapshot = parentSequence
           .filter((event) => event.timestampMs !== null && startedAtMs !== null && event.timestampMs <= startedAtMs)
           .map((event) => event.fingerprint);
-        const childSequence = fingerprints.get(session.sessionId).map((event) => event.fingerprint);
-        const maxK = Math.min(snapshot.length, childSequence.length);
-        for (let k = maxK; k >= 1; k -= 1) {
-          let matches = true;
-          for (let i = 0; i < k; i += 1) {
-            if (childSequence[i] !== snapshot[snapshot.length - k + i]) {
-              matches = false;
-              break;
-            }
-          }
-          if (matches) {
-            skipPrefix = k;
-            break;
-          }
+        // An explicitly owned ledger request ends the inherited prefix,
+        // even if two distinct requests happened to use identical counters.
+        const leading = [];
+        let proven = 0;
+        for (const event of fingerprints.get(session.sessionId)) {
+          if (event.owned) break;
+          if (event.cumulative && proven === leading.length) proven++;
+          leading.push(event.fingerprint);
         }
+        skipPrefix = replayPrefix(leading, snapshot, false);
+        if (subagent && proven > skipPrefix) {
+          skipPrefix = Math.max(skipPrefix, replayPrefix(leading.slice(0, proven), snapshot, true));
+        }
+      }
+      if (subagent) {
+        // The child's own task follows inherited transcript rows, including
+        // replays whose old parent file is no longer available. A second
+        // session_meta means the first task marker may itself be a copy.
+        let first = -1;
+        let closestEarly = Infinity;
+        for (const [i, record] of session.records.entries()) {
+          if (record.ownedRequest) break;
+          if (record.type !== 'event_msg' || !['task_started', 'turn_started'].includes(record.payload?.type)) continue;
+          if (first < 0) first = i;
+          const value = record.payload.started_at;
+          const epoch = (typeof value === 'number' || typeof value === 'string' && value.trim()) ? Number(value) : NaN;
+          if (startedAtMs === null || !Number.isFinite(epoch)) continue;
+          const seconds = epoch < 1e12;
+          const marker = seconds ? epoch * 1000 : epoch;
+          const distance = Math.abs(marker - startedAtMs);
+          if (distance > 5000) continue;
+          // Do not prefer a copied, slightly earlier parent marker over the
+          // first child turn. Whole-second markers can truncate the header.
+          const earliest = seconds && Number.isInteger(epoch) ? Math.floor(startedAtMs / 1000) * 1000 : startedAtMs;
+          if (marker >= earliest) { taskBoundary = i; break; }
+          if (distance < closestEarly) { closestEarly = distance; taskBoundary = i; }
+        }
+        if (taskBoundary < 0 && session.metaCount === 1 && !payload.forked_from_id) taskBoundary = first;
       }
     }
 
     const firstMeta = session.meta;
     let stickyModel = null;
     let stickyEffort = null;
+    let stickyTier = null;
     let tokenOrdinal = 0;
 
-    for (const record of session.records) {
-      const blocked = isTokenCount(record) && tokenOrdinal++ < skipPrefix;
+    for (const [index, record] of session.records.entries()) {
+      const { project, agentVersion, modelProvider } = record.segmentMetadata || firstMetadata;
+      const replayToken = isTokenCount(record) && tokenOrdinal++ < skipPrefix;
+      const blocked = replayToken || (index < taskBoundary && record !== firstMeta);
 
       // Session timing: every record with a valid timestamp, except replay
       // blocks and non-first session_meta copies. turn_context and the first
       // session_meta mark user-side turn boundaries.
       const timestampMs = parseTimestampMs(record?.timestamp);
       if (timestampMs !== null && !blocked && (record === firstMeta || record?.type !== 'session_meta')) {
+        sessionProjects.add(project);
         sessionEvents.push({
           sessionId: session.sessionId,
           source: 'codex',
@@ -358,16 +449,20 @@ export async function parse({ sessionSalt, sourceOptions, includePerformance = f
         });
       }
 
-      if (blocked) continue;
-
       if (record?.type === 'turn_context') {
         const model = record.payload?.model;
         if (typeof model === 'string' && model) stickyModel = model;
         const effort = record.payload?.effort;
         stickyEffort = typeof effort === 'string' && effort.trim() ? effort.trim() : null;
+        if (Object.hasOwn(record.payload, 'service_tier')) stickyTier = record.payload.service_tier;
         continue;
       }
-
+      if (record?.type === 'event_msg' && record.payload?.type === 'thread_settings_applied') {
+        const settings = record.payload.thread_settings;
+        if (settings?.model) stickyModel = settings.model;
+        if (Object.hasOwn(settings || {}, 'service_tier')) stickyTier = settings.service_tier;
+      }
+      if (blocked) continue;
       if (!isTokenCount(record)) continue;
       if (timestampMs === null) continue; // invalid timestamp → skip the record
 
@@ -385,24 +480,23 @@ export async function parse({ sessionSalt, sourceOptions, includePerformance = f
       const outputTokens = Math.max(0, tokenCount(delta.output_tokens) - reasoning);
       if (!inputTokens && !cached && !cacheWrite && !outputTokens && !reasoning) continue;
 
-      const model = info?.model || record.payload?.model || stickyModel || 'unknown';
-      const modelName = String(model).toLowerCase();
-      const pricedModelName = modelName.split('/').at(-1);
-      const contextTier = (
-        pricedModelName.startsWith('gpt-5.6') || pricedModelName.startsWith('gpt-6-astra')
-      )
-        ? (promptInputTokens > 272_000 ? 'long' : 'short')
-        : '';
+      const context = record.segmentContext || { model: stickyModel, effort: stickyEffort, tier: stickyTier };
+      const model = info?.model || record.payload?.model || context.model || 'unknown';
+      const pricedModelName = modelLeaf(model).toLowerCase();
+      const contextTier = openAiRequestContextTier(model, promptInputTokens);
       const rawProcessingTier = String(
-        info?.service_tier || record.payload?.service_tier || '',
+        info?.service_tier || record.payload?.service_tier || context.tier || '',
       ).trim().toLowerCase();
-      const processingTier = new Set(['standard', 'batch', 'flex', 'priority'])
-        .has(rawProcessingTier) ? rawProcessingTier : '';
+      // OpenAI's Fast mode is the existing priority tier, not Standard.
+      const serviceTier = rawProcessingTier === 'fast' && /^gpt-6\.2-(?:astra|sol)$/.test(pricedModelName)
+        ? 'priority' : rawProcessingTier;
+      const processingTier = new Set(['standard', 'batch', 'flex', 'priority', 'ultrafast'])
+        .has(serviceTier) ? serviceTier : '';
       entries.push({
         source: 'codex',
         model,
         ...(modelProvider ? { modelProvider } : {}),
-        ...(stickyEffort ? { reasoningEffort: stickyEffort } : {}),
+        ...(context.effort ? { reasoningEffort: context.effort } : {}),
         ...(agentVersion ? { agentVersion } : {}),
         ...(contextTier ? { contextTier } : {}),
         ...(processingTier ? { processingTier } : {}),
@@ -416,11 +510,14 @@ export async function parse({ sessionSalt, sourceOptions, includePerformance = f
         requestCount: 1,
       });
     }
+    const [summary] = extractSessions(sessionEvents, sessionSalt);
+    if (summary) sessionResults.push(sessionProjects.size > 1 ? { ...summary, project: 'unknown' } : summary);
+    session.records = []; // Replay matching below uses the compact fingerprints, not the transcript.
   }
 
   return {
     buckets: aggregateToBuckets(entries),
-    sessions: extractSessions(sessionEvents, sessionSalt),
+    sessions: sessionResults,
     ...(includePerformance ? { turnPerformance } : {}),
     ...(warnings.length ? { skipped: true, warnings } : {}),
   };

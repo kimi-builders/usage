@@ -102,6 +102,12 @@ salt. Different installations cannot correlate the resulting hashes.
 
 ## Uploaded by `sync`
 
+Kimi Work desktop sessions are local-only under a normal Kimi CLI sync grant.
+To include them, explicitly run `sources set kimi-code private --include-desktop`.
+Run `sources set kimi-code private` to stop future desktop uploads without disabling CLI sync.
+Usage buckets with an Ultrafast tier remain local while community protocol v2 cannot represent them;
+the CLI reports them as skipped instead of sending Standard pricing.
+
 The complete transport contract is documented in
 [`docs/LOCAL_SNAPSHOT_V1.en.md`](docs/LOCAL_SNAPSHOT_V1.en.md). The principal fields
 are source, model facts recorded by the Agent, 30-minute UTC time, exclusive

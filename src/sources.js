@@ -35,6 +35,7 @@ export function runSources(args = []) {
         tier: source.tier,
         mode: policies[source.id],
         enabled: policies[source.id] !== 'off',
+        ...(source.id === 'kimi-code' ? { desktopSync: policies[source.id] === 'private' && config.sourceOptions?.['kimi-code']?.syncDesktop === true } : {}),
       }));
       console.log(JSON.stringify(jsonList, null, 2));
       return jsonList;
@@ -57,6 +58,11 @@ export function runSources(args = []) {
           ? c.cyan(status)
           : c.gray(status);
       console.log(`  ${source.id.padEnd(18)} ${coloredMode}`);
+      if (source.id === 'kimi-code' && policies[source.id] === 'private') {
+        console.log(config.sourceOptions?.['kimi-code']?.syncDesktop === true
+          ? (isZh ? '    Kimi Work：本机并同步' : '    Kimi Work: local & sync')
+          : (isZh ? '    Kimi Work：仅本机' : '    Kimi Work: local only'));
+      }
     }
     return;
   }
@@ -69,6 +75,10 @@ export function runSources(args = []) {
     if (!isSourceMode(mode)) throw new Error(isZh
       ? '模式必须是 off、local 或 private。'
       : 'Mode must be off, local, or private.');
+    const includeDesktop = args.includes('--include-desktop');
+    if (includeDesktop && (sourceId !== 'kimi-code' || mode !== 'private')) throw new Error(isZh
+      ? '--include-desktop 只适用于 sources set kimi-code private。'
+      : '--include-desktop requires sources set kimi-code private.');
     if (sourceId === 'cursor' && mode !== 'off' && !config.sourceOptions?.cursor?.csvPath) {
       throw new Error(isZh
         ? 'Cursor 需要先运行 `sources enable cursor --csv PATH` 配置导出的 usage CSV。'
@@ -79,6 +89,8 @@ export function runSources(args = []) {
       sessionSalt: config.sessionSalt || createSessionSalt(),
       ...(!loadedConfig ? { onboardingPending: true } : {}),
     }, { [sourceId]: mode });
+    if (sourceId === 'kimi-code') next.sourceOptions = { ...next.sourceOptions,
+      [sourceId]: { ...next.sourceOptions?.[sourceId], syncDesktop: includeDesktop } };
     saveConfig(next);
     const modeLabel = isZh
       ? { off: '关闭', local: '仅本机扫描', private: '本机扫描并同步' }[mode]

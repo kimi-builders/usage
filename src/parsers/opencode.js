@@ -3,6 +3,7 @@ import { join, basename } from 'node:path';
 import { aggregateToBuckets, extractSessions } from './index.js';
 import { queryDbJson } from './sqlite.js';
 import { openCodeDataRoots } from '../opencode-roots.js';
+import { openAiRequestContextTier } from '../model-meta.js';
 
 /**
  * OpenCode parser (sst/opencode).
@@ -72,8 +73,8 @@ const V1_MESSAGE_SQL = `SELECT
   session_id as sessionID,
   json_extract(data, '$.role') as role,
   json_extract(data, '$.time.created') as created,
-  json_extract(data, '$.modelID') as modelID,
-  json_extract(data, '$.providerID') as modelProvider,
+  coalesce(json_extract(data, '$.modelID'), json_extract(data, '$.model.modelID'), json_extract(data, '$.model.id')) as modelID,
+  coalesce(json_extract(data, '$.providerID'), json_extract(data, '$.model.providerID')) as modelProvider,
   json_extract(data, '$.variant') as reasoningEffort,
   json_extract(data, '$.tokens') as tokens,
   json_extract(data, '$.path.root') as rootPath
@@ -97,8 +98,8 @@ function sessionMessageSql(sessionTable) {
     m.session_id as sessionID,
     m.type as role,
     coalesce(json_extract(m.data, '$.time.created'), m.time_created) as created,
-    coalesce(json_extract(m.data, '$.model.id'), json_extract(m.data, '$.modelID')) as modelID,
-    coalesce(json_extract(m.data, '$.model.providerID'), json_extract(m.data, '$.providerID')) as modelProvider,
+    coalesce(json_extract(m.data, '$.model.id'), json_extract(m.data, '$.modelID'), json_extract(m.data, '$.model.modelID')) as modelID,
+    coalesce(json_extract(m.data, '$.model.providerID'), json_extract(m.data, '$.providerID'), json_extract(m.data, '$.model.provider')) as modelProvider,
     json_extract(m.data, '$.variant') as reasoningEffort,
     json_extract(m.data, '$.tokens') as tokens${sessionJoin}
     WHERE m.type IN ('user', 'assistant')
@@ -203,10 +204,13 @@ function parseRows(rows) {
     }
     const mapped = tokens && mapTokens(tokens);
     if (!mapped) continue;
+    const contextTier = openAiRequestContextTier(row.modelID,
+      mapped.inputTokens + mapped.cacheReadInputTokens + mapped.cacheWriteInputTokens);
 
     entries.push({
       source: 'opencode',
       model: row.modelID || 'unknown',
+      ...(contextTier ? { contextTier } : {}),
       ...(row.modelProvider ? { modelProvider: row.modelProvider } : {}),
       ...(row.reasoningEffort ? { reasoningEffort: row.reasoningEffort } : {}),
       project,
@@ -248,8 +252,8 @@ function readJsonRows(messagesDir) {
 
       rows.push({
         id: data.id || basename(file, '.json'), sessionID: data.sessionID || sessionDir.name,
-        created: data.time?.created, role: data.role, modelID: data.modelID,
-        modelProvider: data.providerID, reasoningEffort: data.variant,
+        created: data.time?.created, role: data.role, modelID: data.modelID || data.model?.modelID || data.model?.id,
+        modelProvider: data.providerID || data.model?.providerID, reasoningEffort: data.variant,
         rootPath: data.path?.root, tokens: data.tokens,
       });
     }

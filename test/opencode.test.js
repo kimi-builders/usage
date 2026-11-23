@@ -95,6 +95,19 @@ function sumTokens(result) {
   };
 }
 
+test('GPT-6.2 OpenCode requests use full prompt length before aggregation', async () => {
+  const dir = join(useDir('request-context'), 'storage', 'message', 'ses_ctx');
+  mkdirSync(dir, { recursive: true });
+  for (const [i, input] of [2000, 2000, 2001].entries()) {
+    const row = message('assistant', Date.parse('2026-11-22T10:01:00Z'), { modelID: 'gateway/gpt-6.2-sol',
+      sessionID: 'ses_ctx', tokens: { input, cache: { read: 200000, write: 70000 }, output: 10 } });
+    writeFileSync(join(dir, i + '.json'), JSON.stringify(row));
+  }
+  const { buckets } = await parse({ sessionSalt: SALT });
+  assert.deepEqual(buckets.map(b => [b.contextTier, b.inputTokens, b.requestCount]).sort(),
+    [['long', 2001, 1], ['short', 4000, 2]]);
+});
+
 test('missing data dir reports not installed (null)', async () => {
   process.env.KBU_USAGE_OPENCODE_DIR = join(root, 'absent');
   assert.deepEqual(roots(), []);
@@ -312,6 +325,25 @@ test('a readable db wins over the legacy store (no double counting)', async (t) 
     input: 7, cacheWrite: 0, cacheRead: 0, output: 3, reasoning: 0, requests: 1,
   });
 });
+
+for (const store of ['json', 'sqlite']) {
+  test(store + ': nested model IDs carry usage even when the provider label is arbitrary', async t => {
+    if (store === 'sqlite' && !DatabaseSync) return t.skip('node:sqlite unavailable');
+    const dir = useDir('nested-' + store);
+    const data = message('assistant', Date.parse('2026-11-22T12:00Z'), {
+      modelID: undefined, model: { modelID: 'ABC/k3.1-pro', providerID: 'my-route' }, tokens: { cache: { read: 42 } },
+    });
+    if (store === 'sqlite') buildDb(dir, [{ sessionId: 'ses_nested', data }]);
+    else {
+      const session = join(dir, 'storage', 'message', 'ses_nested');
+      mkdirSync(session, { recursive: true });
+      writeFileSync(join(session, 'msg_one.json'), JSON.stringify(data));
+    }
+    const { buckets } = await parse({ sessionSalt: SALT });
+    assert.deepEqual(buckets.map(b => [b.model, b.modelCanonical, b.modelProvider, b.cacheReadInputTokens, b.requestCount]),
+      [['ABC/k3.1-pro', 'kimi-k3.1-pro', 'my-route', 42, 1]]);
+  });
+}
 
 for (const layout of ['message', 'session_message']) {
   test(`large ${layout} databases do not overflow the function argument limit`, async (t) => {

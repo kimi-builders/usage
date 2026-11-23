@@ -32,6 +32,12 @@ including supporting SQLite utilities where applicable. Subsequent adaptations
 include Grok CLI, Trae CLI, MiniMax Code, Qoder/Qoder CN and DeepSeek Harness
 (DSH, session formats V0–V4) readers and corresponding test fixtures.
 
+The Codex streaming Zstandard frame reader is adapted from
+src/parsers/zstd-file.js at upstream ea26f1d (MIT, Copyright (c) 2026
+VibeCafé). The Kimi Work discovery and Claude call-level deduplication
+are informed by the same release. Local accounting, pricing and sync
+continue to use the Kimi.Builders contracts.
+
 The OpenCode reader's 2.x store compatibility (sqlite_master table detection,
 session_message projection reads with session/session_v2 directory joins,
 legacy-priority deduplication for migrated stores, and explicit warnings for

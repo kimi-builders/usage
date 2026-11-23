@@ -103,6 +103,26 @@ test('Codex near-mirror matching retains evidence of intervening requests and le
   assert.equal(total(result, 'requestCount'), 3);
 });
 
+test('delayed UI mirrors with larger cumulative totals still count once when both streams advance by this call', async () => {
+  const base = ledger('base', 1);
+  const ui = legacy(1, usage(500, 50, 100, 10));
+  const call = ledger('next', 5, usage(200, 20, 40, 4));
+  const mirror = legacy(45, usage(600, 60, 120, 12));
+  const result = await fixture([meta(), context(), base, ui, call, mirror]).run();
+  assert.equal(total(result, 'requestCount'), 2);
+  assert.equal(total(result), 160);
+});
+
+test('child drops copied UI before its own task even without parent; an owned ledger is not a copied prefix', async () => {
+  const child = meta('child', { parent_thread_id: 'missing', timestamp: stamp(20) });
+  const task = { type: 'event_msg', timestamp: stamp(20), payload: { type: 'turn_started', started_at: Date.parse(stamp(20)) } };
+  const owned = ledger('response', 22, usage(), usage(), { thread_id: 'child', session_id: 'child' });
+  const result = await fixture([child, meta('missing'), legacy(2), task, owned]).run();
+  assert.equal(total(result, 'requestCount'), 1);
+  const early = await fixture([child, owned, task]).run();
+  assert.equal(total(early, 'requestCount'), 1);
+});
+
 test('new Codex response identities survive repeated/reset totals; replayed identities and mirrors count once', async () => {
   for (const legacyFirst of [false, true]) {
     const mirror = legacy(3, usage(200, 20, 40, 4));

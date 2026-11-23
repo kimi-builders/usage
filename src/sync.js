@@ -185,6 +185,7 @@ export async function runSync({ quiet = false, surface = 'cli', full = false, on
 
   report({ phase: 'scanning' });
   const collected = await collectAll({
+    purpose: 'sync',
     sessionSalt: config.sessionSalt,
     enabledSourceIds: config.enabledSources,
     sourceIds: sourceIdsFor(config, 'sync'),
